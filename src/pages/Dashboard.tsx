@@ -1,529 +1,656 @@
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { useAuth } from "@/hooks/use-auth";
+import { useAuthActions } from "@convex-dev/auth/react";
+import { useState } from "react";
 import {
-  Activity,
-  ArrowUpRight,
-  BarChart3,
-  Building2,
-  Clock,
-  DollarSign,
   LayoutDashboard,
-  LogOut,
-  MapPin,
   Package,
-  Plus,
-  Settings,
   Truck,
+  Navigation,
   Users,
+  Building2,
+  BarChart3,
+  Settings,
+  LogOut,
+  ArrowRight,
+  Clock,
+  TrendingUp,
+  CheckCircle,
 } from "lucide-react";
-import { useNavigate } from "react-router";
 
-const navItems = [
+const sidebarItems = [
   { icon: LayoutDashboard, label: "Dashboard", active: true },
-  { icon: Package, label: "Orders" },
-  { icon: Truck, label: "Deliveries" },
-  { icon: MapPin, label: "Tracking" },
-  { icon: Users, label: "Customers" },
-  { icon: Building2, label: "Business" },
-  { icon: BarChart3, label: "Analytics" },
-  { icon: Settings, label: "Settings" },
+  { icon: Package, label: "Orders", active: false },
+  { icon: Truck, label: "Deliveries", active: false },
+  { icon: Navigation, label: "Tracking", active: false },
+  { icon: Users, label: "Customers", active: false },
+  { icon: Building2, label: "Business", active: false },
+  { icon: BarChart3, label: "Analytics", active: false },
+  { icon: Settings, label: "Settings", active: false },
 ];
 
 const recentOrders = [
   {
-    id: "ORD-1089",
-    customer: "Sarah Mitchell",
-    from: "123 Market St",
-    to: "456 Oak Ave",
+    id: "LSH-4821",
+    from: "Johannesburg CBD",
+    to: "Soweto, Block F",
     status: "In Transit",
-    price: "$12.50",
-    time: "2 min ago",
+    statusColor: "var(--lasha-cyan)",
+    time: "12 min ago",
+    driver: "Thabo M.",
   },
   {
-    id: "ORD-1088",
-    customer: "David Chen",
-    from: "789 Pine Rd",
-    to: "321 Elm St",
+    id: "LSH-4820",
+    from: "Pretoria Central",
+    to: "Centurion Mall",
     status: "Delivered",
-    price: "$8.75",
-    time: "18 min ago",
+    statusColor: "var(--lasha-lime)",
+    time: "34 min ago",
+    driver: "Sipho K.",
   },
   {
-    id: "ORD-1087",
-    customer: "Amara Obi",
-    from: "555 Tech Blvd",
-    to: "888 Health Way",
-    status: "Picking Up",
-    price: "$15.00",
-    time: "25 min ago",
+    id: "LSH-4819",
+    from: "Sandton City",
+    to: "Alexandra Township",
+    status: "In Transit",
+    statusColor: "var(--lasha-cyan)",
+    time: "45 min ago",
+    driver: "Nomsa D.",
   },
   {
-    id: "ORD-1086",
-    customer: "James Wright",
-    from: "111 Commerce Dr",
-    to: "222 Residential Ln",
-    status: "Confirmed",
-    price: "$11.25",
-    time: "32 min ago",
-  },
-  {
-    id: "ORD-1085",
-    customer: "Priya Patel",
-    from: "444 Main St",
-    to: "777 Lake View",
-    status: "Delivered",
-    price: "$9.50",
+    id: "LSH-4818",
+    from: "Cape Town CBD",
+    to: "Khayelitsha",
+    status: "Picked Up",
+    statusColor: "var(--lasha-cyan-light)",
     time: "1 hr ago",
+    driver: "Lwazi P.",
+  },
+  {
+    id: "LSH-4817",
+    from: "Durban Point",
+    to: "Umlazi Section Q",
+    status: "Delivered",
+    statusColor: "var(--lasha-lime)",
+    time: "2 hrs ago",
+    driver: "Zanele M.",
   },
 ];
 
-const statusColors: Record<string, string> = {
-  "In Transit": "bg-blue-500/10 text-blue-700",
-  Delivered: "bg-green-500/10 text-green-700",
-  "Picking Up": "bg-amber-500/10 text-amber-700",
-  Confirmed: "bg-purple-500/10 text-purple-700",
-  Pending: "bg-gray-500/10 text-gray-700",
-};
+const weeklyData = [
+  { day: "Mon", completed: 42, transit: 8, pending: 5 },
+  { day: "Tue", completed: 38, transit: 12, pending: 7 },
+  { day: "Wed", completed: 55, transit: 6, pending: 3 },
+  { day: "Thu", completed: 47, transit: 10, pending: 4 },
+  { day: "Fri", completed: 61, transit: 14, pending: 8 },
+  { day: "Sat", completed: 34, transit: 5, pending: 2 },
+  { day: "Sun", completed: 19, transit: 3, pending: 1 },
+];
 
 export default function Dashboard() {
-  const { user, signOut } = useAuth();
-  const navigate = useNavigate();
+  const { signOut } = useAuthActions();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  const handleSignOut = async () => {
-    await signOut();
-    navigate("/");
-  };
+  const maxVal = Math.max(...weeklyData.map((d) => d.completed + d.transit + d.pending));
 
   return (
-    <div className="min-h-screen bg-muted/30">
-      {/* Top Header */}
-      <header className="sticky top-0 z-40 border-b border-border/50 bg-background/80 backdrop-blur-xl">
-        <div className="flex items-center justify-between px-6 py-3">
+    <div
+      style={{
+        minHeight: "100vh",
+        display: "flex",
+        fontFamily: "Inter, system-ui, -apple-system, sans-serif",
+        backgroundColor: "var(--lasha-ivory)",
+      }}
+    >
+      {/* Mobile overlay */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 z-40 lg:hidden"
+          style={{ backgroundColor: "rgba(0,0,0,0.4)" }}
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      {/* Sidebar */}
+      <aside
+        className="dash-sidebar"
+        style={{
+          width: 260,
+          backgroundColor: "var(--lasha-navy)",
+          display: "flex",
+          flexDirection: "column",
+          position: "fixed",
+          top: 0,
+          left: 0,
+          bottom: 0,
+          zIndex: 50,
+          transition: "transform 0.3s ease",
+        }}
+      >
+        {/* Logo */}
+        <div style={{ padding: "28px 24px 20px", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+          <span
+            style={{
+              fontSize: 20,
+              fontWeight: 800,
+              color: "#ffffff",
+              letterSpacing: "-0.02em",
+            }}
+          >
+            Lasha
+          </span>
+          <p
+            className="lasha-label"
+            style={{ color: "rgba(255,255,255,0.3)", fontSize: 9, marginTop: 4 }}
+          >
+            Dashboard
+          </p>
+        </div>
+
+        {/* Nav items */}
+        <div className="flex flex-col gap-1 flex-1" style={{ padding: "16px 12px" }}>
+          {sidebarItems.map((item) => {
+            const Icon = item.icon;
+            return (
+              <button
+                key={item.label}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 12,
+                  padding: "11px 14px",
+                  borderRadius: 10,
+                  border: "none",
+                  cursor: "pointer",
+                  fontSize: 14,
+                  fontWeight: item.active ? 600 : 400,
+                  fontFamily: "Inter, sans-serif",
+                  background: item.active ? "rgba(7,148,181,0.15)" : "transparent",
+                  color: item.active ? "var(--lasha-cyan-light)" : "rgba(255,255,255,0.5)",
+                  transition: "all 0.2s",
+                  textAlign: "left",
+                  width: "100%",
+                }}
+              >
+                <Icon size={18} strokeWidth={1.5} />
+                {item.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Quick actions */}
+        <div style={{ padding: "16px 12px 12px", borderTop: "1px solid rgba(255,255,255,0.08)" }}>
+          <a
+            href="/"
+            className="lasha-btn-primary"
+            style={{
+              width: "100%",
+              justifyContent: "center",
+              fontSize: 13,
+              padding: "11px 16px",
+            }}
+          >
+            New Delivery
+            <ArrowRight size={14} />
+          </a>
+        </div>
+
+        {/* Sign out */}
+        <div style={{ padding: "0 12px 20px" }}>
+          <button
+            onClick={() => signOut()}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              padding: "10px 14px",
+              borderRadius: 10,
+              border: "none",
+              cursor: "pointer",
+              fontSize: 13,
+              fontFamily: "Inter, sans-serif",
+              background: "transparent",
+              color: "rgba(255,255,255,0.4)",
+              width: "100%",
+              textAlign: "left",
+            }}
+          >
+            <LogOut size={16} strokeWidth={1.5} />
+            Sign out
+          </button>
+        </div>
+      </aside>
+
+      {/* Main content */}
+      <main
+        className="dash-main"
+        style={{
+          flex: 1,
+          marginLeft: 260,
+          minWidth: 0,
+        }}
+      >
+        {/* Header */}
+        <header
+          style={{
+            height: 72,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "0 40px",
+            borderBottom: "1px solid var(--lasha-border-light)",
+            backgroundColor: "rgba(244,242,233,0.9)",
+            backdropFilter: "blur(8px)",
+            position: "sticky",
+            top: 0,
+            zIndex: 30,
+          }}
+        >
+          <div className="flex items-center gap-4">
+            <button
+              className="lg:hidden bg-transparent border-none cursor-pointer p-2"
+              style={{ color: "var(--lasha-navy)" }}
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              aria-label="Toggle sidebar"
+            >
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="3" y1="6" x2="21" y2="6" />
+                <line x1="3" y1="12" x2="21" y2="12" />
+                <line x1="3" y1="18" x2="21" y2="18" />
+              </svg>
+            </button>
+            <div>
+              <h1
+                style={{
+                  fontSize: 20,
+                  fontWeight: 700,
+                  color: "var(--lasha-navy)",
+                  letterSpacing: "-0.02em",
+                }}
+              >
+                Dashboard
+              </h1>
+              <p style={{ fontSize: 13, color: "var(--lasha-muted)" }}>
+                Logistics operations overview
+              </p>
+            </div>
+          </div>
           <div className="flex items-center gap-3">
-            <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-xs">
+            <div
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: "50%",
+                backgroundColor: "var(--lasha-navy)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: 14,
+                fontWeight: 600,
+                color: "var(--lasha-lime)",
+              }}
+            >
               L
             </div>
-            <span className="text-lg font-bold tracking-tight hidden sm:inline">
-              Lasha
-            </span>
           </div>
+        </header>
 
-          <div className="flex items-center gap-4">
-            <div className="text-right hidden sm:block">
-              <div className="text-sm font-medium">
-                {user?.name || "Dashboard"}
-              </div>
-              <div className="text-xs text-muted-foreground">
-                {user?.email || "Business Account"}
-              </div>
-            </div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="size-9 cursor-pointer"
-              onClick={handleSignOut}
-            >
-              <LogOut className="size-4 text-muted-foreground" />
-            </Button>
-          </div>
-        </div>
-      </header>
-
-      <div className="flex">
-        {/* Sidebar */}
-        <aside className="hidden lg:flex flex-col w-60 border-r border-border/50 bg-background/50 min-h-[calc(100vh-52px)] p-4 gap-1">
-          {navItems.map((item) => (
-            <button
-              key={item.label}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors cursor-pointer ${
-                item.active
-                  ? "bg-primary/10 text-primary"
-                  : "text-muted-foreground hover:text-foreground hover:bg-accent"
-              }`}
-            >
-              <item.icon className="size-4" />
-              {item.label}
-            </button>
-          ))}
-
-          <div className="mt-auto pt-4 border-t border-border/50">
-            <div className="rounded-xl bg-muted/60 p-4">
-              <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-                Quick Actions
-              </div>
-              <Button size="sm" className="w-full gap-2 cursor-pointer">
-                <Plus className="size-3.5" />
-                New Delivery
-              </Button>
-            </div>
-          </div>
-        </aside>
-
-        {/* Main Content */}
-        <main className="flex-1 p-6 max-w-6xl">
-          {/* Welcome */}
-          <div className="mb-8">
-            <h1 className="text-2xl font-bold tracking-tight">
-              Welcome{user?.name ? `, ${user.name}` : " to Lasha"}
-            </h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              Here is what is happening with your deliveries today.
-            </p>
-          </div>
-
-          {/* Stats Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-            <Card className="border-border/60 shadow-none">
-              <CardContent className="p-5">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                      Active Orders
-                    </p>
-                    <p className="text-2xl font-bold mt-1">24</p>
-                    <div className="flex items-center gap-1 mt-1">
-                      <span className="text-xs text-green-600 font-medium">
-                        +3
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        from yesterday
-                      </span>
-                    </div>
-                  </div>
-                  <div className="size-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                    <Package className="size-5 text-primary" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="border-border/60 shadow-none">
-              <CardContent className="p-5">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                      In Transit
-                    </p>
-                    <p className="text-2xl font-bold mt-1">12</p>
-                    <div className="flex items-center gap-1 mt-1">
-                      <span className="text-xs text-green-600 font-medium">
-                        98%
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        on-time rate
-                      </span>
-                    </div>
-                  </div>
-                  <div className="size-10 rounded-xl bg-blue-500/10 flex items-center justify-center">
-                    <Truck className="size-5 text-blue-600" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="border-border/60 shadow-none">
-              <CardContent className="p-5">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                      {"Today's Revenue"}
-                    </p>
-                    <p className="text-2xl font-bold mt-1">$2,847</p>
-                    <div className="flex items-center gap-1 mt-1">
-                      <span className="text-xs text-green-600 font-medium">
-                        +18%
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        vs yesterday
-                      </span>
-                    </div>
-                  </div>
-                  <div className="size-10 rounded-xl bg-green-500/10 flex items-center justify-center">
-                    <DollarSign className="size-5 text-green-600" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="border-border/60 shadow-none">
-              <CardContent className="p-5">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                      Avg. Delivery Time
-                    </p>
-                    <p className="text-2xl font-bold mt-1">
-                      18{" "}
-                      <span className="text-sm font-normal text-muted-foreground">
-                        min
-                      </span>
-                    </p>
-                    <div className="flex items-center gap-1 mt-1">
-                      <span className="text-xs text-green-600 font-medium">
-                        -2 min
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        improvement
-                      </span>
-                    </div>
-                  </div>
-                  <div className="size-10 rounded-xl bg-amber-500/10 flex items-center justify-center">
-                    <Clock className="size-5 text-amber-600" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Charts Row */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8">
-            {/* Delivery Activity Chart */}
-            <Card className="lg:col-span-2 border-border/60 shadow-none">
-              <CardHeader className="pb-2">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-sm font-semibold">
-                    Delivery Activity
-                  </CardTitle>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="gap-1.5 text-xs cursor-pointer"
-                  >
-                    This Week
-                    <ArrowUpRight className="size-3" />
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="h-48 flex items-end gap-2 px-2">
-                  {[
-                    { day: "Mon", values: [20, 15, 25] },
-                    { day: "Tue", values: [30, 20, 15] },
-                    { day: "Wed", values: [25, 30, 20] },
-                    { day: "Thu", values: [35, 25, 30] },
-                    { day: "Fri", values: [40, 35, 25] },
-                    { day: "Sat", values: [30, 20, 35] },
-                    { day: "Sun", values: [15, 10, 20] },
-                  ].map((d) => (
+        {/* Content */}
+        <div style={{ padding: "32px 40px 64px" }}>
+          {/* Stat cards */}
+          <div className="dash-stats" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16 }}>
+            {[
+              {
+                label: "Active Orders",
+                value: "24",
+                icon: Package,
+                change: "+3 today",
+                color: "var(--lasha-cyan)",
+              },
+              {
+                label: "In Transit",
+                value: "18",
+                icon: Truck,
+                change: "Avg. 34 min",
+                color: "var(--lasha-cyan-light)",
+              },
+              {
+                label: "Today's Revenue",
+                value: "R 12,480",
+                icon: TrendingUp,
+                change: "+12% vs yesterday",
+                color: "var(--lasha-lime)",
+              },
+              {
+                label: "Avg. Delivery Time",
+                value: "34 min",
+                icon: Clock,
+                change: "Within target",
+                color: "var(--lasha-cyan)",
+              },
+            ].map((stat) => {
+              const Icon = stat.icon;
+              return (
+                <div
+                  key={stat.label}
+                  style={{
+                    background: "#ffffff",
+                    border: "1px solid var(--lasha-border-light)",
+                    borderRadius: 16,
+                    padding: 24,
+                  }}
+                >
+                  <div className="flex items-center justify-between mb-4">
+                    <span style={{ fontSize: 13, color: "var(--lasha-muted)", fontWeight: 500 }}>
+                      {stat.label}
+                    </span>
                     <div
-                      key={d.day}
-                      className="flex-1 flex flex-col items-center gap-1"
+                      style={{
+                        width: 36,
+                        height: 36,
+                        borderRadius: 10,
+                        backgroundColor: `color-mix(in srgb, ${stat.color} 10%, transparent)`,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
                     >
+                      <Icon size={18} style={{ color: stat.color }} strokeWidth={1.5} />
+                    </div>
+                  </div>
+                  <p
+                    style={{
+                      fontSize: 30,
+                      fontWeight: 700,
+                      color: "var(--lasha-navy)",
+                      letterSpacing: "-0.02em",
+                    }}
+                  >
+                    {stat.value}
+                  </p>
+                  <p style={{ fontSize: 12, color: "var(--lasha-muted)", marginTop: 6 }}>
+                    {stat.change}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Chart + Performance */}
+          <div className="dash-two-col" style={{ marginTop: 24, display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 20 }}>
+            {/* Weekly chart */}
+            <div
+              style={{
+                background: "#ffffff",
+                border: "1px solid var(--lasha-border-light)",
+                borderRadius: 16,
+                padding: 28,
+              }}
+            >
+              <div className="flex items-center justify-between mb-8">
+                <div>
+                  <p style={{ fontSize: 15, fontWeight: 700, color: "var(--lasha-navy)" }}>
+                    Weekly Activity
+                  </p>
+                  <p style={{ fontSize: 12, color: "var(--lasha-muted)" }}>
+                    Deliveries this week
+                  </p>
+                </div>
+                <div className="flex gap-4">
+                  {[
+                    { label: "Completed", color: "var(--lasha-cyan)" },
+                    { label: "In Transit", color: "var(--lasha-cyan-light)" },
+                    { label: "Pending", color: "var(--lasha-ivory-dark)" },
+                  ].map((l) => (
+                    <div key={l.label} className="flex items-center gap-2">
                       <div
-                        className="w-full flex items-end gap-0.5"
-                        style={{ height: "140px" }}
-                      >
-                        {d.values.map((v, i) => (
-                          <div
-                            key={i}
-                            className="flex-1 rounded-t-sm transition-colors"
-                            style={{
-                              height: `${v * 2.8}px`,
-                              backgroundColor:
-                                i === 0
-                                  ? "oklch(0.37 0.12 165 / 0.7)"
-                                  : i === 1
-                                    ? "oklch(0.37 0.12 165 / 0.35)"
-                                    : "oklch(0.37 0.12 165 / 0.15)",
-                            }}
-                          />
-                        ))}
-                      </div>
-                      <span className="text-[10px] text-muted-foreground font-medium">
-                        {d.day}
-                      </span>
+                        style={{
+                          width: 8,
+                          height: 8,
+                          borderRadius: 2,
+                          backgroundColor: l.color,
+                        }}
+                      />
+                      <span style={{ fontSize: 11, color: "var(--lasha-muted)" }}>{l.label}</span>
                     </div>
                   ))}
                 </div>
-                <div className="flex items-center gap-4 mt-4 justify-center">
-                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <div className="size-2 rounded-full bg-primary/70" />
-                    Completed
+              </div>
+
+              {/* Bar chart */}
+              <div className="flex items-end gap-4" style={{ height: 180 }}>
+                {weeklyData.map((d) => {
+                  const total = d.completed + d.transit + d.pending;
+                  const h = (total / maxVal) * 160;
+                  const completedH = (d.completed / total) * h;
+                  const transitH = (d.transit / total) * h;
+                  const pendingH = (d.pending / total) * h;
+                  return (
+                    <div key={d.day} className="flex flex-col items-center gap-2 flex-1">
+                      <div
+                        style={{
+                          width: "100%",
+                          height: h,
+                          display: "flex",
+                          flexDirection: "column",
+                          justifyContent: "flex-end",
+                          borderRadius: 6,
+                          overflow: "hidden",
+                        }}
+                      >
+                        <div
+                          style={{
+                            height: pendingH,
+                            backgroundColor: "var(--lasha-ivory-dark)",
+                          }}
+                        />
+                        <div
+                          style={{
+                            height: transitH,
+                            backgroundColor: "var(--lasha-cyan-light)",
+                          }}
+                        />
+                        <div
+                          style={{
+                            height: completedH,
+                            backgroundColor: "var(--lasha-cyan)",
+                          }}
+                        />
+                      </div>
+                      <span style={{ fontSize: 11, color: "var(--lasha-muted)" }}>{d.day}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Performance */}
+            <div
+              style={{
+                background: "#ffffff",
+                border: "1px solid var(--lasha-border-light)",
+                borderRadius: 16,
+                padding: 28,
+              }}
+            >
+              <p style={{ fontSize: 15, fontWeight: 700, color: "var(--lasha-navy)", marginBottom: 24 }}>
+                Performance
+              </p>
+              {[
+                { label: "On-Time Rate", value: "94%", bar: 0.94 },
+                { label: "Customer Rating", value: "4.8", bar: 0.96 },
+                { label: "Active Couriers", value: "12", bar: 0.75 },
+                { label: "Completion Rate", value: "98%", bar: 0.98 },
+              ].map((p, i) => (
+                <div
+                  key={p.label}
+                  style={{
+                    marginBottom: i < 3 ? 20 : 0,
+                  }}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <span style={{ fontSize: 13, color: "var(--lasha-body-text)" }}>
+                      {p.label}
+                    </span>
+                    <span style={{ fontSize: 14, fontWeight: 600, color: "var(--lasha-navy)" }}>
+                      {p.value}
+                    </span>
                   </div>
-                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <div className="size-2 rounded-full bg-primary/35" />
-                    In Transit
-                  </div>
-                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <div className="size-2 rounded-full bg-primary/15" />
-                    Pending
+                  <div
+                    style={{
+                      height: 6,
+                      background: "var(--lasha-ivory-dark)",
+                      borderRadius: 3,
+                      overflow: "hidden",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: `${p.bar * 100}%`,
+                        height: "100%",
+                        backgroundColor: "var(--lasha-cyan)",
+                        borderRadius: 3,
+                        transition: "width 0.6s ease",
+                      }}
+                    />
                   </div>
                 </div>
-              </CardContent>
-            </Card>
-
-            {/* Quick Stats */}
-            <Card className="border-border/60 shadow-none">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold">
-                  Performance
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {[
-                  {
-                    label: "On-Time Rate",
-                    value: "98.2%",
-                    icon: Clock,
-                    color: "text-green-600",
-                  },
-                  {
-                    label: "Customer Rating",
-                    value: "4.9/5",
-                    icon: Activity,
-                    color: "text-amber-600",
-                  },
-                  {
-                    label: "Active Couriers",
-                    value: "16",
-                    icon: Users,
-                    color: "text-blue-600",
-                  },
-                  {
-                    label: "Completion Rate",
-                    value: "99.1%",
-                    icon: Package,
-                    color: "text-primary",
-                  },
-                ].map((stat) => (
-                  <div
-                    key={stat.label}
-                    className="flex items-center justify-between"
-                  >
-                    <div className="flex items-center gap-3">
-                      <stat.icon className={`size-4 ${stat.color}`} />
-                      <span className="text-sm text-muted-foreground">
-                        {stat.label}
-                      </span>
-                    </div>
-                    <span className="text-sm font-semibold">{stat.value}</span>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
+              ))}
+            </div>
           </div>
 
-          {/* Recent Orders */}
-          <Card className="border-border/60 shadow-none">
-            <CardHeader className="pb-2">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-semibold">
-                  Recent Orders
-                </CardTitle>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="gap-1.5 text-xs cursor-pointer"
-                >
-                  View All
-                  <ArrowUpRight className="size-3" />
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {/* Desktop Table */}
-              <div className="hidden md:block overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-border/50">
-                      <th className="text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider pb-3 pr-4">
-                        Order
-                      </th>
-                      <th className="text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider pb-3 pr-4">
-                        Customer
-                      </th>
-                      <th className="text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider pb-3 pr-4">
-                        Route
-                      </th>
-                      <th className="text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider pb-3 pr-4">
-                        Status
-                      </th>
-                      <th className="text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider pb-3 pr-4">
-                        Price
-                      </th>
-                      <th className="text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider pb-3">
-                        Time
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {recentOrders.map((order) => (
-                      <tr
-                        key={order.id}
-                        className="border-b border-border/30 last:border-0 hover:bg-muted/30 transition-colors"
-                      >
-                        <td className="py-3.5 pr-4 text-sm font-medium">
-                          {order.id}
-                        </td>
-                        <td className="py-3.5 pr-4 text-sm text-muted-foreground">
-                          {order.customer}
-                        </td>
-                        <td className="py-3.5 pr-4 text-sm text-muted-foreground">
-                          {order.from} → {order.to}
-                        </td>
-                        <td className="py-3.5 pr-4">
-                          <span
-                            className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                              statusColors[order.status] ||
-                              "bg-gray-500/10 text-gray-700"
-                            }`}
-                          >
-                            {order.status}
-                          </span>
-                        </td>
-                        <td className="py-3.5 pr-4 text-sm font-medium text-right">
-                          {order.price}
-                        </td>
-                        <td className="py-3.5 text-sm text-muted-foreground text-right">
-                          {order.time}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+          {/* Recent orders */}
+          <div
+            style={{
+              marginTop: 24,
+              background: "#ffffff",
+              border: "1px solid var(--lasha-border-light)",
+              borderRadius: 16,
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                padding: "20px 28px",
+                borderBottom: "1px solid var(--lasha-border-light)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+              }}
+            >
+              <p style={{ fontSize: 15, fontWeight: 700, color: "var(--lasha-navy)" }}>
+                Recent Orders
+              </p>
+              <span className="lasha-label" style={{ fontSize: 10 }}>
+                Last 24 hours
+              </span>
+            </div>
 
-              {/* Mobile Cards */}
-              <div className="md:hidden space-y-3">
-                {recentOrders.map((order) => (
-                  <div
-                    key={order.id}
-                    className="rounded-xl border border-border/50 p-4"
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium">{order.id}</span>
-                      <span
-                        className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                          statusColors[order.status] ||
-                          "bg-gray-500/10 text-gray-700"
-                        }`}
-                      >
-                        {order.status}
-                      </span>
-                    </div>
-                    <div className="text-sm text-muted-foreground mb-1">
-                      {order.customer}
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      {order.from} → {order.to}
-                    </div>
-                    <div className="flex items-center justify-between mt-3">
-                      <span className="text-sm font-semibold">
-                        {order.price}
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        {order.time}
-                      </span>
-                    </div>
-                  </div>
-                ))}
+            {/* Table header - desktop */}
+            <div
+              className="dash-table-header"
+              style={{
+                display: "grid",
+                gridTemplateColumns: "100px 1fr 1fr 110px 90px 100px",
+                padding: "12px 28px",
+                borderBottom: "1px solid var(--lasha-border-light)",
+              }}
+            >
+              {["Order", "From", "To", "Status", "Time", "Driver"].map((h) => (
+                <span
+                  key={h}
+                  className="lasha-label"
+                  style={{ fontSize: 9, color: "var(--lasha-muted)" }}
+                >
+                  {h}
+                </span>
+              ))}
+            </div>
+
+            {/* Rows */}
+            {recentOrders.map((o, i) => (
+              <div
+                key={o.id}
+                className="dash-table-row"
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "100px 1fr 1fr 110px 90px 100px",
+                  padding: "14px 28px",
+                  borderBottom:
+                    i < recentOrders.length - 1
+                      ? "1px solid var(--lasha-border-light)"
+                      : "none",
+                  alignItems: "center",
+                }}
+              >
+                <span style={{ fontSize: 13, fontWeight: 600, color: "var(--lasha-navy)" }}>
+                  {o.id}
+                </span>
+                <span style={{ fontSize: 13, color: "var(--lasha-body-text)" }}>{o.from}</span>
+                <span style={{ fontSize: 13, color: "var(--lasha-body-text)" }}>{o.to}</span>
+                <span
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: o.statusColor,
+                  }}
+                >
+                  {o.status}
+                </span>
+                <span style={{ fontSize: 12, color: "var(--lasha-muted)" }}>{o.time}</span>
+                <span style={{ fontSize: 13, color: "var(--lasha-body-text)" }}>{o.driver}</span>
               </div>
-            </CardContent>
-          </Card>
-        </main>
-      </div>
+            ))}
+          </div>
+        </div>
+      </main>
+
+      <style>{`
+        @media (max-width: 1024px) {
+          .dash-sidebar {
+            transform: translateX(-100%);
+          }
+          .dash-main {
+            margin-left: 0 !important;
+          }
+        }
+        @media (max-width: 1024px) {
+          .dash-stats {
+            grid-template-columns: 1fr 1fr !important;
+          }
+          .dash-two-col {
+            grid-template-columns: 1fr !important;
+          }
+          .dash-table-header,
+          .dash-table-row {
+            grid-template-columns: 80px 1fr 1fr 90px !important;
+          }
+          .dash-table-header > *:nth-child(5),
+          .dash-table-header > *:nth-child(6),
+          .dash-table-row > *:nth-child(5),
+          .dash-table-row > *:nth-child(6) {
+            display: none !important;
+          }
+        }
+        @media (max-width: 640px) {
+          .dash-stats {
+            grid-template-columns: 1fr !important;
+          }
+          .dash-table-header,
+          .dash-table-row {
+            grid-template-columns: 1fr 1fr !important;
+          }
+          .dash-table-header > *:nth-child(3),
+          .dash-table-header > *:nth-child(4),
+          .dash-table-row > *:nth-child(3),
+          .dash-table-row > *:nth-child(4),
+          .dash-table-header > *:nth-child(5),
+          .dash-table-header > *:nth-child(6),
+          .dash-table-row > *:nth-child(5),
+          .dash-table-row > *:nth-child(6) {
+            display: none !important;
+          }
+        }
+      `}</style>
     </div>
   );
 }

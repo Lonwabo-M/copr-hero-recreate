@@ -1,300 +1,254 @@
-import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import {
-  InputOTP,
-  InputOTPGroup,
-  InputOTPSlot,
-} from "@/components/ui/input-otp";
-
-import { useAuth } from "@/hooks/use-auth";
-import { ArrowRight, Loader2, Mail, UserX } from "lucide-react";
-import { Suspense, useEffect, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router";
+import { useAuthActions } from "@convex-dev/auth/react";
+import { useState } from "react";
+import { ArrowRight } from "lucide-react";
 
 interface AuthProps {
   redirectAfterAuth?: string;
 }
 
-function resolveRedirectAfterAuth(
-  returnTo: string | null,
-  fallback = "/dashboard",
-) {
-  if (returnTo?.startsWith("/") && !returnTo.startsWith("//")) {
-    return returnTo;
-  }
-  return fallback;
-}
+export default function AuthPage({ redirectAfterAuth = "/dashboard" }: AuthProps) {
+  const { signIn } = useAuthActions();
+  const [email, setEmail] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [sent, setSent] = useState(false);
 
-function Auth({ redirectAfterAuth }: AuthProps = {}) {
-  const { isLoading: authLoading, isAuthenticated, signIn } = useAuth();
-  const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const redirect = resolveRedirectAfterAuth(
-    searchParams.get("returnTo"),
-    redirectAfterAuth,
-  );
-  const [step, setStep] = useState<"signIn" | { email: string }>("signIn");
-  const [otp, setOtp] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!authLoading && isAuthenticated) {
-      navigate(redirect);
-    }
-  }, [authLoading, isAuthenticated, navigate, redirect]);
-  const handleEmailSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setIsLoading(true);
-    setError(null);
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email) return;
+    setLoading(true);
     try {
-      const formData = new FormData(event.currentTarget);
-      await signIn("email-otp", formData);
-      setStep({ email: formData.get("email") as string });
-      setIsLoading(false);
-    } catch (error) {
-      console.error("Email sign-in error:", error);
-      setError(
-        error instanceof Error
-          ? error.message
-          : "Failed to send verification code. Please try again.",
-      );
-      setIsLoading(false);
-    }
-  };
-
-  const handleOtpSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setIsLoading(true);
-    setError(null);
-    try {
-      const formData = new FormData(event.currentTarget);
-      await signIn("email-otp", formData);
-
-      console.log("signed in");
-
-      navigate(redirect);
-    } catch (error) {
-      console.error("OTP verification error:", error);
-
-      setError("The verification code you entered is incorrect.");
-      setIsLoading(false);
-
-      setOtp("");
-    }
-  };
-
-  const handleGuestLogin = async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      console.log("Attempting anonymous sign in...");
-      await signIn("anonymous");
-      console.log("Anonymous sign in successful");
-      navigate(redirect);
-    } catch (error) {
-      console.error("Guest login error:", error);
-      console.error("Error details:", JSON.stringify(error, null, 2));
-      setError(`Failed to sign in as guest: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      setIsLoading(false);
+      await signIn("password", { email, flow: "signUp" });
+      setSent(true);
+    } catch {
+      // Try sign in if sign up fails
+      try {
+        await signIn("password", { email, flow: "signIn" });
+        setSent(true);
+      } catch {
+        setLoading(false);
+      }
     }
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-muted/30">
+    <div
+      style={{
+        minHeight: "100vh",
+        display: "flex",
+        fontFamily: "Inter, system-ui, -apple-system, sans-serif",
+      }}
+    >
+      {/* Left panel — branding */}
+      <div
+        className="auth-left"
+        style={{
+          backgroundColor: "var(--lasha-navy)",
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "center",
+          alignItems: "center",
+          padding: 64,
+          position: "relative",
+          overflow: "hidden",
+        }}
+      >
+        {/* Background image */}
+        <img
+          src="https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=1200&q=80"
+          alt=""
+          className="absolute inset-0 w-full h-full object-cover"
+          style={{ filter: "brightness(0.2) saturate(0.5)" }}
+          loading="lazy"
+        />
+        <div
+          className="absolute inset-0"
+          style={{
+            background:
+              "linear-gradient(180deg, rgba(8,38,49,0.9) 0%, rgba(8,38,49,0.85) 100%)",
+          }}
+        />
 
-      {/* Auth Content */}
-      <div className="flex-1 flex items-center justify-center px-6 py-12">
-        <div className="flex items-center justify-center h-full flex-col">
-        <Card className="min-w-[360px] pb-0 border shadow-md">
-          {step === "signIn" ? (
-            <>
-              <CardHeader className="text-center">
-              <div className="flex justify-center mb-2">
-                    <div
-                      className="flex size-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground font-bold text-xl cursor-pointer"
-                      onClick={() => navigate("/")}
-                    >
-                      L
-                    </div>
-                  </div>
-                <CardTitle className="text-xl">Welcome to Lasha</CardTitle>
-                <CardDescription>
-                  Enter your email to sign in or create an account
-                </CardDescription>
-              </CardHeader>
-              <form onSubmit={handleEmailSubmit}>
-                <CardContent>
-                  
-                  <div className="relative flex items-center gap-2">
-                    <div className="relative flex-1">
-                      <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                      <Input
-                        name="email"
-                        placeholder="name@company.com"
-                        type="email"
-                        className="pl-9"
-                        disabled={isLoading}
-                        required
-                      />
-                    </div>
-                    <Button
-                      type="submit"
-                      variant="outline"
-                      size="icon"
-                      disabled={isLoading}
-                    >
-                      {isLoading ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <ArrowRight className="h-4 w-4" />
-                      )}
-                    </Button>
-                  </div>
-                  {error && (
-                    <p className="mt-2 text-sm text-red-500">{error}</p>
-                  )}
-                  
-                  <div className="mt-4">
-                    <div className="relative">
-                      <div className="absolute inset-0 flex items-center">
-                        <span className="w-full border-t" />
-                      </div>
-                      <div className="relative flex justify-center text-xs uppercase">
-                        <span className="bg-background px-2 text-muted-foreground">
-                          Or
-                        </span>
-                      </div>
-                    </div>
-                    
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="w-full mt-4"
-                      onClick={handleGuestLogin}
-                      disabled={isLoading}
-                    >
-                      <UserX className="mr-2 h-4 w-4" />
-                      Continue as Guest
-                    </Button>
-                  </div>
-                </CardContent>
-              </form>
-            </>
-          ) : (
-            <>
-              <CardHeader className="text-center mt-4">
-                <CardTitle>Check your email</CardTitle>
-                <CardDescription>
-                  We sent a verification code to {step.email}
-                </CardDescription>
-              </CardHeader>
-              <form onSubmit={handleOtpSubmit}>
-                <CardContent className="pb-4">
-                  <input type="hidden" name="email" value={step.email} />
-                  <input type="hidden" name="code" value={otp} />
-
-                  <div className="flex justify-center">
-                    <InputOTP
-                      value={otp}
-                      onChange={setOtp}
-                      maxLength={6}
-                      disabled={isLoading}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && otp.length === 6 && !isLoading) {
-                          // Find the closest form and submit it
-                          const form = (e.target as HTMLElement).closest("form");
-                          if (form) {
-                            form.requestSubmit();
-                          }
-                        }
-                      }}
-                    >
-                      <InputOTPGroup>
-                        {Array.from({ length: 6 }).map((_, index) => (
-                          <InputOTPSlot key={index} index={index} />
-                        ))}
-                      </InputOTPGroup>
-                    </InputOTP>
-                  </div>
-                  {error && (
-                    <p className="mt-2 text-sm text-red-500 text-center">
-                      {error}
-                    </p>
-                  )}
-                  <p className="text-sm text-muted-foreground text-center mt-4">
-                    Didn't receive a code?{" "}
-                    <Button
-                      variant="link"
-                      className="p-0 h-auto"
-                      onClick={() => setStep("signIn")}
-                    >
-                      Try again
-                    </Button>
-                  </p>
-                </CardContent>
-                <CardFooter className="flex-col gap-2">
-                  <Button
-                    type="submit"
-                    className="w-full"
-                    disabled={isLoading || otp.length !== 6}
-                  >
-                    {isLoading ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Verifying...
-                      </>
-                    ) : (
-                      <>
-                        Verify code
-                        <ArrowRight className="ml-2 h-4 w-4" />
-                      </>
-                    )}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={() => setStep("signIn")}
-                    disabled={isLoading}
-                    className="w-full"
-                  >
-                    Use different email
-                  </Button>
-                </CardFooter>
-              </form>
-            </>
-          )}
-
-          <div className="py-4 px-6 text-xs text-center text-muted-foreground bg-muted border-t rounded-b-lg">
-            Powered by{" "}
-            <a
-              href="https://freebuff.com"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="underline hover:text-primary transition-colors"
+        <div className="relative z-10 text-center max-w-sm">
+          <div className="flex items-center gap-3 justify-center mb-6">
+            <span
+              style={{
+                fontSize: 32,
+                fontWeight: 800,
+                color: "#ffffff",
+                letterSpacing: "-0.03em",
+              }}
             >
-              freebuff.com
-            </a>
+              Lasha
+            </span>
           </div>
-        </Card>
+          <p
+            className="lasha-label"
+            style={{ color: "var(--lasha-cyan-light)", marginBottom: 32, fontSize: 10 }}
+          >
+            Logistics Infrastructure
+          </p>
+          <h1
+            style={{
+              fontSize: "clamp(28px, 3vw, 40px)",
+              fontWeight: 700,
+              lineHeight: 1.1,
+              letterSpacing: "-0.03em",
+              color: "#ffffff",
+              marginBottom: 20,
+            }}
+          >
+            Welcome to{" "}
+            <span style={{ color: "var(--lasha-cyan)" }}>Lasha</span>
+          </h1>
+          <p
+            style={{
+              fontSize: 15,
+              lineHeight: 1.65,
+              color: "rgba(255,255,255,0.55)",
+              maxWidth: 340,
+              marginInline: "auto",
+            }}
+          >
+            Reliable delivery infrastructure connecting businesses to the
+            communities they serve.
+          </p>
         </div>
       </div>
-    </div>
-  );
-}
 
-export default function AuthPage(props: AuthProps) {
-  return (
-    <Suspense>
-      <Auth {...props} />
-    </Suspense>
+      {/* Right panel — form */}
+      <div
+        className="auth-right"
+        style={{
+          flex: 1,
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "center",
+          alignItems: "center",
+          padding: 64,
+          backgroundColor: "var(--lasha-ivory)",
+        }}
+      >
+        <div style={{ width: "100%", maxWidth: 400 }}>
+          {sent ? (
+            <div>
+              <p className="lasha-label mb-6">Check your email</p>
+              <h2
+                style={{
+                  fontSize: 28,
+                  fontWeight: 700,
+                  letterSpacing: "-0.02em",
+                  color: "var(--lasha-navy)",
+                  marginBottom: 16,
+                }}
+              >
+                We've sent you a link
+              </h2>
+              <p className="lasha-body" style={{ fontSize: 15 }}>
+                Check <strong>{email}</strong> for a sign-in link to access your
+                dashboard.
+              </p>
+            </div>
+          ) : (
+            <div>
+              <p className="lasha-label mb-6">Sign in or create an account</p>
+              <h2
+                style={{
+                  fontSize: "clamp(28px, 3vw, 36px)",
+                  fontWeight: 700,
+                  letterSpacing: "-0.03em",
+                  color: "var(--lasha-navy)",
+                  lineHeight: 1.1,
+                  marginBottom: 12,
+                }}
+              >
+                Enter your email to
+                <br />
+                get started
+              </h2>
+              <p
+                className="lasha-body mb-10"
+                style={{ fontSize: 15, color: "var(--lasha-muted)" }}
+              >
+                We'll send you a magic link — no password needed.
+              </p>
+
+              <form onSubmit={handleSubmit}>
+                <label
+                  className="lasha-label"
+                  style={{ fontSize: 9, color: "var(--lasha-muted)", display: "block", marginBottom: 8 }}
+                >
+                  Email address
+                </label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@company.co.za"
+                  required
+                  style={{
+                    width: "100%",
+                    padding: "14px 18px",
+                    fontSize: 15,
+                    fontFamily: "Inter, sans-serif",
+                    color: "var(--lasha-navy)",
+                    backgroundColor: "#ffffff",
+                    border: "1px solid var(--lasha-border-light)",
+                    borderRadius: 12,
+                    outline: "none",
+                    transition: "border-color 0.2s",
+                    boxSizing: "border-box",
+                  }}
+                  onFocus={(e) => (e.currentTarget.style.borderColor = "var(--lasha-cyan)")}
+                  onBlur={(e) =>
+                    (e.currentTarget.style.borderColor = "var(--lasha-border-light)")
+                  }
+                />
+
+                <button
+                  type="submit"
+                  disabled={loading || !email}
+                  className="lasha-btn-primary"
+                  style={{
+                    width: "100%",
+                    justifyContent: "center",
+                    marginTop: 16,
+                    padding: "14px 28px",
+                    fontSize: 14,
+                    opacity: loading || !email ? 0.6 : 1,
+                    cursor: loading || !email ? "not-allowed" : "pointer",
+                  }}
+                >
+                  {loading ? "Sending link..." : "Continue"}
+                  {!loading && <ArrowRight size={16} />}
+                </button>
+              </form>
+
+              <p
+                style={{
+                  fontSize: 12,
+                  color: "var(--lasha-muted)",
+                  marginTop: 24,
+                  lineHeight: 1.6,
+                }}
+              >
+                By continuing, you agree to Lasha's Terms of Service and
+                Privacy Policy.
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <style>{`
+        @media (max-width: 768px) {
+          .auth-left {
+            display: none !important;
+          }
+          .auth-right {
+            padding: 32px 24px !important;
+          }
+        }
+      `}</style>
+    </div>
   );
 }
