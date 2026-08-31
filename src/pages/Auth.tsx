@@ -15,7 +15,6 @@ import {
 } from "@/components/ui/input-otp";
 
 import { useAuth } from "@/hooks/use-auth";
-import logo from "@/assets/logo.svg";
 import { ArrowRight, Loader2, Mail, UserX } from "lucide-react";
 import { Suspense, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
@@ -110,29 +109,26 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
   };
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col bg-muted/30">
 
-      
       {/* Auth Content */}
-      <div className="flex-1 flex items-center justify-center">
+      <div className="flex-1 flex items-center justify-center px-6 py-12">
         <div className="flex items-center justify-center h-full flex-col">
-        <Card className="min-w-[350px] pb-0 border shadow-md">
+        <Card className="min-w-[360px] pb-0 border shadow-md">
           {step === "signIn" ? (
             <>
               <CardHeader className="text-center">
-              <div className="flex justify-center">
-                    <img
-                      src={logo}
-                      alt="Lock Icon"
-                      width={64}
-                      height={64}
-                      className="rounded-lg mb-4 mt-4 cursor-pointer"
+              <div className="flex justify-center mb-2">
+                    <div
+                      className="flex size-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground font-bold text-xl cursor-pointer"
                       onClick={() => navigate("/")}
-                    />
+                    >
+                      L
+                    </div>
                   </div>
-                <CardTitle className="text-xl">Get Started</CardTitle>
+                <CardTitle className="text-xl">Welcome to Lasha</CardTitle>
                 <CardDescription>
-                  Enter your email to log in or sign up
+                  Enter your email to sign in or create an account
                 </CardDescription>
               </CardHeader>
               <form onSubmit={handleEmailSubmit}>
@@ -143,7 +139,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                       <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                       <Input
                         name="email"
-                        placeholder="name@example.com"
+                        placeholder="name@company.com"
                         type="email"
                         className="pl-9"
                         disabled={isLoading}
@@ -198,7 +194,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
               <CardHeader className="text-center mt-4">
                 <CardTitle>Check your email</CardTitle>
                 <CardDescription>
-                  We've sent a code to {step.email}
+                  We sent a verification code to {step.email}
                 </CardDescription>
               </CardHeader>
               <form onSubmit={handleOtpSubmit}>
@@ -278,7 +274,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
           )}
 
           <div className="py-4 px-6 text-xs text-center text-muted-foreground bg-muted border-t rounded-b-lg">
-            Secured by{" "}
+            Powered by{" "}
             <a
               href="https://freebuff.com"
               target="_blank"
