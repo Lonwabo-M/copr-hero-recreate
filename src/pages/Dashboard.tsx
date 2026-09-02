@@ -52,6 +52,8 @@ export default function Dashboard() {
       window.location.href = "/dashboard";
     } else if (item === "Request Delivery") {
       window.location.href = "/request-delivery";
+    } else if (item === "Track Delivery") {
+      window.location.href = "/track-delivery";
     } else if (item === "Wallet") {
       window.location.href = "/wallet";
     } else if (item === "Log out") {

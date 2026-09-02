@@ -35,10 +35,14 @@ export default function RequestDelivery() {
   const handleSidebarNavigation = (item: string) => {
     setActiveSidebarItem(item);
     // Navigate based on sidebar item
-    if (item === "Activity Center") {
+    if (item === "Activity Center" || item === "Past Deliveries") {
       window.location.href = "/dashboard";
     } else if (item === "Request Delivery") {
       window.location.href = "/request-delivery";
+    } else if (item === "Track Delivery") {
+      window.location.href = "/track-delivery";
+    } else if (item === "Wallet") {
+      window.location.href = "/wallet";
     } else if (item === "Log out") {
       signOut();
     }

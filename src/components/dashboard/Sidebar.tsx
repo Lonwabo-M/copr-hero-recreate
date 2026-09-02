@@ -1,4 +1,6 @@
 import {
+  LayoutDashboard,
+  History,
   Package,
   MapPin,
   FileText,
@@ -19,6 +21,8 @@ interface SidebarProps {
 }
 
 const sidebarItems = [
+  { icon: LayoutDashboard, label: "Activity Center" },
+  { icon: History, label: "Past Deliveries" },
   { icon: Package, label: "Request Delivery" },
   { icon: MapPin, label: "Track Delivery" },
   { icon: FileText, label: "Invoices" },

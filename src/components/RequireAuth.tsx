@@ -7,7 +7,11 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   const { isLoading, isAuthenticated } = useAuth();
   const location = useLocation();
 
-  if (isLoading) {
+  // Dev bypass: ?dev=true or ?guest=true allows access without auth
+  const params = new URLSearchParams(location.search);
+  const devBypass = params.get("dev") === "true" || params.get("guest") === "true";
+
+  if (isLoading && !devBypass) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-background">
         <Loader2 className="size-6 animate-spin text-muted-foreground" />
@@ -15,7 +19,7 @@ export function RequireAuth({ children }: { children: ReactNode }) {
     );
   }
 
-  if (!isAuthenticated) {
+  if (!isAuthenticated && !devBypass) {
     const returnTo = `${location.pathname}${location.search}`;
     return (
       <Navigate

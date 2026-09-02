@@ -53,6 +53,10 @@ export default function Hero() {
               Get Started
               <ArrowRight size={16} />
             </a>
+            <a href="/dashboard?dev=true" className="lasha-btn-secondary" style={{ color: "var(--lasha-cyan-light)", borderColor: "rgba(7,148,181,0.5)" }}>
+              Guest Access
+              <ArrowRight size={14} />
+            </a>
             <button
               onClick={() =>
                 document.querySelector("#how-it-works")?.scrollIntoView({ behavior: "smooth" })

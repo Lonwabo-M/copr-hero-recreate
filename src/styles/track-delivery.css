@@ -1,0 +1,568 @@
+/* ═══════════════════════════════════════════
+   TRACK DELIVERY PAGE STYLES
+   ═══════════════════════════════════════════ */
+
+.track-main {
+  flex: 1;
+  overflow-y: auto;
+  background: var(--background);
+}
+
+.track-container {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 32px 48px;
+}
+
+/* Page Title */
+.track-page-title {
+  margin-bottom: 24px;
+}
+
+.track-title {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+/* Search Bar */
+.track-search-bar {
+  display: flex;
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 4px 4px 4px 16px;
+  margin-bottom: 24px;
+  max-width: 500px;
+}
+
+.track-search-icon {
+  color: var(--primary);
+  flex-shrink: 0;
+}
+
+.track-search-input {
+  flex: 1;
+  height: 44px;
+  padding: 0 12px;
+  border: none;
+  background: transparent;
+  font-family: "Inter", sans-serif;
+  font-size: 14px;
+  color: var(--text-primary);
+  outline: none;
+}
+
+.track-search-input::placeholder {
+  color: var(--text-muted);
+}
+
+.track-search-btn {
+  height: 40px;
+  padding: 0 24px;
+  background: var(--primary);
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  font-family: "Inter", sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.18s ease;
+}
+
+.track-search-btn:hover {
+  background: var(--primary-dark);
+}
+
+/* Tracking Header Card */
+.track-header-card {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+  border-radius: 16px;
+  padding: 28px 32px;
+  margin-bottom: 24px;
+}
+
+.track-header-content {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 32px;
+}
+
+.track-header-label {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.7);
+  margin-bottom: 4px;
+}
+
+.track-header-id-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.track-header-id {
+  font-size: 24px;
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: -0.01em;
+}
+
+.track-copy-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: none;
+  background: rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.18s ease;
+}
+
+.track-copy-btn:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.track-status-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: #ffffff;
+  color: var(--text-primary);
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.track-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #10b981;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* Progress Stepper */
+.track-stepper {
+  display: flex;
+  align-items: flex-start;
+  position: relative;
+}
+
+.track-step {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+}
+
+.track-step-icon {
+  position: relative;
+  z-index: 2;
+  margin-bottom: 12px;
+}
+
+.track-step.completed .track-step-icon {
+  color: #ffffff;
+}
+
+.track-step.active .track-step-icon {
+  color: #ffffff;
+}
+
+.track-step.pending .track-step-icon {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.track-step-active {
+  position: relative;
+}
+
+.track-step-pulse {
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  animation: pulse-ring 2s infinite;
+}
+
+@keyframes pulse-ring {
+  0% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(1.4); opacity: 0; }
+}
+
+.track-step-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #ffffff;
+  text-align: center;
+  margin-bottom: 4px;
+}
+
+.track-step.pending .track-step-label {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.track-step-time {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.6);
+  text-align: center;
+}
+
+.track-step.pending .track-step-time {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.track-step-line {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  width: 100%;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.2);
+  z-index: 1;
+}
+
+.track-step-line.completed {
+  background: #ffffff;
+}
+
+/* Content Grid */
+.track-content-grid {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 24px;
+}
+
+.track-left-col {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.track-right-col {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Route Card */
+.track-route-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 28px;
+}
+
+.track-route-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 28px;
+}
+
+.track-route-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.track-route-estimate {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.track-route-date {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+/* Route Visual */
+.track-route-visual {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+  border-radius: 14px;
+  padding: 28px;
+}
+
+.track-route-point {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+.track-route-pin {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.track-route-pin.sender {
+  background: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+}
+
+.track-route-pin.receiver {
+  background: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+}
+
+.track-route-point-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.track-route-dot-line {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0;
+  margin: 0 16px;
+}
+
+.track-route-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.5);
+  flex-shrink: 0;
+}
+
+.track-route-dash {
+  flex: 1;
+  height: 0;
+  border-top: 2px dashed rgba(255, 255, 255, 0.4);
+}
+
+.track-route-addresses {
+  display: flex;
+  justify-content: space-between;
+}
+
+.track-route-address {
+  max-width: 200px;
+}
+
+.track-route-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #ffffff;
+  margin-bottom: 4px;
+}
+
+.track-route-street {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.7);
+  margin-bottom: 2px;
+}
+
+.track-route-city {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* Package Details */
+.track-package-details {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+.track-detail-item {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+}
+
+.track-detail-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.track-detail-value {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* Driver Card */
+.track-driver-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 24px;
+}
+
+.track-driver-info {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.track-driver-avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.track-driver-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 2px;
+}
+
+.track-driver-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.track-driver-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.track-call-btn {
+  flex: 1;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: var(--primary);
+  color: #ffffff;
+  border: none;
+  border-radius: 10px;
+  font-family: "Inter", sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.18s ease;
+}
+
+.track-call-btn:hover {
+  background: var(--primary-dark);
+}
+
+.track-message-btn {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-muted);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.18s ease;
+}
+
+.track-message-btn:hover {
+  background: var(--border-light);
+}
+
+/* Last Updated */
+.track-last-updated {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 20px 24px;
+}
+
+.track-updated-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: #d1fae5;
+  color: #10b981;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.track-updated-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 2px;
+}
+
+.track-updated-time {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* Responsive */
+@media (max-width: 900px) {
+  .track-container {
+    padding: 24px 20px;
+  }
+
+  .track-content-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .track-package-details {
+    grid-template-columns: 1fr;
+  }
+
+  .track-stepper {
+    overflow-x: auto;
+    padding-bottom: 8px;
+  }
+
+  .track-step {
+    min-width: 100px;
+  }
+}
+
+@media (max-width: 640px) {
+  .track-header-content {
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .track-route-addresses {
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .track-route-address {
+    text-align: left !important;
+    max-width: 100%;
+  }
+}
