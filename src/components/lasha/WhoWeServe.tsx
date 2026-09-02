@@ -7,12 +7,12 @@ export default function WhoWeServe() {
       className="lasha-overlay relative overflow-hidden"
       style={{ padding: "140px 0" }}
     >
-      {/* Background image */}
+      {/* Background image - Toyota Quantum / South African urban logistics */}
       <img
-        src="https://images.unsplash.com/photo-1553413077-190dd305871c?w=1920&q=80"
-        alt="Warehouse distribution center"
-        className="absolute inset-0 w-full h-full object-cover"
-        style={{ filter: "brightness(0.3) saturate(0.6)" }}
+        src="https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=1920&q=80"
+        alt="Toyota Quantum delivery vehicle"
+        className="absolute inset-0 w-full h-full object-cover object-center"
+        style={{ filter: "brightness(0.25) saturate(0.55)" }}
         loading="lazy"
       />
 

@@ -14,6 +14,7 @@ const Landing = lazy(() => import("./pages/Landing.tsx"));
 const AuthPage = lazy(() => import("./pages/Auth.tsx"));
 const Dashboard = lazy(() => import("./pages/Dashboard.tsx"));
 const RequestDelivery = lazy(() => import("./pages/RequestDelivery.tsx"));
+const Wallet = lazy(() => import("./pages/Wallet.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 
 // Simple loading fallback for route transitions
@@ -138,6 +139,14 @@ createRoot(document.getElementById("root")!).render(
                 element={
                   <RequireAuth>
                     <RequestDelivery />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/wallet"
+                element={
+                  <RequireAuth>
+                    <Wallet />
                   </RequireAuth>
                 }
               />

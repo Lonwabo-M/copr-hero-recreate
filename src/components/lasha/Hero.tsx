@@ -10,17 +10,17 @@ export default function Hero() {
       {/* Background image with overlay */}
       <div className="absolute inset-0">
         <img
-          src="https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=1920&q=80"
-          alt="Logistics distribution center"
-          className="w-full h-full object-cover"
-          style={{ filter: "brightness(0.35) saturate(0.7)" }}
+          src="https://images.unsplash.com/photo-1570125909232-eb263c188f7e?w=1920&q=80"
+          alt="South African logistics delivery"
+          className="w-full h-full object-cover object-center"
+          style={{ filter: "brightness(0.3) saturate(0.65)" }}
           loading="eager"
         />
         <div
           className="absolute inset-0"
           style={{
             background:
-              "linear-gradient(180deg, rgba(8,38,49,0.92) 0%, rgba(8,38,49,0.78) 40%, rgba(8,38,49,0.95) 100%)",
+              "linear-gradient(180deg, rgba(8,38,49,0.88) 0%, rgba(8,38,49,0.72) 40%, rgba(8,38,49,0.92) 100%)",
           }}
         />
       </div>
