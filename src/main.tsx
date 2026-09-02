@@ -17,6 +17,13 @@ const RequestDelivery = lazy(() => import("./pages/RequestDelivery.tsx"));
 const TrackDelivery = lazy(() => import("./pages/TrackDelivery.tsx"));
 const Wallet = lazy(() => import("./pages/Wallet.tsx"));
 const Settings = lazy(() => import("./pages/Settings.tsx"));
+const PastDeliveries = lazy(() => import("./pages/PastDeliveries.tsx"));
+const Invoices = lazy(() => import("./pages/Invoices.tsx"));
+const MakePayment = lazy(() => import("./pages/MakePayment.tsx"));
+const Notifications = lazy(() => import("./pages/Notifications.tsx"));
+const Help = lazy(() => import("./pages/Help.tsx"));
+const Legal = lazy(() => import("./pages/Legal.tsx"));
+const Downloads = lazy(() => import("./pages/Downloads.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 
 // Simple loading fallback for route transitions
@@ -165,6 +172,62 @@ createRoot(document.getElementById("root")!).render(
                 element={
                   <RequireAuth>
                     <Settings />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/past-deliveries"
+                element={
+                  <RequireAuth>
+                    <PastDeliveries />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/invoices"
+                element={
+                  <RequireAuth>
+                    <Invoices />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/make-payment"
+                element={
+                  <RequireAuth>
+                    <MakePayment />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/notifications"
+                element={
+                  <RequireAuth>
+                    <Notifications />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/help"
+                element={
+                  <RequireAuth>
+                    <Help />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/legal"
+                element={
+                  <RequireAuth>
+                    <Legal />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/downloads"
+                element={
+                  <RequireAuth>
+                    <Downloads />
                   </RequireAuth>
                 }
               />

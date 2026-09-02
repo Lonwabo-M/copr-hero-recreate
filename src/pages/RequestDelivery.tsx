@@ -34,20 +34,27 @@ export default function RequestDelivery() {
 
   const handleSidebarNavigation = (item: string) => {
     setActiveSidebarItem(item);
-    // Navigate based on sidebar item
-    if (item === "Activity Center" || item === "Past Deliveries") {
-      window.location.href = "/dashboard";
-    } else if (item === "Request Delivery") {
-      window.location.href = "/request-delivery";
-    } else if (item === "Track Delivery") {
-      window.location.href = "/track-delivery";
-    } else if (item === "Wallet") {
-      window.location.href = "/wallet";
-    } else if (item === "Settings") {
-      window.location.href = "/settings";
-    } else if (item === "Log out") {
+    const routes: Record<string, string> = {
+      "Activity Center": "/dashboard",
+      "Past Deliveries": "/past-deliveries",
+      "Request Delivery": "/request-delivery",
+      "Track Delivery": "/track-delivery",
+      Invoices: "/invoices",
+      Wallet: "/wallet",
+      "Make Payment": "/make-payment",
+      Notifications: "/notifications",
+      Help: "/help",
+      Legal: "/legal",
+      Downloads: "/downloads",
+      Settings: "/settings",
+    };
+    if (item === "Log out") {
+      sessionStorage.removeItem("lasha_guest");
       signOut();
+      return;
     }
+    const route = routes[item];
+    if (route) window.location.href = route;
   };
 
   return (
