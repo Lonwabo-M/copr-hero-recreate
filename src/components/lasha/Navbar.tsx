@@ -81,8 +81,7 @@ export default function Navbar() {
             Track Shipment
           </button>
           <a href="/auth" className="lasha-btn-primary text-[13px]">
-            Get Started
-            <ArrowRight size={14} />
+            Login
           </a>
         </div>
 
@@ -125,8 +124,7 @@ export default function Navbar() {
             Track Shipment
           </button>
           <a href="/auth" className="lasha-btn-primary mt-4 justify-center text-[15px]">
-            Get Started
-            <ArrowRight size={16} />
+            Login
           </a>
         </div>
       </div>
