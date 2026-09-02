@@ -4,6 +4,7 @@ import WhyLasha from "@/components/lasha/WhyLasha";
 import WhoWeServe from "@/components/lasha/WhoWeServe";
 import HowItWorks from "@/components/lasha/HowItWorks";
 import About from "@/components/lasha/About";
+import SectorIntelligence from "@/components/lasha/SectorIntelligence";
 import FinalCTA from "@/components/lasha/FinalCTA";
 import Footer from "@/components/lasha/Footer";
 
@@ -22,6 +23,7 @@ export default function Landing() {
       <WhoWeServe />
       <HowItWorks />
       <About />
+      <SectorIntelligence />
       <FinalCTA />
       <Footer />
     </div>
