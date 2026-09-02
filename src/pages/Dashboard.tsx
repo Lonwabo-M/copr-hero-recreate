@@ -45,6 +45,18 @@ export default function Dashboard() {
     }
   };
 
+  const handleSidebarNavigation = (item: string) => {
+    setActiveSidebarItem(item);
+    // Navigate based on sidebar item
+    if (item === "Activity Center") {
+      window.location.href = "/dashboard";
+    } else if (item === "Request Delivery") {
+      window.location.href = "/request-delivery";
+    } else if (item === "Log out") {
+      signOut();
+    }
+  };
+
   return (
     <div className="dashboard">
       {/* Top Navigation */}
@@ -70,7 +82,7 @@ export default function Dashboard() {
         {/* Sidebar */}
         <Sidebar
           activeItem={activeSidebarItem}
-          onItemChange={setActiveSidebarItem}
+          onItemChange={handleSidebarNavigation}
           isOpen={sidebarOpen}
         />
 
