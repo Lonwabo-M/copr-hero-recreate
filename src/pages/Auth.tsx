@@ -1,6 +1,6 @@
 import { useAuthActions } from "@convex-dev/auth/react";
 import { useState } from "react";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, ArrowLeft } from "lucide-react";
 
 interface AuthProps {
   redirectAfterAuth?: string;
@@ -9,25 +9,42 @@ interface AuthProps {
 export default function AuthPage({ redirectAfterAuth = "/dashboard" }: AuthProps) {
   const { signIn } = useAuthActions();
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
+  const [otpSent, setOtpSent] = useState(false);
   const [error, setError] = useState("");
-  const [isSignUp, setIsSignUp] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !password) return;
+    if (!email) return;
     setLoading(true);
     setError("");
     try {
-      if (isSignUp) {
-        await signIn("password", { email, password, flow: "signUp" });
-      } else {
-        await signIn("password", { email, password, flow: "signIn" });
+      await signIn("email-otp", { email, flow: "signUp" });
+      setOtpSent(true);
+    } catch (err: unknown) {
+      // Try signIn flow if signUp fails
+      try {
+        await signIn("email-otp", { email, flow: "signIn" });
+        setOtpSent(true);
+      } catch (err2: unknown) {
+        const message = err2 instanceof Error ? err2.message : "Failed to send code";
+        setError(message);
       }
+    }
+    setLoading(false);
+  };
+
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!otp || otp.length < 4) return;
+    setLoading(true);
+    setError("");
+    try {
+      await signIn("email-otp", { email, code: otp });
       window.location.href = redirectAfterAuth;
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Authentication failed";
+      const message = err instanceof Error ? err.message : "Invalid code";
       setError(message);
       setLoading(false);
     }
@@ -131,173 +148,267 @@ export default function AuthPage({ redirectAfterAuth = "/dashboard" }: AuthProps
         }}
       >
         <div style={{ width: "100%", maxWidth: 400 }}>
-          <p className="lasha-label mb-6">
-            {isSignUp ? "Create an account" : "Sign in to your account"}
-          </p>
-          <h2
-            style={{
-              fontSize: "clamp(28px, 3vw, 36px)",
-              fontWeight: 700,
-              letterSpacing: "-0.03em",
-              color: "var(--lasha-navy)",
-              lineHeight: 1.1,
-              marginBottom: 12,
-            }}
-          >
-            {isSignUp ? "Create your account" : "Welcome back"}
-          </h2>
-          <p
-            className="lasha-body mb-10"
-            style={{ fontSize: 15, color: "var(--lasha-muted)" }}
-          >
-            {isSignUp
-              ? "Enter your details to create a new account."
-              : "Enter your email and password to access your dashboard."}
-          </p>
+          {!otpSent ? (
+            /* Step 1: Enter email */
+            <div>
+              <p className="lasha-label mb-6">Sign in or create an account</p>
+              <h2
+                style={{
+                  fontSize: "clamp(28px, 3vw, 36px)",
+                  fontWeight: 700,
+                  letterSpacing: "-0.03em",
+                  color: "var(--lasha-navy)",
+                  lineHeight: 1.1,
+                  marginBottom: 12,
+                }}
+              >
+                Enter your email to
+                <br />
+                get started
+              </h2>
+              <p
+                className="lasha-body mb-10"
+                style={{ fontSize: 15, color: "var(--lasha-muted)" }}
+              >
+                We'll send you a verification code — no password needed.
+              </p>
 
-          {error && (
-            <div
-              style={{
-                padding: "12px 16px",
-                borderRadius: 10,
-                backgroundColor: "#fef2f2",
-                border: "1px solid #fecaca",
-                marginBottom: 20,
-              }}
-            >
-              <p style={{ fontSize: 13, color: "#b91c1c" }}>{error}</p>
+              {error && (
+                <div
+                  style={{
+                    padding: "12px 16px",
+                    borderRadius: 10,
+                    backgroundColor: "#fef2f2",
+                    border: "1px solid #fecaca",
+                    marginBottom: 20,
+                  }}
+                >
+                  <p style={{ fontSize: 13, color: "#b91c1c" }}>{error}</p>
+                </div>
+              )}
+
+              <form onSubmit={handleSendOtp}>
+                <label
+                  className="lasha-label"
+                  style={{ fontSize: 9, color: "var(--lasha-muted)", display: "block", marginBottom: 8 }}
+                >
+                  Email address
+                </label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@company.co.za"
+                  required
+                  style={{
+                    width: "100%",
+                    padding: "14px 18px",
+                    fontSize: 15,
+                    fontFamily: "Inter, sans-serif",
+                    color: "var(--lasha-navy)",
+                    backgroundColor: "#ffffff",
+                    border: "1px solid var(--lasha-border-light)",
+                    borderRadius: 12,
+                    outline: "none",
+                    transition: "border-color 0.2s",
+                    boxSizing: "border-box",
+                  }}
+                  onFocus={(e) => (e.currentTarget.style.borderColor = "var(--lasha-cyan)")}
+                  onBlur={(e) =>
+                    (e.currentTarget.style.borderColor = "var(--lasha-border-light)")
+                  }
+                />
+
+                <button
+                  type="submit"
+                  disabled={loading || !email}
+                  className="lasha-btn-primary"
+                  style={{
+                    width: "100%",
+                    justifyContent: "center",
+                    marginTop: 16,
+                    padding: "14px 28px",
+                    fontSize: 14,
+                    opacity: loading || !email ? 0.6 : 1,
+                    cursor: loading || !email ? "not-allowed" : "pointer",
+                  }}
+                >
+                  {loading ? "Sending code..." : "Continue"}
+                  {!loading && <ArrowRight size={16} />}
+                </button>
+              </form>
+
+              <p
+                style={{
+                  fontSize: 12,
+                  color: "var(--lasha-muted)",
+                  marginTop: 24,
+                  lineHeight: 1.6,
+                }}
+              >
+                By continuing, you agree to Lasha's Terms of Service and
+                Privacy Policy.
+              </p>
+            </div>
+          ) : (
+            /* Step 2: Enter OTP code */
+            <div>
+              <button
+                onClick={() => {
+                  setOtpSent(false);
+                  setOtp("");
+                  setError("");
+                }}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  background: "none",
+                  border: "none",
+                  color: "var(--lasha-cyan)",
+                  fontFamily: "Inter, sans-serif",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  padding: 0,
+                  marginBottom: 24,
+                }}
+              >
+                <ArrowLeft size={14} />
+                Back
+              </button>
+
+              <p className="lasha-label mb-6">Verification code</p>
+              <h2
+                style={{
+                  fontSize: "clamp(28px, 3vw, 36px)",
+                  fontWeight: 700,
+                  letterSpacing: "-0.03em",
+                  color: "var(--lasha-navy)",
+                  lineHeight: 1.1,
+                  marginBottom: 12,
+                }}
+              >
+                Check your inbox
+              </h2>
+              <p
+                className="lasha-body mb-10"
+                style={{ fontSize: 15, color: "var(--lasha-muted)" }}
+              >
+                We sent a 6-digit code to <strong>{email}</strong>. Enter it
+                below to continue.
+              </p>
+
+              {error && (
+                <div
+                  style={{
+                    padding: "12px 16px",
+                    borderRadius: 10,
+                    backgroundColor: "#fef2f2",
+                    border: "1px solid #fecaca",
+                    marginBottom: 20,
+                  }}
+                >
+                  <p style={{ fontSize: 13, color: "#b91c1c" }}>{error}</p>
+                </div>
+              )}
+
+              <form onSubmit={handleVerifyOtp}>
+                <label
+                  className="lasha-label"
+                  style={{ fontSize: 9, color: "var(--lasha-muted)", display: "block", marginBottom: 8 }}
+                >
+                  Verification code
+                </label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={otp}
+                  onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  placeholder="000000"
+                  required
+                  maxLength={6}
+                  autoFocus
+                  style={{
+                    width: "100%",
+                    padding: "14px 18px",
+                    fontSize: 22,
+                    fontFamily: "Inter, monospace",
+                    letterSpacing: "0.2em",
+                    color: "var(--lasha-navy)",
+                    backgroundColor: "#ffffff",
+                    border: "1px solid var(--lasha-border-light)",
+                    borderRadius: 12,
+                    outline: "none",
+                    transition: "border-color 0.2s",
+                    boxSizing: "border-box",
+                    textAlign: "center",
+                  }}
+                  onFocus={(e) => (e.currentTarget.style.borderColor = "var(--lasha-cyan)")}
+                  onBlur={(e) =>
+                    (e.currentTarget.style.borderColor = "var(--lasha-border-light)")
+                  }
+                />
+
+                <button
+                  type="submit"
+                  disabled={loading || otp.length < 4}
+                  className="lasha-btn-primary"
+                  style={{
+                    width: "100%",
+                    justifyContent: "center",
+                    marginTop: 16,
+                    padding: "14px 28px",
+                    fontSize: 14,
+                    opacity: loading || otp.length < 4 ? 0.6 : 1,
+                    cursor: loading || otp.length < 4 ? "not-allowed" : "pointer",
+                  }}
+                >
+                  {loading ? "Verifying..." : "Sign In"}
+                  {!loading && <ArrowRight size={16} />}
+                </button>
+              </form>
+
+              <p
+                style={{
+                  fontSize: 13,
+                  color: "var(--lasha-muted)",
+                  marginTop: 20,
+                  textAlign: "center",
+                }}
+              >
+                Didn't receive a code?{" "}
+                <button
+                  onClick={async () => {
+                    setLoading(true);
+                    setError("");
+                    try {
+                      await signIn("email-otp", { email, flow: "signUp" });
+                    } catch {
+                      try {
+                        await signIn("email-otp", { email, flow: "signIn" });
+                      } catch {
+                        // ignore
+                      }
+                    }
+                    setLoading(false);
+                  }}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "var(--lasha-cyan)",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    fontFamily: "Inter, sans-serif",
+                    fontSize: 13,
+                    padding: 0,
+                  }}
+                >
+                  Resend code
+                </button>
+              </p>
             </div>
           )}
-
-          <form onSubmit={handleSubmit}>
-            <label
-              className="lasha-label"
-              style={{ fontSize: 9, color: "var(--lasha-muted)", display: "block", marginBottom: 8 }}
-            >
-              Email address
-            </label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@company.co.za"
-              required
-              style={{
-                width: "100%",
-                padding: "14px 18px",
-                fontSize: 15,
-                fontFamily: "Inter, sans-serif",
-                color: "var(--lasha-navy)",
-                backgroundColor: "#ffffff",
-                border: "1px solid var(--lasha-border-light)",
-                borderRadius: 12,
-                outline: "none",
-                transition: "border-color 0.2s",
-                boxSizing: "border-box",
-                marginBottom: 16,
-              }}
-              onFocus={(e) => (e.currentTarget.style.borderColor = "var(--lasha-cyan)")}
-              onBlur={(e) =>
-                (e.currentTarget.style.borderColor = "var(--lasha-border-light)")
-              }
-            />
-
-            <label
-              className="lasha-label"
-              style={{ fontSize: 9, color: "var(--lasha-muted)", display: "block", marginBottom: 8 }}
-            >
-              Password
-            </label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Enter your password"
-              required
-              minLength={6}
-              style={{
-                width: "100%",
-                padding: "14px 18px",
-                fontSize: 15,
-                fontFamily: "Inter, sans-serif",
-                color: "var(--lasha-navy)",
-                backgroundColor: "#ffffff",
-                border: "1px solid var(--lasha-border-light)",
-                borderRadius: 12,
-                outline: "none",
-                transition: "border-color 0.2s",
-                boxSizing: "border-box",
-              }}
-              onFocus={(e) => (e.currentTarget.style.borderColor = "var(--lasha-cyan)")}
-              onBlur={(e) =>
-                (e.currentTarget.style.borderColor = "var(--lasha-border-light)")
-              }
-            />
-
-            <button
-              type="submit"
-              disabled={loading || !email || !password}
-              className="lasha-btn-primary"
-              style={{
-                width: "100%",
-                justifyContent: "center",
-                marginTop: 20,
-                padding: "14px 28px",
-                fontSize: 14,
-                opacity: loading || !email || !password ? 0.6 : 1,
-                cursor: loading || !email || !password ? "not-allowed" : "pointer",
-              }}
-            >
-              {loading
-                ? "Please wait..."
-                : isSignUp
-                  ? "Create Account"
-                  : "Sign In"}
-              {!loading && <ArrowRight size={16} />}
-            </button>
-          </form>
-
-          <p
-            style={{
-              fontSize: 13,
-              color: "var(--lasha-muted)",
-              marginTop: 20,
-              textAlign: "center",
-            }}
-          >
-            {isSignUp ? "Already have an account?" : "Don't have an account?"}{" "}
-            <button
-              onClick={() => {
-                setIsSignUp(!isSignUp);
-                setError("");
-              }}
-              style={{
-                background: "none",
-                border: "none",
-                color: "var(--lasha-cyan)",
-                fontWeight: 600,
-                cursor: "pointer",
-                fontFamily: "Inter, sans-serif",
-                fontSize: 13,
-                padding: 0,
-              }}
-            >
-              {isSignUp ? "Sign In" : "Create one"}
-            </button>
-          </p>
-
-          <p
-            style={{
-              fontSize: 12,
-              color: "var(--lasha-muted)",
-              marginTop: 24,
-              lineHeight: 1.6,
-              textAlign: "center",
-            }}
-          >
-            By continuing, you agree to Lasha's Terms of Service and
-            Privacy Policy.
-          </p>
         </div>
       </div>
 
