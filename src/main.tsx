@@ -16,6 +16,7 @@ const Dashboard = lazy(() => import("./pages/Dashboard.tsx"));
 const RequestDelivery = lazy(() => import("./pages/RequestDelivery.tsx"));
 const TrackDelivery = lazy(() => import("./pages/TrackDelivery.tsx"));
 const Wallet = lazy(() => import("./pages/Wallet.tsx"));
+const Settings = lazy(() => import("./pages/Settings.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 
 // Simple loading fallback for route transitions
@@ -156,6 +157,14 @@ createRoot(document.getElementById("root")!).render(
                 element={
                   <RequireAuth>
                     <TrackDelivery />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/settings"
+                element={
+                  <RequireAuth>
+                    <Settings />
                   </RequireAuth>
                 }
               />

@@ -102,6 +102,8 @@ export default function Wallet() {
       window.location.href = "/track-delivery";
     } else if (item === "Wallet") {
       window.location.href = "/wallet";
+    } else if (item === "Settings") {
+      window.location.href = "/settings";
     } else if (item === "Log out") {
       signOut();
     }
