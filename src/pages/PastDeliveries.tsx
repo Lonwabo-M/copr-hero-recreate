@@ -1,4 +1,7 @@
-import DashboardLayout from "@/components/dashboard/DashboardLayout";
+import { useState, useEffect } from "react";
+import { useAuthActions } from "@convex-dev/auth/react";
+import Sidebar from "@/components/dashboard/Sidebar";
+import "@/styles/dashboard.css";
 import "@/styles/pages.css";
 
 const pastDeliveries = [
@@ -11,45 +14,103 @@ const pastDeliveries = [
 ];
 
 export default function PastDeliveries() {
-  return (
-    <DashboardLayout activeSidebarItem="Past Deliveries">
-      <div className="page-container">
-        <div className="page-header">
-          <h1 className="page-title">Past Deliveries</h1>
-          <p className="page-subtitle">View your delivery history and details</p>
-        </div>
+  const { signOut } = useAuthActions();
+  const [activeSidebarItem, setActiveSidebarItem] = useState("Past Deliveries");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Order ID</th>
-              <th>Date</th>
-              <th>From</th>
-              <th>To</th>
-              <th>Driver</th>
-              <th>Amount</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {pastDeliveries.map((d) => (
-              <tr key={d.id}>
-                <td style={{ fontWeight: 600 }}>{d.id}</td>
-                <td>{d.date}</td>
-                <td>{d.from}</td>
-                <td>{d.to}</td>
-                <td>{d.driver}</td>
-                <td>{d.amount}</td>
-                <td>
-                  <span className={`status-badge ${d.status}`}>
-                    {d.status.charAt(0).toUpperCase() + d.status.slice(1)}
-                  </span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+  useEffect(() => {
+    const onResize = () => { if (window.innerWidth > 1024) setSidebarOpen(false); };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  const handleSidebarNavigation = (item: string) => {
+    setActiveSidebarItem(item);
+    const routes: Record<string, string> = {
+      "Activity Center": "/dashboard",
+      "Past Deliveries": "/past-deliveries",
+      "Request Delivery": "/request-delivery",
+      "Track Delivery": "/track-delivery",
+      "Invoices": "/invoices",
+      "Wallet": "/wallet",
+      "Make Payment": "/make-payment",
+      "Notifications": "/notifications",
+      "Help": "/help",
+      "Legal": "/legal",
+      "Downloads": "/downloads",
+      "Settings": "/settings",
+    };
+    if (item === "Log out") {
+      sessionStorage.removeItem("lasha_guest");
+      signOut();
+      return;
+    }
+    const route = routes[item];
+    if (route) window.location.href = route;
+  };
+
+  return (
+    <div className="dashboard">
+      <header className="dash-topnav">
+        <div className="dash-topnav-logo">
+          <div className="lasha-logo-icon"><span>L</span></div>
+          <span className="dash-topnav-logo-text">Lasha</span>
+        </div>
+        <div className="dash-topnav-links">
+          <button className="dash-topnav-link active">Home<span className="dash-topnav-link-underline" /></button>
+          <button className="dash-topnav-link">About Us</button>
+          <button className="dash-topnav-link">Services</button>
+          <button className="dash-topnav-link">Contact US</button>
+        </div>
+        <div className="dash-topnav-right">
+          <button className="dash-mobile-toggle" onClick={() => setSidebarOpen(!sidebarOpen)}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 12h18M3 6h18M3 18h18" /></svg>
+          </button>
+          <button className="dash-topnav-profile">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
+          </button>
+        </div>
+      </header>
+
+      <div className="dash-app">
+        {sidebarOpen && <div className="dash-mobile-overlay visible" onClick={() => setSidebarOpen(false)} />}
+        <Sidebar activeItem={activeSidebarItem} onItemChange={handleSidebarNavigation} isOpen={sidebarOpen} />
+
+        <div className="dash-workspace" style={{ overflow: "auto" }}>
+          <div className="page-container">
+            <div className="page-header">
+              <h1 className="page-title">Past Deliveries</h1>
+              <p className="page-subtitle">View your delivery history and details</p>
+            </div>
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Order ID</th>
+                  <th>Date</th>
+                  <th>From</th>
+                  <th>To</th>
+                  <th>Driver</th>
+                  <th>Amount</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pastDeliveries.map((d) => (
+                  <tr key={d.id}>
+                    <td style={{ fontWeight: 600 }}>{d.id}</td>
+                    <td>{d.date}</td>
+                    <td>{d.from}</td>
+                    <td>{d.to}</td>
+                    <td>{d.driver}</td>
+                    <td>{d.amount}</td>
+                    <td><span className={`status-badge ${d.status}`}>{d.status.charAt(0).toUpperCase() + d.status.slice(1)}</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
-    </DashboardLayout>
+    </div>
   );
 }

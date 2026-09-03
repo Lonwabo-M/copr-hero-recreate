@@ -1,5 +1,7 @@
-import { useState } from "react";
-import DashboardLayout from "@/components/dashboard/DashboardLayout";
+import { useState, useEffect } from "react";
+import { useAuthActions } from "@convex-dev/auth/react";
+import Sidebar from "@/components/dashboard/Sidebar";
+import "@/styles/dashboard.css";
 import "@/styles/pages.css";
 
 const invoices = [
@@ -12,61 +14,109 @@ const invoices = [
 ];
 
 export default function Invoices() {
+  const { signOut } = useAuthActions();
+  const [activeSidebarItem, setActiveSidebarItem] = useState("Invoices");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [filter, setFilter] = useState("All");
+
+  useEffect(() => {
+    const onResize = () => { if (window.innerWidth > 1024) setSidebarOpen(false); };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  const handleSidebarNavigation = (item: string) => {
+    setActiveSidebarItem(item);
+    const routes: Record<string, string> = {
+      "Activity Center": "/dashboard",
+      "Past Deliveries": "/past-deliveries",
+      "Request Delivery": "/request-delivery",
+      "Track Delivery": "/track-delivery",
+      "Invoices": "/invoices",
+      "Wallet": "/wallet",
+      "Make Payment": "/make-payment",
+      "Notifications": "/notifications",
+      "Help": "/help",
+      "Legal": "/legal",
+      "Downloads": "/downloads",
+      "Settings": "/settings",
+    };
+    if (item === "Log out") {
+      sessionStorage.removeItem("lasha_guest");
+      signOut();
+      return;
+    }
+    const route = routes[item];
+    if (route) window.location.href = route;
+  };
 
   const filtered = filter === "All" ? invoices : invoices.filter((i) => i.status === filter.toLowerCase());
 
   return (
-    <DashboardLayout activeSidebarItem="Invoices">
-      <div className="page-container">
-        <div className="page-header">
-          <h1 className="page-title">Invoices</h1>
-          <p className="page-subtitle">Manage and track your invoices</p>
+    <div className="dashboard">
+      <header className="dash-topnav">
+        <div className="dash-topnav-logo">
+          <div className="lasha-logo-icon"><span>L</span></div>
+          <span className="dash-topnav-logo-text">Lasha</span>
         </div>
-
-        <div className="filter-tabs">
-          {["All", "Paid", "Pending", "Cancelled"].map((f) => (
-            <button
-              key={f}
-              className={`filter-tab ${filter === f ? "active" : ""}`}
-              onClick={() => setFilter(f)}
-            >
-              {f}
-            </button>
-          ))}
+        <div className="dash-topnav-links">
+          <button className="dash-topnav-link active">Home<span className="dash-topnav-link-underline" /></button>
+          <button className="dash-topnav-link">About Us</button>
+          <button className="dash-topnav-link">Services</button>
+          <button className="dash-topnav-link">Contact US</button>
         </div>
+        <div className="dash-topnav-right">
+          <button className="dash-mobile-toggle" onClick={() => setSidebarOpen(!sidebarOpen)}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 12h18M3 6h18M3 18h18" /></svg>
+          </button>
+          <button className="dash-topnav-profile">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
+          </button>
+        </div>
+      </header>
 
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Invoice ID</th>
-              <th>Date</th>
-              <th>Client</th>
-              <th>Amount</th>
-              <th>Status</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((inv) => (
-              <tr key={inv.id}>
-                <td style={{ fontWeight: 600 }}>{inv.id}</td>
-                <td>{inv.date}</td>
-                <td>{inv.client}</td>
-                <td style={{ fontWeight: 600 }}>{inv.amount}</td>
-                <td>
-                  <span className={`status-badge ${inv.status}`}>
-                    {inv.status.charAt(0).toUpperCase() + inv.status.slice(1)}
-                  </span>
-                </td>
-                <td>
-                  <button className="download-btn">Download</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="dash-app">
+        {sidebarOpen && <div className="dash-mobile-overlay visible" onClick={() => setSidebarOpen(false)} />}
+        <Sidebar activeItem={activeSidebarItem} onItemChange={handleSidebarNavigation} isOpen={sidebarOpen} />
+
+        <div className="dash-workspace" style={{ overflow: "auto" }}>
+          <div className="page-container">
+            <div className="page-header">
+              <h1 className="page-title">Invoices</h1>
+              <p className="page-subtitle">Manage and track your invoices</p>
+            </div>
+            <div className="filter-tabs">
+              {["All", "Paid", "Pending", "Cancelled"].map((f) => (
+                <button key={f} className={`filter-tab ${filter === f ? "active" : ""}`} onClick={() => setFilter(f)}>{f}</button>
+              ))}
+            </div>
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Invoice ID</th>
+                  <th>Date</th>
+                  <th>Client</th>
+                  <th>Amount</th>
+                  <th>Status</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((inv) => (
+                  <tr key={inv.id}>
+                    <td style={{ fontWeight: 600 }}>{inv.id}</td>
+                    <td>{inv.date}</td>
+                    <td>{inv.client}</td>
+                    <td style={{ fontWeight: 600 }}>{inv.amount}</td>
+                    <td><span className={`status-badge ${inv.status}`}>{inv.status.charAt(0).toUpperCase() + inv.status.slice(1)}</span></td>
+                    <td><button className="download-btn">Download</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
-    </DashboardLayout>
+    </div>
   );
 }
