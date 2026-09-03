@@ -4,36 +4,26 @@ import { RequireAuth } from "@/components/RequireAuth";
 import { VlyToolbar } from "../vly-toolbar-readonly.tsx";
 import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import { ConvexReactClient } from "convex/react";
-import React, { StrictMode, useEffect, lazy, Suspense } from "react";
+import React, { StrictMode, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Route, Routes, useLocation } from "react-router";
 import "./index.css";
 
-// Lazy load route components for better code splitting
-const Landing = lazy(() => import("./pages/Landing.tsx"));
-const AuthPage = lazy(() => import("./pages/Auth.tsx"));
-const Dashboard = lazy(() => import("./pages/Dashboard.tsx"));
-const RequestDelivery = lazy(() => import("./pages/RequestDelivery.tsx"));
-const TrackDelivery = lazy(() => import("./pages/TrackDelivery.tsx"));
-const Wallet = lazy(() => import("./pages/Wallet.tsx"));
-const Settings = lazy(() => import("./pages/Settings.tsx"));
-const PastDeliveries = lazy(() => import("./pages/PastDeliveries.tsx"));
-const Invoices = lazy(() => import("./pages/Invoices.tsx"));
-const MakePayment = lazy(() => import("./pages/MakePayment.tsx"));
-const Notifications = lazy(() => import("./pages/Notifications.tsx"));
-const Help = lazy(() => import("./pages/Help.tsx"));
-const Legal = lazy(() => import("./pages/Legal.tsx"));
-const Downloads = lazy(() => import("./pages/Downloads.tsx"));
-const NotFound = lazy(() => import("./pages/NotFound.tsx"));
-
-// Simple loading fallback for route transitions
-function RouteLoading() {
-  return (
-    <div className="min-h-screen flex items-center justify-center">
-      <div className="animate-pulse text-muted-foreground">Loading...</div>
-    </div>
-  );
-}
+import Landing from "./pages/Landing.tsx";
+import AuthPage from "./pages/Auth.tsx";
+import Dashboard from "./pages/Dashboard.tsx";
+import RequestDelivery from "./pages/RequestDelivery.tsx";
+import TrackDelivery from "./pages/TrackDelivery.tsx";
+import Wallet from "./pages/Wallet.tsx";
+import Settings from "./pages/Settings.tsx";
+import PastDeliveries from "./pages/PastDeliveries.tsx";
+import Invoices from "./pages/Invoices.tsx";
+import MakePayment from "./pages/MakePayment.tsx";
+import Notifications from "./pages/Notifications.tsx";
+import Help from "./pages/Help.tsx";
+import Legal from "./pages/Legal.tsx";
+import Downloads from "./pages/Downloads.tsx";
+import NotFound from "./pages/NotFound.tsx";
 
 /** Silent error boundary — if VlyToolbar crashes it renders nothing instead of
  *  crashing the whole app (e.g. hook errors in WebContainer environment). */
@@ -128,7 +118,6 @@ createRoot(document.getElementById("root")!).render(
       <ConvexAuthProvider client={convex}>
         <BrowserRouter>
           <RouteSyncer />
-          <Suspense fallback={<RouteLoading />}>
             <Routes>
               <Route path="/" element={<Landing />} />
               <Route
@@ -233,7 +222,6 @@ createRoot(document.getElementById("root")!).render(
               />
               <Route path="*" element={<NotFound />} />
             </Routes>
-          </Suspense>
         </BrowserRouter>
         <Toaster />
       </ConvexAuthProvider>
