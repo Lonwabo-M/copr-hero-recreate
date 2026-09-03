@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { useAuthActions } from "@convex-dev/auth/react";
 import Sidebar from "@/components/dashboard/Sidebar";
+import { useDashboardNav } from "@/hooks/useDashboardNav";
 import {
   Search,
   Copy,
@@ -74,36 +74,16 @@ const trackingData: Record<
 const defaultTracking = trackingData["HY257845U4"];
 
 export default function TrackDelivery() {
-  const { signOut } = useAuthActions();
+  const { handleSidebarNavigation } = useDashboardNav();
   const [activeSidebarItem, setActiveSidebarItem] = useState("Track Delivery");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [trackingInput, setTrackingInput] = useState("HY257845U4");
   const [trackingResult, setTrackingResult] = useState(defaultTracking);
   const [copied, setCopied] = useState(false);
 
-  const handleSidebarNavigation = (item: string) => {
+  const onSidebarNav = (item: string) => {
     setActiveSidebarItem(item);
-    const routes: Record<string, string> = {
-      "Activity Center": "/dashboard",
-      "Past Deliveries": "/past-deliveries",
-      "Request Delivery": "/request-delivery",
-      "Track Delivery": "/track-delivery",
-      Invoices: "/invoices",
-      Wallet: "/wallet",
-      "Make Payment": "/make-payment",
-      Notifications: "/notifications",
-      Help: "/help",
-      Legal: "/legal",
-      Downloads: "/downloads",
-      Settings: "/settings",
-    };
-    if (item === "Log out") {
-      sessionStorage.removeItem("lasha_guest");
-      signOut();
-      return;
-    }
-    const route = routes[item];
-    if (route) window.location.href = route;
+    handleSidebarNavigation(item);
   };
 
   const handleTrack = () => {
@@ -166,7 +146,7 @@ export default function TrackDelivery() {
         )}
 
         {/* Sidebar */}
-        <Sidebar activeItem={activeSidebarItem} onItemChange={handleSidebarNavigation} isOpen={sidebarOpen} />
+        <Sidebar activeItem={activeSidebarItem}          onItemChange={onSidebarNav} isOpen={sidebarOpen} />
 
         {/* Main content */}
         <main className="track-main">

@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { useAuthActions } from "@convex-dev/auth/react";
 import Sidebar from "@/components/dashboard/Sidebar";
+import { useDashboardNav } from "@/hooks/useDashboardNav";
 import {
   User,
   Building,
@@ -27,7 +27,7 @@ const settingsTabs = [
 ];
 
 export default function Settings() {
-  const { signOut } = useAuthActions();
+  const { handleSidebarNavigation } = useDashboardNav();
   const [activeSidebarItem, setActiveSidebarItem] = useState("Settings");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<SettingsTab>("profile");
@@ -60,29 +60,9 @@ export default function Settings() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [twoFactor, setTwoFactor] = useState(false);
 
-  const handleSidebarNavigation = (item: string) => {
+  const onSidebarNav = (item: string) => {
     setActiveSidebarItem(item);
-    const routes: Record<string, string> = {
-      "Activity Center": "/dashboard",
-      "Past Deliveries": "/past-deliveries",
-      "Request Delivery": "/request-delivery",
-      "Track Delivery": "/track-delivery",
-      Invoices: "/invoices",
-      Wallet: "/wallet",
-      "Make Payment": "/make-payment",
-      Notifications: "/notifications",
-      Help: "/help",
-      Legal: "/legal",
-      Downloads: "/downloads",
-      Settings: "/settings",
-    };
-    if (item === "Log out") {
-      sessionStorage.removeItem("lasha_guest");
-      signOut();
-      return;
-    }
-    const route = routes[item];
-    if (route) window.location.href = route;
+    handleSidebarNavigation(item);
   };
 
   const handleSave = () => {
@@ -134,7 +114,7 @@ export default function Settings() {
         )}
 
         {/* Sidebar */}
-        <Sidebar activeItem={activeSidebarItem} onItemChange={handleSidebarNavigation} isOpen={sidebarOpen} />
+        <Sidebar activeItem={activeSidebarItem}          onItemChange={onSidebarNav} isOpen={sidebarOpen} />
 
         {/* Main content */}
         <main className="settings-main">

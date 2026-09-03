@@ -1,14 +1,14 @@
 import { useState, useEffect } from "react";
-import { useAuthActions } from "@convex-dev/auth/react";
 import TopNavigation from "@/components/dashboard/TopNavigation";
 import Sidebar from "@/components/dashboard/Sidebar";
 import OrderPanel from "@/components/dashboard/OrderPanel";
 import DetailsPanel from "@/components/dashboard/DetailsPanel";
 import { orders } from "@/data/orders";
+import { useDashboardNav } from "@/hooks/useDashboardNav";
 import "@/styles/dashboard.css";
 
 export default function Dashboard() {
-  const { signOut } = useAuthActions();
+  const { handleSidebarNavigation } = useDashboardNav();
   const [selectedOrder, setSelectedOrder] = useState(orders[0]?.id ?? "");
   const [activeFilter, setActiveFilter] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
@@ -45,29 +45,9 @@ export default function Dashboard() {
     }
   };
 
-  const handleSidebarNavigation = (item: string) => {
+  const onSidebarNav = (item: string) => {
     setActiveSidebarItem(item);
-    const routes: Record<string, string> = {
-      "Activity Center": "/dashboard",
-      "Past Deliveries": "/past-deliveries",
-      "Request Delivery": "/request-delivery",
-      "Track Delivery": "/track-delivery",
-      Invoices: "/invoices",
-      Wallet: "/wallet",
-      "Make Payment": "/make-payment",
-      Notifications: "/notifications",
-      Help: "/help",
-      Legal: "/legal",
-      Downloads: "/downloads",
-      Settings: "/settings",
-    };
-    if (item === "Log out") {
-      sessionStorage.removeItem("lasha_guest");
-      signOut();
-      return;
-    }
-    const route = routes[item];
-    if (route) window.location.href = route;
+    handleSidebarNavigation(item);
   };
 
   return (
@@ -95,7 +75,7 @@ export default function Dashboard() {
         {/* Sidebar */}
         <Sidebar
           activeItem={activeSidebarItem}
-          onItemChange={handleSidebarNavigation}
+          onItemChange={onSidebarNav}
           isOpen={sidebarOpen}
         />
 

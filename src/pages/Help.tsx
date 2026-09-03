@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
-import { useAuthActions } from "@convex-dev/auth/react";
 import Sidebar from "@/components/dashboard/Sidebar";
+import { useDashboardNav } from "@/hooks/useDashboardNav";
 import { Package, MapPin, CreditCard, Clock, Shield, Users } from "lucide-react";
 import "@/styles/dashboard.css";
 import "@/styles/pages.css";
@@ -15,7 +15,7 @@ const helpTopics = [
 ];
 
 export default function Help() {
-  const { signOut } = useAuthActions();
+  const { handleSidebarNavigation } = useDashboardNav();
   const [activeSidebarItem, setActiveSidebarItem] = useState("Help");
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -25,29 +25,9 @@ export default function Help() {
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  const handleSidebarNavigation = (item: string) => {
+  const onSidebarNav = (item: string) => {
     setActiveSidebarItem(item);
-    const routes: Record<string, string> = {
-      "Activity Center": "/dashboard",
-      "Past Deliveries": "/past-deliveries",
-      "Request Delivery": "/request-delivery",
-      "Track Delivery": "/track-delivery",
-      "Invoices": "/invoices",
-      "Wallet": "/wallet",
-      "Make Payment": "/make-payment",
-      "Notifications": "/notifications",
-      "Help": "/help",
-      "Legal": "/legal",
-      "Downloads": "/downloads",
-      "Settings": "/settings",
-    };
-    if (item === "Log out") {
-      sessionStorage.removeItem("lasha_guest");
-      signOut();
-      return;
-    }
-    const route = routes[item];
-    if (route) window.location.href = route;
+    handleSidebarNavigation(item);
   };
 
   return (
@@ -75,7 +55,7 @@ export default function Help() {
 
       <div className="dash-app">
         {sidebarOpen && <div className="dash-mobile-overlay visible" onClick={() => setSidebarOpen(false)} />}
-        <Sidebar activeItem={activeSidebarItem} onItemChange={handleSidebarNavigation} isOpen={sidebarOpen} />
+        <Sidebar activeItem={activeSidebarItem}          onItemChange={onSidebarNav} isOpen={sidebarOpen} />
 
         <div className="dash-workspace" style={{ overflow: "auto" }}>
           <div className="page-container">

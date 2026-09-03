@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { useAuthActions } from "@convex-dev/auth/react";
 import Sidebar from "@/components/dashboard/Sidebar";
+import { useDashboardNav } from "@/hooks/useDashboardNav";
 import {
   Wallet as WalletIcon,
   Plus,
@@ -83,7 +83,7 @@ const transactions: Transaction[] = [
 ];
 
 export default function Wallet() {
-  const { signOut } = useAuthActions();
+  const { handleSidebarNavigation } = useDashboardNav();
   const [activeSidebarItem, setActiveSidebarItem] = useState("Wallet");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeFilter, setActiveFilter] = useState("All");
@@ -92,29 +92,9 @@ export default function Wallet() {
 
   const balance = 15450;
 
-  const handleSidebarNavigation = (item: string) => {
+  const onSidebarNav = (item: string) => {
     setActiveSidebarItem(item);
-    const routes: Record<string, string> = {
-      "Activity Center": "/dashboard",
-      "Past Deliveries": "/past-deliveries",
-      "Request Delivery": "/request-delivery",
-      "Track Delivery": "/track-delivery",
-      Invoices: "/invoices",
-      Wallet: "/wallet",
-      "Make Payment": "/make-payment",
-      Notifications: "/notifications",
-      Help: "/help",
-      Legal: "/legal",
-      Downloads: "/downloads",
-      Settings: "/settings",
-    };
-    if (item === "Log out") {
-      sessionStorage.removeItem("lasha_guest");
-      signOut();
-      return;
-    }
-    const route = routes[item];
-    if (route) window.location.href = route;
+    handleSidebarNavigation(item);
   };
 
   const filteredTransactions = transactions.filter((t) => {
@@ -184,7 +164,7 @@ export default function Wallet() {
         {/* Sidebar */}
         <Sidebar
           activeItem={activeSidebarItem}
-          onItemChange={handleSidebarNavigation}
+          onItemChange={onSidebarNav}
           isOpen={sidebarOpen}
         />
 
