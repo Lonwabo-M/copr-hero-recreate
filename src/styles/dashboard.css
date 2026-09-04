@@ -44,7 +44,7 @@
   height: 90px;
   background: var(--background);
   border-bottom: 1px solid var(--border-light);
-  display: flex;
+  display: flex !important;
   align-items: center;
   justify-content: space-between;
   padding: 0 32px;
@@ -71,7 +71,7 @@
 }
 
 .dash-topnav-links {
-  display: flex;
+  display: flex !important;
   align-items: center;
   gap: 40px;
 }
@@ -107,13 +107,19 @@
   border-radius: 3px;
 }
 
+.dash-topnav-right {
+  display: flex !important;
+  align-items: center;
+  gap: 12px;
+}
+
 .dash-topnav-profile {
   width: 62px;
   height: 54px;
   background: var(--primary-light);
   border: none;
   border-radius: 10px;
-  display: flex;
+  display: flex !important;
   align-items: center;
   justify-content: center;
   cursor: pointer;
@@ -132,7 +138,7 @@
    APP BODY
    ═══════════════════════════════════════════ */
 .dash-app {
-  display: flex;
+  display: flex !important;
   flex: 1;
   min-height: 0;
 }
@@ -144,20 +150,20 @@
   width: 265px;
   background: var(--sidebar-bg);
   border-right: 1px solid var(--border-light);
-  display: flex;
-  flex-direction: column;
+  display: flex !important;
+  flex-direction: column !important;
   padding: 30px 25px;
   flex-shrink: 0;
   overflow-y: auto;
 }
 
 .dash-sidebar-item {
-  display: flex;
+  display: flex !important;
   align-items: center;
   gap: 14px;
   padding: 10px 14px;
   border-radius: 10px;
-  border: none;
+  border: none !important;
   background: transparent;
   cursor: pointer;
   width: 100%;
@@ -202,15 +208,15 @@
 
 /* Sidebar layout */
 .dash-sidebar-items {
-  display: flex;
-  flex-direction: column;
+  display: flex !important;
+  flex-direction: column !important;
   gap: 4px;
   flex: 1;
 }
 
 .dash-sidebar-bottom {
-  display: flex;
-  flex-direction: column;
+  display: flex !important;
+  flex-direction: column !important;
   gap: 4px;
   margin-top: auto;
   padding-top: 16px;
@@ -222,7 +228,7 @@
    ═══════════════════════════════════════════ */
 .dash-workspace {
   flex: 1;
-  display: flex;
+  display: flex !important;
   min-width: 0;
 }
 
@@ -233,8 +239,8 @@
   width: 390px;
   flex-shrink: 0;
   border-right: 1px solid var(--border-light);
-  display: flex;
-  flex-direction: column;
+  display: flex !important;
+  flex-direction: column !important;
   padding: 24px;
   overflow-y: auto;
 }
@@ -279,7 +285,7 @@
    FILTERS
    ═══════════════════════════════════════════ */
 .dash-filters {
-  display: flex;
+  display: flex !important;
   gap: 10px;
   margin-bottom: 20px;
 }
@@ -313,8 +319,8 @@
    ORDER CARDS
    ═══════════════════════════════════════════ */
 .dash-order-list {
-  display: flex;
-  flex-direction: column;
+  display: flex !important;
+  flex-direction: column !important;
   gap: 16px;
   flex: 1;
 }
@@ -340,7 +346,7 @@
 }
 
 .dash-order-card-header {
-  display: flex;
+  display: flex !important;
   align-items: center;
   justify-content: space-between;
   margin-bottom: 12px;
@@ -381,7 +387,7 @@
 }
 
 .dash-order-point {
-  display: flex;
+  display: flex !important;
   align-items: flex-start;
   gap: 10px;
   margin-bottom: 6px;
@@ -430,7 +436,7 @@
 
 /* Route visualization */
 .dash-route-line {
-  display: flex;
+  display: flex !important;
   align-items: center;
   padding: 12px 0;
   gap: 0;
@@ -459,7 +465,7 @@
   height: 32px;
   border-radius: 50%;
   background: var(--primary-light);
-  display: flex;
+  display: flex !important;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
@@ -516,8 +522,8 @@
    ═══════════════════════════════════════════ */
 .dash-details-panel {
   flex: 1;
-  display: flex;
-  flex-direction: column;
+  display: flex !important;
+  flex-direction: column !important;
   padding: 24px 32px;
   overflow-y: auto;
   min-width: 0;
@@ -528,7 +534,7 @@
   height: 48px;
   border: 1px solid #E3E3E3;
   border-radius: 10px;
-  display: flex;
+  display: flex !important;
   align-items: center;
   justify-content: flex-end;
   padding: 0 20px;
@@ -549,7 +555,7 @@
 
 /* Detail tabs */
 .dash-detail-tabs {
-  display: flex;
+  display: flex !important;
   gap: 10px;
   margin-bottom: 24px;
 }
@@ -581,8 +587,8 @@
 /* Tab content */
 .dash-tab-content {
   flex: 1;
-  display: flex;
-  flex-direction: column;
+  display: flex !important;
+  flex-direction: column !important;
   align-items: center;
 }
 
@@ -641,7 +647,7 @@
 
 /* Specifications grid */
 .dash-specs-grid {
-  display: grid;
+  display: grid !important;
   grid-template-columns: repeat(3, 1fr);
   gap: 16px;
   width: 100%;
@@ -652,7 +658,7 @@
   border: 1px solid #E6E6E6;
   border-radius: 10px;
   padding: 16px;
-  display: flex;
+  display: flex !important;
   align-items: center;
   gap: 14px;
   min-height: 80px;
@@ -681,8 +687,8 @@
 }
 
 .dash-spec-info {
-  display: flex;
-  flex-direction: column;
+  display: flex !important;
+  flex-direction: column !important;
   gap: 4px;
 }
 
@@ -702,8 +708,8 @@
    PLACEHOLDER TABS
    ═══════════════════════════════════════════ */
 .dash-placeholder {
-  display: flex;
-  flex-direction: column;
+  display: flex !important;
+  flex-direction: column !important;
   align-items: center;
   justify-content: center;
   padding: 60px 24px;
@@ -745,7 +751,7 @@
 .dash-info-grid {
   width: 100%;
   max-width: 500px;
-  display: grid;
+  display: grid !important;
   grid-template-columns: 1fr 1fr;
   gap: 16px;
 }
@@ -780,7 +786,7 @@
    MOBILE MENU
    ═══════════════════════════════════════════ */
 .dash-mobile-toggle {
-  display: none;
+  display: none !important;
   background: none;
   border: none;
   cursor: pointer;
@@ -812,11 +818,11 @@
 
 @media (max-width: 1024px) {
   .dash-topnav-links {
-    display: none;
+    display: none !important;
   }
 
   .dash-mobile-toggle {
-    display: flex;
+    display: flex !important;
   }
 
   .dash-sidebar {
