@@ -630,7 +630,7 @@ const schema = defineSchema(
       .index("by_expires", ["expiresAt", "status"]),
 
     // ─── Pricing Rules ─────────────────────────────────────────────────────
-    // Delivery pricing logic.
+    // Delivery pricing logic with versioning.
     pricing_rules: defineTable({
       name: v.string(),
       packageSize: packageSizeValidator,
@@ -640,9 +640,120 @@ const schema = defineSchema(
       pricePerKm: v.number(),             // cents
       pricePerKg: v.number(),             // cents
       minimumPrice: v.number(),           // cents
+      // Platform fee
+      platformFeeType: v.union(v.literal("percentage"), v.literal("flat")),
+      platformFeeValue: v.number(),       // percentage (0-100) or cents
+      // Surcharges
+      expressSurcharge: v.optional(v.number()),  // cents
+      sameDaySurcharge: v.optional(v.number()),  // cents
+      // Versioning
+      version: v.number(),
+      effectiveFrom: v.number(),
+      effectiveTo: v.optional(v.number()),
       isActive: v.boolean(),
       createdAt: v.number(),
-    }).index("size_expedition", ["packageSize", "expeditionType", "isActive"]),
+    }).index("size_expedition", ["packageSize", "expeditionType", "isActive"])
+      .index("by_version", ["version"])  
+      .index("by_effective", ["effectiveFrom", "isActive"]),
+
+    // ─── Delivery Quotes ────────────────────────────────────────────────────
+    // Stores pricing breakdown for each delivery for audit trail.
+    delivery_quotes: defineTable({
+      orderId: v.id("orders"),
+      deliveryId: v.optional(v.id("deliveries")),
+      pricingRuleId: v.id("pricing_rules"),
+      userId: v.id("users"),
+      // Pricing breakdown
+      basePrice: v.number(),              // cents
+      distanceFee: v.number(),            // cents
+      weightFee: v.number(),              // cents
+      subtotal: v.number(),               // cents
+      // Surcharges
+      expressSurcharge: v.number(),       // cents
+      sameDaySurcharge: v.number(),       // cents
+      additionalFees: v.number(),         // cents
+      // Totals
+      deliveryFee: v.number(),            // cents (subtotal + surcharges)
+      platformFee: v.number(),            // cents
+      totalCharge: v.number(),            // cents (deliveryFee + platformFee)
+      // Driver
+      driverEarnings: v.number(),         // cents
+      // Metadata
+      distanceKm: v.number(),
+      weightKg: v.number(),
+      calculatedAt: v.number(),
+    })
+      .index("by_order", ["orderId"])
+      .index("by_delivery", ["deliveryId"])
+      .index("by_user", ["userId"])
+      .index("by_calculated", ["calculatedAt"]),
+
+    // ─── Settlements ────────────────────────────────────────────────────────
+    // Driver settlement records.
+    settlements: defineTable({
+      driverId: v.id("users"),
+      deliveryId: v.id("deliveries"),
+      orderId: v.id("orders"),
+      quoteId: v.id("delivery_quotes"),
+      // Amounts
+      deliveryFee: v.number(),            // cents
+      platformFee: v.number(),            // cents
+      driverEarnings: v.number(),         // cents
+      // State
+      status: v.union(
+        v.literal("pending"),
+        v.literal("processing"),
+        v.literal("completed"),
+        v.literal("failed"),
+        v.literal("disputed"),
+      ),
+      // Idempotency
+      idempotencyKey: v.string(),
+      // Timestamps
+      createdAt: v.number(),
+      processedAt: v.optional(v.number()),
+      completedAt: v.optional(v.number()),
+      failureReason: v.optional(v.string()),
+    })
+      .index("by_driver", ["driverId"])
+      .index("by_delivery", ["deliveryId"])
+      .index("by_order", ["orderId"])
+      .index("by_status", ["status"])
+      .index("by_idempotency", ["idempotencyKey"])  
+      .index("by_driver_status", ["driverId", "status"]),
+
+    // ─── Payment Transactions ───────────────────────────────────────────────
+    // External payment tracking.
+    payment_transactions: defineTable({
+      orderId: v.id("orders"),
+      userId: v.id("users"),
+      // Payment details
+      amount: v.number(),                 // cents
+      currency: v.literal("ZAR"),
+      method: v.string(),                 // "card", "eft", "wallet", "snapscan"
+      // Provider
+      provider: v.string(),               // "payfast", "stripe", etc.
+      providerTransactionId: v.optional(v.string()),
+      // State
+      status: v.union(
+        v.literal("pending"),
+        v.literal("processing"),
+        v.literal("completed"),
+        v.literal("failed"),
+        v.literal("refunded"),
+      ),
+      // Idempotency
+      idempotencyKey: v.string(),
+      // Metadata
+      metadata: v.optional(v.string()),
+      createdAt: v.number(),
+      completedAt: v.optional(v.number()),
+    })
+      .index("by_order", ["orderId"])
+      .index("by_user", ["userId"])
+      .index("by_status", ["status"])
+      .index("by_idempotency", ["idempotencyKey"])  
+      .index("by_provider", ["provider", "providerTransactionId"]),
   },
   {
     schemaValidation: false,
