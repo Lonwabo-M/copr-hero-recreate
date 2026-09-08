@@ -21,8 +21,11 @@ import {
   getPendingOperations,
   getSyncingOperations,
   updateOperationStatus,
-  StoredOperation,
+  StoredOperation as _StoredOperation,
 } from "./db";
+
+// Re-export StoredOperation for consumers
+export type StoredOperation = _StoredOperation;
 
 // ─── Operation Types ──────────────────────────────────────────────────────────
 

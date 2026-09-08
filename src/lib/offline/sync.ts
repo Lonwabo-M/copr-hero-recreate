@@ -27,6 +27,7 @@ import {
   updatePendingOperationCount,
   getConnectivityState,
 } from "./connectivity";
+import { Id } from "@/convex/_generated/dataModel";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -90,18 +91,21 @@ async function executeOperation(operation: StoredOperation): Promise<SyncResult>
   try {
     // Dynamic import to avoid circular dependencies
     const { api } = await import("@/convex/_generated/api");
-    const { default: convexClient } = await import("@/lib/convex");
+    const { convexClient } = await import("@/lib/convex");
+
+    // Cast entityId to proper Convex Id type
+    const deliveryId = entityId as unknown as Id<"deliveries">;
 
     switch (operationType) {
       case "acceptAssignment":
         await convexClient.mutation(api.deliveries.state_machine.acceptAssignment, {
-          offerId: payload.offerId,
+          deliveryId,
         });
         return { status: "SUCCESS", operationId };
 
       case "updateDeliveryStatus":
-        await convexClient.mutation(api.deliveries.state_machine.updateDeliveryStatus, {
-          deliveryId: entityId,
+        await convexClient.mutation(api.tracking.mutations.updateDeliveryStatusWithLocation, {
+          deliveryId,
           status: payload.status,
           location: payload.location,
         });
@@ -109,50 +113,44 @@ async function executeOperation(operation: StoredOperation): Promise<SyncResult>
 
       case "arriveAtPickup":
         await convexClient.mutation(api.deliveries.state_machine.arriveAtPickup, {
-          deliveryId: entityId,
-          location: payload.location,
+          deliveryId,
         });
         return { status: "SUCCESS", operationId };
 
       case "pickupDelivery":
-        await convexClient.mutation(api.deliveries.state_machine.pickupDelivery, {
-          deliveryId: entityId,
-          location: payload.location,
+        await convexClient.mutation(api.deliveries.state_machine.pickupPackage, {
+          deliveryId,
         });
         return { status: "SUCCESS", operationId };
 
       case "startTrip":
         await convexClient.mutation(api.deliveries.state_machine.startTrip, {
-          deliveryId: entityId,
-          location: payload.location,
+          deliveryId,
         });
         return { status: "SUCCESS", operationId };
 
       case "arriveAtDropoff":
         await convexClient.mutation(api.deliveries.state_machine.arriveAtDropoff, {
-          deliveryId: entityId,
-          location: payload.location,
+          deliveryId,
         });
         return { status: "SUCCESS", operationId };
 
       case "completeDelivery":
         await convexClient.mutation(api.deliveries.state_machine.completeDelivery, {
-          deliveryId: entityId,
-          location: payload.location,
-          proofOfDelivery: payload.proofOfDelivery,
+          deliveryId,
         });
         return { status: "SUCCESS", operationId };
 
       case "cancelDelivery":
         await convexClient.mutation(api.deliveries.state_machine.cancelDelivery, {
-          deliveryId: entityId,
+          deliveryId,
           reason: payload.reason,
         });
         return { status: "SUCCESS", operationId };
 
       case "updateLocation":
         await convexClient.mutation(api.tracking.mutations.updateDeliveryLocation, {
-          deliveryId: entityId,
+          deliveryId,
           location: {
             lat: payload.lat,
             lng: payload.lng,
