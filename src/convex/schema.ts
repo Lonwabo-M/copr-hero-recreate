@@ -4,23 +4,156 @@ import { Infer, v } from "convex/values";
 
 // ─── Validators ───────────────────────────────────────────────────────────────
 
-// User roles
+// ─── Roles ───────────────────────────────────────────────────────────────────
+// Canonical role definitions. These replace the old admin/user/member/business/courier
+// roles with a cleaner RBAC model.
+
 export const ROLES = {
-  ADMIN: "admin",
-  USER: "user",
-  MEMBER: "member",
-  BUSINESS: "business",
-  COURIER: "courier",
+  CUSTOMER: "customer",
+  DRIVER: "driver",
+  FLEET_MANAGER: "fleet_manager",
+  OPERATIONS: "operations",
+  COMPANY_ADMIN: "company_admin",
+  SUPER_ADMIN: "super_admin",
 } as const;
 
 export const roleValidator = v.union(
-  v.literal(ROLES.ADMIN),
-  v.literal(ROLES.USER),
-  v.literal(ROLES.MEMBER),
-  v.literal(ROLES.BUSINESS),
-  v.literal(ROLES.COURIER),
+  v.literal(ROLES.CUSTOMER),
+  v.literal(ROLES.DRIVER),
+  v.literal(ROLES.FLEET_MANAGER),
+  v.literal(ROLES.OPERATIONS),
+  v.literal(ROLES.COMPANY_ADMIN),
+  v.literal(ROLES.SUPER_ADMIN),
 );
 export type Role = Infer<typeof roleValidator>;
+
+// ─── Permissions ──────────────────────────────────────────────────────────────
+// Explicit permission strings. Use these in authorization checks.
+
+export const PERMISSIONS = {
+  // Delivery permissions
+  DELIVERY_CREATE: "delivery:create",
+  DELIVERY_VIEW: "delivery:view",
+  DELIVERY_CANCEL: "delivery:cancel",
+  DELIVERY_ASSIGN: "delivery:assign",
+  DELIVERY_REASSIGN: "delivery:reassign",
+  DELIVERY_UPDATE_STATUS: "delivery:update_status",
+
+  // Driver permissions
+  DRIVER_VIEW: "driver:view",
+  DRIVER_MANAGE: "driver:manage",
+
+  // Fleet permissions
+  FLEET_VIEW: "fleet:view",
+  FLEET_MANAGE: "fleet:manage",
+
+  // Tracking permissions
+  TRACKING_VIEW: "tracking:view",
+
+  // Operations permissions
+  OPERATIONS_MANAGE: "operations:manage",
+
+  // Pricing permissions
+  PRICING_MANAGE: "pricing:manage",
+
+  // Settlement permissions
+  SETTLEMENT_VIEW: "settlement:view",
+  SETTLEMENT_MANAGE: "settlement:manage",
+
+  // User permissions
+  USER_VIEW: "user:view",
+  USER_MANAGE: "user:manage",
+
+  // Business permissions
+  BUSINESS_VIEW: "business:view",
+  BUSINESS_MANAGE: "business:manage",
+} as const;
+
+export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
+
+// ─── Role → Permission Mapping ────────────────────────────────────────────────
+// Each role has an explicit set of permissions. No implicit access.
+
+export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
+  [ROLES.CUSTOMER]: [
+    PERMISSIONS.DELIVERY_CREATE,
+    PERMISSIONS.DELIVERY_VIEW,
+    PERMISSIONS.DELIVERY_CANCEL,
+    PERMISSIONS.TRACKING_VIEW,
+    PERMISSIONS.USER_VIEW,
+    PERMISSIONS.BUSINESS_VIEW,
+  ],
+
+  [ROLES.DRIVER]: [
+    PERMISSIONS.DELIVERY_VIEW,
+    PERMISSIONS.DELIVERY_UPDATE_STATUS,
+    PERMISSIONS.DRIVER_VIEW,
+    PERMISSIONS.TRACKING_VIEW,
+    PERMISSIONS.USER_VIEW,
+  ],
+
+  [ROLES.FLEET_MANAGER]: [
+    PERMISSIONS.DRIVER_VIEW,
+    PERMISSIONS.DRIVER_MANAGE,
+    PERMISSIONS.FLEET_VIEW,
+    PERMISSIONS.FLEET_MANAGE,
+    PERMISSIONS.DELIVERY_VIEW,
+    PERMISSIONS.TRACKING_VIEW,
+    PERMISSIONS.USER_VIEW,
+  ],
+
+  [ROLES.OPERATIONS]: [
+    PERMISSIONS.DELIVERY_VIEW,
+    PERMISSIONS.DELIVERY_ASSIGN,
+    PERMISSIONS.DELIVERY_REASSIGN,
+    PERMISSIONS.DELIVERY_UPDATE_STATUS,
+    PERMISSIONS.DRIVER_VIEW,
+    PERMISSIONS.OPERATIONS_MANAGE,
+    PERMISSIONS.TRACKING_VIEW,
+    PERMISSIONS.PRICING_MANAGE,
+    PERMISSIONS.SETTLEMENT_VIEW,
+    PERMISSIONS.USER_VIEW,
+    PERMISSIONS.BUSINESS_VIEW,
+  ],
+
+  [ROLES.COMPANY_ADMIN]: [
+    PERMISSIONS.DELIVERY_CREATE,
+    PERMISSIONS.DELIVERY_VIEW,
+    PERMISSIONS.DELIVERY_CANCEL,
+    PERMISSIONS.DELIVERY_ASSIGN,
+    PERMISSIONS.DELIVERY_REASSIGN,
+    PERMISSIONS.DELIVERY_UPDATE_STATUS,
+    PERMISSIONS.DRIVER_VIEW,
+    PERMISSIONS.DRIVER_MANAGE,
+    PERMISSIONS.FLEET_VIEW,
+    PERMISSIONS.FLEET_MANAGE,
+    PERMISSIONS.TRACKING_VIEW,
+    PERMISSIONS.OPERATIONS_MANAGE,
+    PERMISSIONS.PRICING_MANAGE,
+    PERMISSIONS.SETTLEMENT_VIEW,
+    PERMISSIONS.SETTLEMENT_MANAGE,
+    PERMISSIONS.USER_VIEW,
+    PERMISSIONS.USER_MANAGE,
+    PERMISSIONS.BUSINESS_VIEW,
+    PERMISSIONS.BUSINESS_MANAGE,
+  ],
+
+  [ROLES.SUPER_ADMIN]: [
+    // Super admin has all permissions
+    ...Object.values(PERMISSIONS),
+  ],
+};
+
+// ─── Schema-Scoped Role Validator ─────────────────────────────────────────────
+// Use this when storing roles in the database.
+export const schemaRoleValidator = v.union(
+  v.literal(ROLES.CUSTOMER),
+  v.literal(ROLES.DRIVER),
+  v.literal(ROLES.FLEET_MANAGER),
+  v.literal(ROLES.OPERATIONS),
+  v.literal(ROLES.COMPANY_ADMIN),
+  v.literal(ROLES.SUPER_ADMIN),
+);
 
 // Order status values
 export const ORDER_STATUS = {
@@ -117,7 +250,7 @@ const schema = defineSchema(
       isAnonymous: v.optional(v.boolean()),
 
       // Lasha fields
-      role: v.optional(roleValidator),
+      role: v.optional(schemaRoleValidator),
       phone: v.optional(v.string()),
       businessId: v.optional(v.id("businesses")),
 
