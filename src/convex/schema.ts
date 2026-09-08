@@ -348,6 +348,8 @@ export const notificationTypeValidator = v.union(
   v.literal("delivery"),
   v.literal("payment"),
   v.literal("alert"),
+  v.literal("system"),
+  v.literal("security"),
 );
 
 // Tracking event type
