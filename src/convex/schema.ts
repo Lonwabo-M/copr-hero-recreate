@@ -605,6 +605,30 @@ const schema = defineSchema(
       .index("by_delivery", ["deliveryId"])
       .index("by_delivery_time", ["deliveryId", "timestamp"]),
 
+    // ─── Dispatch Offers ─────────────────────────────────────────────────
+    // Pending assignment offers to drivers. One active offer per delivery.
+    dispatch_offers: defineTable({
+      deliveryId: v.id("deliveries"),
+      driverId: v.id("users"),
+      vehicleId: v.id("vehicles"),
+      score: v.number(),                 // composite score from scoring service
+      status: v.union(
+        v.literal("pending"),
+        v.literal("accepted"),
+        v.literal("rejected"),
+        v.literal("expired"),
+        v.literal("cancelled"),
+      ),
+      offeredAt: v.number(),
+      expiresAt: v.number(),
+      respondedAt: v.optional(v.number()),
+      rejectionReason: v.optional(v.string()),
+    })
+      .index("by_delivery", ["deliveryId"])
+      .index("by_driver", ["driverId"])
+      .index("by_delivery_status", ["deliveryId", "status"])
+      .index("by_expires", ["expiresAt", "status"]),
+
     // ─── Pricing Rules ─────────────────────────────────────────────────────
     // Delivery pricing logic.
     pricing_rules: defineTable({
