@@ -24,6 +24,7 @@ import Help from "./pages/Help.tsx";
 import Legal from "./pages/Legal.tsx";
 import Downloads from "./pages/Downloads.tsx";
 import NotFound from "./pages/NotFound.tsx";
+import OperationsCentre from "./pages/OperationsCentre.tsx";
 
 /** Silent error boundary — if VlyToolbar crashes it renders nothing instead of
  *  crashing the whole app (e.g. hook errors in WebContainer environment). */
@@ -217,6 +218,14 @@ createRoot(document.getElementById("root")!).render(
                 element={
                   <RequireAuth>
                     <Downloads />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/operations"
+                element={
+                  <RequireAuth>
+                    <OperationsCentre />
                   </RequireAuth>
                 }
               />
