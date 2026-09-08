@@ -155,7 +155,8 @@ export const schemaRoleValidator = v.union(
   v.literal(ROLES.SUPER_ADMIN),
 );
 
-// Order status values
+// ─── Order Status Values ──────────────────────────────────────────────────────
+// Order status values (separate from delivery status).
 export const ORDER_STATUS = {
   PENDING: "pending",
   CONFIRMED: "confirmed",
@@ -173,6 +174,132 @@ export const orderStatusValidator = v.union(
   v.literal(ORDER_STATUS.DELIVERED),
   v.literal(ORDER_STATUS.CANCELLED),
 );
+
+// ─── Delivery Status Values ────────────────────────────────────────────────────
+// Authoritative delivery lifecycle states. The frontend must NEVER write arbitrary
+// statuses — only explicit domain mutations are allowed.
+
+export const DELIVERY_STATUS = {
+  // Normal flow
+  REQUESTED: "requested",
+  PENDING_DISPATCH: "pending_dispatch",
+  ASSIGNED: "assigned",
+  DRIVER_ACCEPTED: "driver_accepted",
+  EN_ROUTE_TO_PICKUP: "en_route_to_pickup",
+  AT_PICKUP: "at_pickup",
+  PICKED_UP: "picked_up",
+  IN_TRANSIT: "in_transit",
+  AT_DROPOFF: "at_dropoff",
+  DELIVERED: "delivered",
+
+  // Exceptional states
+  CANCELLED: "cancelled",
+  FAILED: "failed",
+  REASSIGNMENT_REQUIRED: "reassignment_required",
+} as const;
+
+type DeliveryStatusValue = (typeof DELIVERY_STATUS)[keyof typeof DELIVERY_STATUS];
+
+export const deliveryStatusValidator = v.union(
+  v.literal(DELIVERY_STATUS.REQUESTED),
+  v.literal(DELIVERY_STATUS.PENDING_DISPATCH),
+  v.literal(DELIVERY_STATUS.ASSIGNED),
+  v.literal(DELIVERY_STATUS.DRIVER_ACCEPTED),
+  v.literal(DELIVERY_STATUS.EN_ROUTE_TO_PICKUP),
+  v.literal(DELIVERY_STATUS.AT_PICKUP),
+  v.literal(DELIVERY_STATUS.PICKED_UP),
+  v.literal(DELIVERY_STATUS.IN_TRANSIT),
+  v.literal(DELIVERY_STATUS.AT_DROPOFF),
+  v.literal(DELIVERY_STATUS.DELIVERED),
+  v.literal(DELIVERY_STATUS.CANCELLED),
+  v.literal(DELIVERY_STATUS.FAILED),
+  v.literal(DELIVERY_STATUS.REASSIGNMENT_REQUIRED),
+);
+
+// ─── Valid State Transitions ──────────────────────────────────────────────────
+// Defines which transitions are allowed from each state.
+// The state machine enforces these rules.
+
+export const VALID_TRANSITIONS: Record<DeliveryStatusValue, DeliveryStatusValue[]> = {
+  [DELIVERY_STATUS.REQUESTED]: [
+    DELIVERY_STATUS.PENDING_DISPATCH,
+    DELIVERY_STATUS.CANCELLED,
+  ],
+  [DELIVERY_STATUS.PENDING_DISPATCH]: [
+    DELIVERY_STATUS.ASSIGNED,
+    DELIVERY_STATUS.CANCELLED,
+  ],
+  [DELIVERY_STATUS.ASSIGNED]: [
+    DELIVERY_STATUS.DRIVER_ACCEPTED,
+    DELIVERY_STATUS.REASSIGNMENT_REQUIRED,
+    DELIVERY_STATUS.CANCELLED,
+  ],
+  [DELIVERY_STATUS.DRIVER_ACCEPTED]: [
+    DELIVERY_STATUS.EN_ROUTE_TO_PICKUP,
+    DELIVERY_STATUS.REASSIGNMENT_REQUIRED,
+    DELIVERY_STATUS.CANCELLED,
+  ],
+  [DELIVERY_STATUS.EN_ROUTE_TO_PICKUP]: [
+    DELIVERY_STATUS.AT_PICKUP,
+    DELIVERY_STATUS.REASSIGNMENT_REQUIRED,
+    DELIVERY_STATUS.CANCELLED,
+  ],
+  [DELIVERY_STATUS.AT_PICKUP]: [
+    DELIVERY_STATUS.PICKED_UP,
+    DELIVERY_STATUS.FAILED,
+    DELIVERY_STATUS.CANCELLED,
+  ],
+  [DELIVERY_STATUS.PICKED_UP]: [
+    DELIVERY_STATUS.IN_TRANSIT,
+    DELIVERY_STATUS.FAILED,
+  ],
+  [DELIVERY_STATUS.IN_TRANSIT]: [
+    DELIVERY_STATUS.AT_DROPOFF,
+    DELIVERY_STATUS.FAILED,
+  ],
+  [DELIVERY_STATUS.AT_DROPOFF]: [
+    DELIVERY_STATUS.DELIVERED,
+    DELIVERY_STATUS.FAILED,
+  ],
+  [DELIVERY_STATUS.DELIVERED]: [],
+  [DELIVERY_STATUS.CANCELLED]: [],
+  [DELIVERY_STATUS.FAILED]: [],
+  [DELIVERY_STATUS.REASSIGNMENT_REQUIRED]: [
+    DELIVERY_STATUS.PENDING_DISPATCH,
+  ],
+};
+
+// ─── Who Can Initiate Each Transition ─────────────────────────────────────────
+// Maps transitions to the roles that can initiate them.
+
+export const TRANSITION_PERMISSIONS: Record<string, string[]> = {
+  // createDelivery: customer, company_admin, operations
+  "requested->pending_dispatch": ["customer", "company_admin", "operations"],
+  "pending_dispatch->assigned": ["operations", "company_admin", "super_admin"],
+  "assigned->driver_accepted": ["driver"],
+  "assigned->reassignment_required": ["operations", "company_admin", "super_admin"],
+  "driver_accepted->en_route_to_pickup": ["driver"],
+  "driver_accepted->reassignment_required": ["driver", "operations", "company_admin", "super_admin"],
+  "en_route_to_pickup->at_pickup": ["driver"],
+  "en_route_to_pickup->reassignment_required": ["driver", "operations", "company_admin", "super_admin"],
+  "at_pickup->picked_up": ["driver"],
+  "at_pickup->failed": ["driver", "operations", "company_admin", "super_admin"],
+  "picked_up->in_transit": ["driver"],
+  "picked_up->failed": ["driver", "operations", "company_admin", "super_admin"],
+  "in_transit->at_dropoff": ["driver"],
+  "in_transit->failed": ["driver", "operations", "company_admin", "super_admin"],
+  "at_dropoff->delivered": ["driver"],
+  "at_dropoff->failed": ["driver", "operations", "company_admin", "super_admin"],
+  // Cancel can happen from most states
+  "requested->cancelled": ["customer", "company_admin", "operations", "super_admin"],
+  "pending_dispatch->cancelled": ["customer", "company_admin", "operations", "super_admin"],
+  "assigned->cancelled": ["customer", "company_admin", "operations", "super_admin"],
+  "driver_accepted->cancelled": ["customer", "company_admin", "operations", "super_admin"],
+  "en_route_to_pickup->cancelled": ["customer", "company_admin", "operations", "super_admin"],
+  "at_pickup->cancelled": ["customer", "company_admin", "operations", "super_admin"],
+  // Reassignment: ops/admin puts delivery back in dispatch queue
+  "reassignment_required->pending_dispatch": ["operations", "company_admin", "super_admin"],
+};
 
 // Package size
 export const packageSizeValidator = v.union(
@@ -319,11 +446,12 @@ const schema = defineSchema(
 
     // ─── Deliveries ────────────────────────────────────────────────────────
     // Courier assignments. One delivery per order.
+    // Uses the authoritative delivery status validator.
     deliveries: defineTable({
       orderId: v.id("orders"),
       courierId: v.optional(v.id("users")),
       vehicleId: v.optional(v.id("vehicles")),
-      status: orderStatusValidator,
+      status: deliveryStatusValidator,
       trackingNumber: v.string(),
       pickupLat: v.optional(v.number()),
       pickupLng: v.optional(v.number()),
