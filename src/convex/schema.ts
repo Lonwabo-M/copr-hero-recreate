@@ -754,6 +754,75 @@ const schema = defineSchema(
       .index("by_status", ["status"])
       .index("by_idempotency", ["idempotencyKey"])  
       .index("by_provider", ["provider", "providerTransactionId"]),
+
+    // ─── Proof of Delivery ──────────────────────────────────────────────────
+    // POD records for completed/failed deliveries.
+    proof_of_delivery: defineTable({
+      deliveryId: v.id("deliveries"),
+      orderId: v.id("orders"),
+      submittedBy: v.id("users"),
+      // Delivery outcome
+      outcome: v.union(
+        v.literal("delivered"),
+        v.literal("partial"),
+        v.literal("failed"),
+      ),
+      // Recipient information
+      recipientName: v.string(),
+      recipientPhone: v.optional(v.string()),
+      recipientSignatureId: v.optional(v.string()),  // File storage ID
+      // Delivery notes
+      deliveryNotes: v.optional(v.string()),
+      // Location evidence
+      latitude: v.optional(v.number()),
+      longitude: v.optional(v.number()),
+      locationAccuracy: v.optional(v.number()),
+      // Timestamps
+      deliveredAt: v.number(),
+      createdAt: v.number(),
+      updatedAt: v.number(),
+      // Failure information (if outcome is failed)
+      failureReason: v.optional(v.union(
+        v.literal("recipient_unavailable"),
+        v.literal("incorrect_address"),
+        v.literal("refused_delivery"),
+        v.literal("damaged_goods"),
+        v.literal("missing_goods"),
+        v.literal("vehicle_problem"),
+        v.literal("safety_issue"),
+        v.literal("other"),
+      )),
+      failureNotes: v.optional(v.string()),
+      // Idempotency
+      idempotencyKey: v.string(),
+    })
+      .index("by_delivery", ["deliveryId"])
+      .index("by_order", ["orderId"])
+      .index("by_submitter", ["submittedBy"])
+      .index("by_outcome", ["outcome"])
+      .index("by_idempotency", ["idempotencyKey"]),
+
+    // ─── POD Files ───────────────────────────────────────────────────────────
+    // Photos, signatures, and documents attached to POD.
+    pod_files: defineTable({
+      podId: v.id("proof_of_delivery"),
+      deliveryId: v.id("deliveries"),
+      fileId: v.string(),          // Convex File Storage ID
+      fileType: v.union(
+        v.literal("photo"),
+        v.literal("signature"),
+        v.literal("document"),
+      ),
+      fileName: v.string(),
+      fileSize: v.number(),        // bytes
+      mimeType: v.string(),
+      description: v.optional(v.string()),
+      uploadedBy: v.id("users"),
+      createdAt: v.number(),
+    })
+      .index("by_pod", ["podId"])
+      .index("by_delivery", ["deliveryId"])
+      .index("by_type", ["fileType"]),
   },
   {
     schemaValidation: false,
