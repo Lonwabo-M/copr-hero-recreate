@@ -652,6 +652,16 @@ async function acceptDispatchOfferInternal(
     respondedAt: now,
   });
 
+  // CRITICAL: Re-read delivery immediately before patching to prevent race condition.
+  // Two concurrent acceptAssignment calls for different offers on the same delivery
+  // could both pass the initial check. This second check ensures only one succeeds.
+  const deliveryRecheck = await ctx.db.get(offer.deliveryId);
+  if (!deliveryRecheck || deliveryRecheck.status !== DELIVERY_STATUS.ASSIGNED) {
+    throw new Error(
+      "Delivery has already been claimed by another driver (concurrent acceptance)"
+    );
+  }
+
   // Assign delivery to driver (atomic update)
   await ctx.db.patch(offer.deliveryId, {
     status: DELIVERY_STATUS.DRIVER_ACCEPTED,
