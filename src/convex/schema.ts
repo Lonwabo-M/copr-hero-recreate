@@ -825,6 +825,62 @@ const schema = defineSchema(
       .index("by_pod", ["podId"])
       .index("by_delivery", ["deliveryId"])
       .index("by_type", ["fileType"]),
+
+    // ─── Audit Events ────────────────────────────────────────────────────────
+    // Immutable audit trail for all important system actions.
+    // Records who did what, when, to which entity, and what changed.
+    audit_events: defineTable({
+      // Actor information
+      actorId: v.id("users"),
+      actorRole: v.string(),
+      actorEmail: v.optional(v.string()),
+      
+      // Event classification
+      category: v.union(
+        v.literal("delivery"),
+        v.literal("dispatch"),
+        v.literal("tracking"),
+        v.literal("pricing"),
+        v.literal("payment"),
+        v.literal("pod"),
+        v.literal("user"),
+        v.literal("driver"),
+        v.literal("vehicle"),
+        v.literal("company"),
+        v.literal("notification"),
+        v.literal("auth"),
+        v.literal("admin"),
+        v.literal("system"),
+      ),
+      action: v.string(),
+      
+      // Entity reference
+      entityType: v.string(),
+      entityId: v.string(),
+      
+      // Changes (before/after snapshots)
+      before: v.optional(v.string()),  // JSON string of previous state
+      after: v.optional(v.string()),   // JSON string of new state
+      
+      // Context
+      metadata: v.optional(v.string()),  // Additional context as JSON
+      ipAddress: v.optional(v.string()),
+      userAgent: v.optional(v.string()),
+      
+      // Delivery-specific context (optional denormalization for fast queries)
+      deliveryId: v.optional(v.id("deliveries")),
+      orderId: v.optional(v.id("orders")),
+      
+      // Timestamp (immutable)
+      timestamp: v.number(),
+    })
+      .index("by_actor", ["actorId", "timestamp"])
+      .index("by_category", ["category", "timestamp"])
+      .index("by_entity", ["entityType", "entityId", "timestamp"])
+      .index("by_delivery", ["deliveryId", "timestamp"])
+      .index("by_order", ["orderId", "timestamp"])
+      .index("by_timestamp", ["timestamp"])  
+      .index("by_action", ["action", "timestamp"]),
   },
   {
     schemaValidation: false,

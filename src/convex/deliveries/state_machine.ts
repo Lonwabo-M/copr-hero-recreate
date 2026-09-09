@@ -30,6 +30,8 @@ import {
   AuthUser,
 } from "../auth/authorization";
 import { PERMISSIONS, ROLES } from "../schema";
+import { AUDIT_ACTIONS } from "../audit/service";
+import { internal } from "../_generated/api";
 
 // ─── Helper Functions ─────────────────────────────────────────────────────────
 
@@ -185,6 +187,18 @@ export const createDelivery = mutation({
       JSON.stringify({ orderId: args.orderId })
     );
 
+    // 8. Record audit event
+    await ctx.runMutation(internal.audit.service.recordDeliveryTransition, {
+      actorId: userId,
+      actorRole: user.role,
+      deliveryId,
+      orderId: args.orderId,
+      action: AUDIT_ACTIONS.DELIVERY_CREATED,
+      fromStatus: "none",
+      toStatus: DELIVERY_STATUS.REQUESTED,
+      metadata: JSON.stringify({ trackingNumber, pickupLat: args.pickupLat, pickupLng: args.pickupLng, dropoffLat: args.dropoffLat, dropoffLng: args.dropoffLng }),
+    });
+
     return { deliveryId, trackingNumber };
   },
 });
@@ -245,6 +259,17 @@ export const dispatchDelivery = mutation({
       DELIVERY_STATUS.PENDING_DISPATCH,
       userId
     );
+
+    // 8. Record audit event
+    await ctx.runMutation(internal.audit.service.recordDeliveryTransition, {
+      actorId: userId,
+      actorRole: user.role,
+      deliveryId: args.deliveryId,
+      orderId: delivery.orderId,
+      action: AUDIT_ACTIONS.DELIVERY_DISPATCHED,
+      fromStatus: delivery.status,
+      toStatus: DELIVERY_STATUS.PENDING_DISPATCH,
+    });
 
     return { success: true };
   },
@@ -322,6 +347,18 @@ export const assignDriver = mutation({
       JSON.stringify({ driverId: args.driverId, vehicleId: args.vehicleId })
     );
 
+    // 9. Record audit event
+    await ctx.runMutation(internal.audit.service.recordDeliveryTransition, {
+      actorId: user.userId,
+      actorRole: user.role,
+      deliveryId: args.deliveryId,
+      orderId: delivery.orderId,
+      action: AUDIT_ACTIONS.DELIVERY_ASSIGNED,
+      fromStatus: delivery.status,
+      toStatus: DELIVERY_STATUS.ASSIGNED,
+      metadata: JSON.stringify({ driverId: args.driverId, vehicleId: args.vehicleId }),
+    });
+
     return { success: true };
   },
 });
@@ -383,6 +420,17 @@ export const acceptAssignment = mutation({
       DELIVERY_STATUS.DRIVER_ACCEPTED,
       user
     );
+
+    // 8. Record audit event
+    await ctx.runMutation(internal.audit.service.recordDeliveryTransition, {
+      actorId: user,
+      actorRole: userRole,
+      deliveryId: args.deliveryId,
+      orderId: delivery.orderId,
+      action: AUDIT_ACTIONS.DELIVERY_ACCEPTED,
+      fromStatus: delivery.status,
+      toStatus: DELIVERY_STATUS.DRIVER_ACCEPTED,
+    });
 
     return { success: true };
   },
@@ -450,6 +498,18 @@ export const rejectAssignment = mutation({
       JSON.stringify({ reason: args.reason })
     );
 
+    // 8. Record audit event
+    await ctx.runMutation(internal.audit.service.recordDeliveryTransition, {
+      actorId: user,
+      actorRole: userRole,
+      deliveryId: args.deliveryId,
+      orderId: delivery.orderId,
+      action: AUDIT_ACTIONS.DELIVERY_REJECTED,
+      fromStatus: delivery.status,
+      toStatus: DELIVERY_STATUS.REASSIGNMENT_REQUIRED,
+      metadata: JSON.stringify({ reason: args.reason }),
+    });
+
     return { success: true };
   },
 });
@@ -509,6 +569,17 @@ export const startEnRouteToPickup = mutation({
       user
     );
 
+    // 8. Record audit event
+    await ctx.runMutation(internal.audit.service.recordDeliveryTransition, {
+      actorId: user,
+      actorRole: userRole,
+      deliveryId: args.deliveryId,
+      orderId: delivery.orderId,
+      action: AUDIT_ACTIONS.DELIVERY_EN_ROUTE,
+      fromStatus: delivery.status,
+      toStatus: DELIVERY_STATUS.EN_ROUTE_TO_PICKUP,
+    });
+
     return { success: true };
   },
 });
@@ -567,6 +638,17 @@ export const arriveAtPickup = mutation({
       DELIVERY_STATUS.AT_PICKUP,
       user
     );
+
+    // 8. Record audit event
+    await ctx.runMutation(internal.audit.service.recordDeliveryTransition, {
+      actorId: user,
+      actorRole: userRole,
+      deliveryId: args.deliveryId,
+      orderId: delivery.orderId,
+      action: AUDIT_ACTIONS.DELIVERY_ARRIVED_PICKUP,
+      fromStatus: delivery.status,
+      toStatus: DELIVERY_STATUS.AT_PICKUP,
+    });
 
     return { success: true };
   },
@@ -629,6 +711,17 @@ export const pickupPackage = mutation({
       user
     );
 
+    // 8. Record audit event
+    await ctx.runMutation(internal.audit.service.recordDeliveryTransition, {
+      actorId: user,
+      actorRole: userRole,
+      deliveryId: args.deliveryId,
+      orderId: delivery.orderId,
+      action: AUDIT_ACTIONS.DELIVERY_PICKED_UP,
+      fromStatus: delivery.status,
+      toStatus: DELIVERY_STATUS.PICKED_UP,
+    });
+
     return { success: true };
   },
 });
@@ -688,6 +781,17 @@ export const startTrip = mutation({
       user
     );
 
+    // 8. Record audit event
+    await ctx.runMutation(internal.audit.service.recordDeliveryTransition, {
+      actorId: user,
+      actorRole: userRole,
+      deliveryId: args.deliveryId,
+      orderId: delivery.orderId,
+      action: AUDIT_ACTIONS.DELIVERY_IN_TRANSIT,
+      fromStatus: delivery.status,
+      toStatus: DELIVERY_STATUS.IN_TRANSIT,
+    });
+
     return { success: true };
   },
 });
@@ -746,6 +850,17 @@ export const arriveAtDropoff = mutation({
       DELIVERY_STATUS.AT_DROPOFF,
       user
     );
+
+    // 8. Record audit event
+    await ctx.runMutation(internal.audit.service.recordDeliveryTransition, {
+      actorId: user,
+      actorRole: userRole,
+      deliveryId: args.deliveryId,
+      orderId: delivery.orderId,
+      action: AUDIT_ACTIONS.DELIVERY_ARRIVED_DROPOFF,
+      fromStatus: delivery.status,
+      toStatus: DELIVERY_STATUS.AT_DROPOFF,
+    });
 
     return { success: true };
   },
@@ -814,6 +929,17 @@ export const completeDelivery = mutation({
       DELIVERY_STATUS.DELIVERED,
       user
     );
+
+    // 9. Record audit event
+    await ctx.runMutation(internal.audit.service.recordDeliveryTransition, {
+      actorId: user,
+      actorRole: userRole,
+      deliveryId: args.deliveryId,
+      orderId: delivery.orderId,
+      action: AUDIT_ACTIONS.DELIVERY_COMPLETED,
+      fromStatus: delivery.status,
+      toStatus: DELIVERY_STATUS.DELIVERED,
+    });
 
     return { success: true };
   },
@@ -894,6 +1020,18 @@ export const cancelDelivery = mutation({
       JSON.stringify({ reason: args.reason })
     );
 
+    // 9. Record audit event
+    await ctx.runMutation(internal.audit.service.recordDeliveryTransition, {
+      actorId: user.userId,
+      actorRole: user.role,
+      deliveryId: args.deliveryId,
+      orderId: delivery.orderId,
+      action: AUDIT_ACTIONS.DELIVERY_CANCELLED,
+      fromStatus: delivery.status,
+      toStatus: DELIVERY_STATUS.CANCELLED,
+      metadata: JSON.stringify({ reason: args.reason }),
+    });
+
     return { success: true };
   },
 });
@@ -915,7 +1053,7 @@ export const failDelivery = mutation({
     const currentUser = await ctx.db.get(user);
     if (!currentUser) throw new Error("User not found");
 
-    const userRole = (currentUser as Doc<"users">).role;
+    const userRole = (currentUser as Doc<"users">).role ?? "unknown";
     const allowedRoles = [
       ROLES.DRIVER,
       ROLES.OPERATIONS,
@@ -974,6 +1112,18 @@ export const failDelivery = mutation({
       JSON.stringify({ reason: args.reason })
     );
 
+    // 8. Record audit event
+    await ctx.runMutation(internal.audit.service.recordDeliveryTransition, {
+      actorId: user,
+      actorRole: userRole,
+      deliveryId: args.deliveryId,
+      orderId: delivery.orderId,
+      action: AUDIT_ACTIONS.DELIVERY_FAILED,
+      fromStatus: delivery.status,
+      toStatus: DELIVERY_STATUS.FAILED,
+      metadata: JSON.stringify({ reason: args.reason }),
+    });
+
     return { success: true };
   },
 });
@@ -995,7 +1145,7 @@ export const requestReassignment = mutation({
     const currentUser = await ctx.db.get(user);
     if (!currentUser) throw new Error("User not found");
 
-    const userRole = (currentUser as Doc<"users">).role;
+    const userRole = (currentUser as Doc<"users">).role ?? "unknown";
     const allowedRoles = [
       ROLES.DRIVER,
       ROLES.OPERATIONS,
@@ -1049,6 +1199,18 @@ export const requestReassignment = mutation({
       user,
       JSON.stringify({ reason: args.reason })
     );
+
+    // 7. Record audit event
+    await ctx.runMutation(internal.audit.service.recordDeliveryTransition, {
+      actorId: user,
+      actorRole: userRole,
+      deliveryId: args.deliveryId,
+      orderId: delivery.orderId,
+      action: AUDIT_ACTIONS.DELIVERY_REASSIGNED,
+      fromStatus: delivery.status,
+      toStatus: DELIVERY_STATUS.REASSIGNMENT_REQUIRED,
+      metadata: JSON.stringify({ reason: args.reason }),
+    });
 
     return { success: true };
   },

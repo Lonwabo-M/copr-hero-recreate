@@ -10,6 +10,8 @@ import { v } from "convex/values";
 import { Id, Doc } from "../_generated/dataModel";
 import { DELIVERY_STATUS, ROLES } from "../schema";
 import { requireAuth, getCurrentAuthUser } from "../auth/authorization";
+import { AUDIT_ACTIONS } from "../audit/service";
+import { internal } from "../_generated/api";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -212,6 +214,16 @@ export const createPOD = mutation({
       idempotencyKey,
     });
 
+    // Record audit event
+    await ctx.runMutation(internal.audit.service.recordPODEvent, {
+      actorId: userId,
+      actorRole: user.role,
+      action: AUDIT_ACTIONS.POD_CREATED,
+      deliveryId: args.deliveryId,
+      entityId: podId,
+      metadata: JSON.stringify({ outcome: args.outcome, recipientName: args.recipientName }),
+    });
+
     return { podId, alreadyExists: false };
   },
 });
@@ -274,6 +286,16 @@ export const addPODEvidence = mutation({
     // Update POD timestamp
     await ctx.db.patch(args.podId, {
       updatedAt: Date.now(),
+    });
+
+    // Record audit event
+    await ctx.runMutation(internal.audit.service.recordPODEvent, {
+      actorId: userId,
+      actorRole: user.role,
+      action: AUDIT_ACTIONS.POD_EVIDENCE_ADDED,
+      deliveryId: pod.deliveryId,
+      entityId: args.podId,
+      metadata: JSON.stringify({ fileType: args.fileType, fileName: args.fileName }),
     });
 
     return { fileId };
@@ -407,6 +429,16 @@ export const completeDeliveryWithPOD = mutation({
       }),
     });
 
+    // Record audit event
+    await ctx.runMutation(internal.audit.service.recordPODEvent, {
+      actorId: userId,
+      actorRole: user.role,
+      action: AUDIT_ACTIONS.POD_COMPLETED,
+      deliveryId: args.deliveryId,
+      entityId: podId,
+      metadata: JSON.stringify({ recipientName: args.recipientName, hasSignature: !!args.signatureFileId, photoCount: args.photoFileIds?.length ?? 0 }),
+    });
+
     return { podId, deliveryId: args.deliveryId, alreadyExists: false };
   },
 });
@@ -533,6 +565,16 @@ export const recordFailedDelivery = mutation({
         podId,
         failureReason: args.failureReason,
       }),
+    });
+
+    // Record audit event
+    await ctx.runMutation(internal.audit.service.recordPODEvent, {
+      actorId: userId,
+      actorRole: user.role,
+      action: AUDIT_ACTIONS.POD_FAILED,
+      deliveryId: args.deliveryId,
+      entityId: podId,
+      metadata: JSON.stringify({ failureReason: args.failureReason, failureNotes: args.failureNotes }),
     });
 
     return { podId, alreadyExists: false };

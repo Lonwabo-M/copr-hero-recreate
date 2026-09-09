@@ -17,6 +17,8 @@ import {
   expeditionTypeValidator,
 } from "../schema";
 import { requireAuth, requirePermission, getCurrentAuthUser } from "../auth/authorization";
+import { AUDIT_ACTIONS } from "../audit/service";
+import { internal } from "../_generated/api";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -327,6 +329,17 @@ export const calculateQuote = mutation({
       updatedAt: Date.now(),
     });
     
+    // Record audit event
+    await ctx.runMutation(internal.audit.service.recordPricingEvent, {
+      actorId: userId,
+      actorRole: (await getCurrentAuthUser(ctx))?.role ?? "unknown",
+      action: AUDIT_ACTIONS.PRICING_QUOTE_CREATED,
+      entityType: "delivery_quote",
+      entityId: quoteId,
+      after: JSON.stringify({ totalCharge: breakdown.totalCharge, driverEarnings: breakdown.driverEarnings, platformFee: breakdown.platformFee }),
+      orderId: args.orderId,
+    });
+    
     return {
       quoteId,
       ...breakdown,
@@ -361,13 +374,28 @@ export const createPricingRule = mutation({
     const existingRules = await ctx.db.query("pricing_rules").collect();
     const maxVersion = existingRules.reduce((max, r) => Math.max(max, r.version), 0);
     
-    return await ctx.db.insert("pricing_rules", {
+    const ruleId = await ctx.db.insert("pricing_rules", {
       ...args,
       version: maxVersion + 1,
       effectiveFrom: now,
       isActive: true,
       createdAt: now,
     });
+    
+    // Record audit event
+    const user = await getCurrentAuthUser(ctx);
+    if (user) {
+      await ctx.runMutation(internal.audit.service.recordPricingEvent, {
+        actorId: user.userId,
+        actorRole: user.role,
+        action: AUDIT_ACTIONS.PRICING_RULE_CREATED,
+        entityType: "pricing_rule",
+        entityId: ruleId,
+        after: JSON.stringify({ name: args.name, version: maxVersion + 1, basePrice: args.basePrice }),
+      });
+    }
+    
+    return ruleId;
   },
 });
 
@@ -382,10 +410,26 @@ export const deactivatePricingRule = mutation({
     const rule = await ctx.db.get(args.ruleId);
     if (!rule) throw new Error("Pricing rule not found");
     
+    const before = JSON.stringify({ isActive: rule.isActive, version: rule.version });
+    
     await ctx.db.patch(args.ruleId, {
       isActive: false,
       effectiveTo: Date.now(),
     });
+    
+    // Record audit event
+    const user = await getCurrentAuthUser(ctx);
+    if (user) {
+      await ctx.runMutation(internal.audit.service.recordPricingEvent, {
+        actorId: user.userId,
+        actorRole: user.role,
+        action: AUDIT_ACTIONS.PRICING_RULE_DEACTIVATED,
+        entityType: "pricing_rule",
+        entityId: args.ruleId,
+        before,
+        after: JSON.stringify({ isActive: false }),
+      });
+    }
     
     return { success: true };
   },
