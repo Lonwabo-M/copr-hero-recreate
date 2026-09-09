@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import Sidebar from "@/components/dashboard/Sidebar";
 import { useDashboardNav } from "@/hooks/useDashboardNav";
 import {
@@ -14,6 +16,8 @@ import {
   Ruler,
   CheckCircle2,
   Circle,
+  Loader2,
+  Package,
 } from "lucide-react";
 import "@/styles/dashboard.css";
 import "@/styles/track-delivery.css";
@@ -24,62 +28,47 @@ interface TrackingStep {
   status: "completed" | "active" | "pending";
 }
 
-const trackingData: Record<
-  string,
-  {
-    trackingId: string;
-    status: string;
-    steps: TrackingStep[];
-    sender: { name: string; address: string; city: string };
-    receiver: { name: string; address: string; city: string };
-    driver: { name: string; avatar: string };
-    deliveryType: string;
-    weight: string;
-    dimensions: string;
-    estimatedArrival: string;
-    lastUpdated: string;
-  }
-> = {
-  HY257845U4: {
-    trackingId: "HY257845U4",
-    status: "In transit",
-    steps: [
-      { label: "Order placed", time: "14 July, 08:42", status: "completed" },
-      { label: "Picked up", time: "14 July, 10:15", status: "completed" },
-      { label: "In transit", time: "Currently here", status: "active" },
-      { label: "Delivered", time: "Expected 18 June", status: "pending" },
-    ],
-    sender: {
-      name: "Sammy's Kitchen",
-      address: "9547 Elias St.",
-      city: "Marabastad, Pretoria",
-    },
-    receiver: {
-      name: "Luba Mokobane",
-      address: "7869 Royal St. Hillbrow",
-      city: "Johannesburg",
-    },
-    driver: {
-      name: "Lusanda Miya",
-      avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&q=80",
-    },
-    deliveryType: "Express",
-    weight: "20 Kg",
-    dimensions: "W: 1000 H:250",
-    estimatedArrival: "18 June 2025",
-    lastUpdated: "Today at 10:15 AM",
-  },
-};
+function getTrackingSteps(status: string): TrackingStep[] {
+  const statusOrder = [
+    "requested",
+    "pending_dispatch",
+    "assigned",
+    "driver_accepted",
+    "en_route_to_pickup",
+    "at_pickup",
+    "picked_up",
+    "in_transit",
+    "at_dropoff",
+    "delivered",
+  ];
 
-const defaultTracking = trackingData["HY257845U4"];
+  const currentIndex = statusOrder.indexOf(status);
+  if (currentIndex === -1) {
+    return [{ label: "Order placed", time: "Unknown", status: "active" }];
+  }
+
+  return [
+    { label: "Order placed", time: currentIndex >= 0 ? "Completed" : "Pending", status: currentIndex >= 0 ? "completed" : "pending" },
+    { label: "Dispatched", time: currentIndex >= 1 ? "Completed" : "Pending", status: currentIndex >= 1 ? "completed" : "pending" },
+    { label: "Driver assigned", time: currentIndex >= 3 ? "Completed" : "Pending", status: currentIndex >= 3 ? "completed" : "pending" },
+    { label: "Picked up", time: currentIndex >= 6 ? "Completed" : "Pending", status: currentIndex >= 6 ? "completed" : "pending" },
+    { label: "In transit", time: currentIndex === 7 ? "Currently here" : currentIndex > 7 ? "Completed" : "Pending", status: currentIndex === 7 ? "active" : currentIndex > 7 ? "completed" : "pending" },
+    { label: "Delivered", time: currentIndex >= 9 ? "Completed" : "Expected", status: currentIndex >= 9 ? "completed" : "pending" },
+  ];
+}
 
 export default function TrackDelivery() {
   const { handleSidebarNavigation } = useDashboardNav();
   const [activeSidebarItem, setActiveSidebarItem] = useState("Track Delivery");
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [trackingInput, setTrackingInput] = useState("HY257845U4");
-  const [trackingResult, setTrackingResult] = useState(defaultTracking);
+  const [trackingInput, setTrackingInput] = useState("");
+  const [searchedTracking, setSearchedTracking] = useState("");
   const [copied, setCopied] = useState(false);
+
+  const trackingResult = useQuery(
+    api.deliveries.state_machine.getDeliveryByTracking,
+    searchedTracking ? { trackingNumber: searchedTracking } : "skip"
+  );
 
   const onSidebarNav = (item: string) => {
     setActiveSidebarItem(item);
@@ -88,19 +77,20 @@ export default function TrackDelivery() {
 
   const handleTrack = () => {
     const upper = trackingInput.toUpperCase().trim();
-    if (trackingData[upper]) {
-      setTrackingResult(trackingData[upper]);
-    } else {
-      // For demo, show default
-      setTrackingResult(defaultTracking);
+    if (upper) {
+      setSearchedTracking(upper);
     }
   };
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(trackingResult.trackingId);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    if (trackingResult) {
+      navigator.clipboard.writeText(trackingResult.trackingNumber);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
   };
+
+  const steps = trackingResult ? getTrackingSteps(trackingResult.status) : [];
 
   return (
     <div className="dashboard">
@@ -146,7 +136,7 @@ export default function TrackDelivery() {
         )}
 
         {/* Sidebar */}
-        <Sidebar activeItem={activeSidebarItem}          onItemChange={onSidebarNav} isOpen={sidebarOpen} />
+        <Sidebar activeItem={activeSidebarItem} onItemChange={onSidebarNav} isOpen={sidebarOpen} />
 
         {/* Main content */}
         <main className="track-main">
@@ -162,7 +152,7 @@ export default function TrackDelivery() {
               <input
                 type="text"
                 className="track-search-input"
-                placeholder="Enter tracking number"
+                placeholder="Enter tracking number (e.g., LSH-...)"
                 value={trackingInput}
                 onChange={(e) => setTrackingInput(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleTrack()}
@@ -172,6 +162,20 @@ export default function TrackDelivery() {
               </button>
             </div>
 
+            {searchedTracking && trackingResult === undefined && (
+              <div style={{ display: "flex", justifyContent: "center", padding: 60 }}>
+                <Loader2 size={24} className="animate-spin" style={{ color: "#999" }} />
+              </div>
+            )}
+
+            {searchedTracking && trackingResult === null && (
+              <div className="empty-state" style={{ padding: 60 }}>
+                <div className="empty-state-icon"><Package size={24} /></div>
+                <div className="empty-state-title">Delivery not found</div>
+                <div className="empty-state-desc">No delivery found with tracking number "{searchedTracking}". Please check and try again.</div>
+              </div>
+            )}
+
             {trackingResult && (
               <>
                 {/* Tracking header card */}
@@ -180,7 +184,7 @@ export default function TrackDelivery() {
                     <div>
                       <p className="track-header-label">Tracking shipment</p>
                       <div className="track-header-id-row">
-                        <h2 className="track-header-id">{trackingResult.trackingId}</h2>
+                        <h2 className="track-header-id">{trackingResult.trackingNumber}</h2>
                         <button className="track-copy-btn" onClick={handleCopy} title="Copy tracking ID">
                           {copied ? <Check size={16} /> : <Copy size={16} />}
                         </button>
@@ -188,13 +192,13 @@ export default function TrackDelivery() {
                     </div>
                     <div className="track-status-badge">
                       <span className="track-status-dot" />
-                      {trackingResult.status}
+                      {trackingResult.status.replace(/_/g, " ")}
                     </div>
                   </div>
 
                   {/* Progress stepper */}
                   <div className="track-stepper">
-                    {trackingResult.steps.map((step, i) => (
+                    {steps.map((step, i) => (
                       <div key={step.label} className={`track-step ${step.status}`}>
                         <div className="track-step-icon">
                           {step.status === "completed" ? (
@@ -210,7 +214,7 @@ export default function TrackDelivery() {
                         </div>
                         <p className="track-step-label">{step.label}</p>
                         <p className="track-step-time">{step.time}</p>
-                        {i < trackingResult.steps.length - 1 && (
+                        {i < steps.length - 1 && (
                           <div
                             className={`track-step-line ${
                               step.status === "completed" ? "completed" : ""
@@ -231,13 +235,11 @@ export default function TrackDelivery() {
                       <div className="track-route-header">
                         <div>
                           <h3 className="track-route-title">Shipment route</h3>
-                          <p className="track-route-estimate">
-                            Estimated arrival: {trackingResult.estimatedArrival}
-                          </p>
-                        </div>
-                        <div className="track-route-date">
-                          <Calendar size={14} />
-                          <span>{trackingResult.estimatedArrival.split(" ").slice(0, 2).join(" ")}</span>
+                          {trackingResult.estimatedArrival && (
+                            <p className="track-route-estimate">
+                              Estimated arrival: {new Date(trackingResult.estimatedArrival).toLocaleDateString("en-ZA")}
+                            </p>
+                          )}
                         </div>
                       </div>
 
@@ -248,7 +250,7 @@ export default function TrackDelivery() {
                             <MapPin size={16} />
                           </div>
                           <div>
-                            <p className="track-route-point-label">Sender</p>
+                            <p className="track-route-point-label">Pickup</p>
                           </div>
                           <div className="track-route-dot-line">
                             <span className="track-route-dot" />
@@ -256,7 +258,7 @@ export default function TrackDelivery() {
                             <span className="track-route-dot" />
                           </div>
                           <div>
-                            <p className="track-route-point-label">Receiver</p>
+                            <p className="track-route-point-label">Dropoff</p>
                           </div>
                           <div className="track-route-pin receiver">
                             <MapPin size={16} />
@@ -265,72 +267,34 @@ export default function TrackDelivery() {
 
                         <div className="track-route-addresses">
                           <div className="track-route-address">
-                            <p className="track-route-name">{trackingResult.sender.name}</p>
-                            <p className="track-route-street">{trackingResult.sender.address}</p>
-                            <p className="track-route-city">{trackingResult.sender.city}</p>
+                            <p className="track-route-name">Pickup Location</p>
+                            <p className="track-route-street">Awaiting assignment</p>
                           </div>
                           <div className="track-route-address" style={{ textAlign: "right" }}>
-                            <p className="track-route-name">{trackingResult.receiver.name}</p>
-                            <p className="track-route-street">{trackingResult.receiver.address}</p>
-                            <p className="track-route-city">{trackingResult.receiver.city}</p>
+                            <p className="track-route-name">Dropoff Location</p>
+                            <p className="track-route-street">Awaiting assignment</p>
                           </div>
                         </div>
-                      </div>
-                    </div>
-
-                    {/* Package details */}
-                    <div className="track-package-details">
-                      <div className="track-detail-item">
-                        <p className="track-detail-label">Delivery type</p>
-                        <p className="track-detail-value">{trackingResult.deliveryType}</p>
-                      </div>
-                      <div className="track-detail-item">
-                        <p className="track-detail-label">Package weight</p>
-                        <p className="track-detail-value">{trackingResult.weight}</p>
-                      </div>
-                      <div className="track-detail-item">
-                        <p className="track-detail-label">Dimensions</p>
-                        <p className="track-detail-value">{trackingResult.dimensions}</p>
                       </div>
                     </div>
                   </div>
 
                   {/* Right column */}
                   <div className="track-right-col">
-                    {/* Driver card */}
-                    <div className="track-driver-card">
-                      <div className="track-driver-info">
-                        <img
-                          src={trackingResult.driver.avatar}
-                          alt={trackingResult.driver.name}
-                          className="track-driver-avatar"
-                        />
+                    {/* Last updated */}
+                    {trackingResult.completedAt && (
+                      <div className="track-last-updated">
+                        <div className="track-updated-icon">
+                          <Check size={18} />
+                        </div>
                         <div>
-                          <p className="track-driver-label">Your driver</p>
-                          <p className="track-driver-name">{trackingResult.driver.name}</p>
+                          <p className="track-updated-label">Completed</p>
+                          <p className="track-updated-time">
+                            {new Date(trackingResult.completedAt).toLocaleString("en-ZA")}
+                          </p>
                         </div>
                       </div>
-                      <div className="track-driver-actions">
-                        <button className="track-call-btn">
-                          <Phone size={16} />
-                          Call driver
-                        </button>
-                        <button className="track-message-btn">
-                          <MessageSquare size={16} />
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Last updated */}
-                    <div className="track-last-updated">
-                      <div className="track-updated-icon">
-                        <Check size={18} />
-                      </div>
-                      <div>
-                        <p className="track-updated-label">Last updated</p>
-                        <p className="track-updated-time">{trackingResult.lastUpdated}</p>
-                      </div>
-                    </div>
+                    )}
                   </div>
                 </div>
               </>

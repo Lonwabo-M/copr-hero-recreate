@@ -1,6 +1,6 @@
 import { Download, Weight, Settings, Zap, Flame, Container, Clock } from "lucide-react";
 import SpecificationCard from "./SpecificationCard";
-import type { VehicleInfo } from "@/data/orders";
+import type { VehicleInfo } from "@/types/dashboard";
 
 interface VehiclePanelProps {
   vehicle: VehicleInfo;

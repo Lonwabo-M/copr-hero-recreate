@@ -7,13 +7,7 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   const { isLoading, isAuthenticated } = useAuth();
   const location = useLocation();
 
-  // Dev bypass: ?dev=true or ?guest=true in URL, OR session-level guest flag
-  const params = new URLSearchParams(location.search);
-  const urlBypass = params.get("dev") === "true" || params.get("guest") === "true";
-  const sessionBypass = sessionStorage.getItem("lasha_guest") === "true";
-  const devBypass = urlBypass || sessionBypass;
-
-  if (isLoading && !devBypass) {
+  if (isLoading) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-background">
         <Loader2 className="size-6 animate-spin text-muted-foreground" />
@@ -21,7 +15,7 @@ export function RequireAuth({ children }: { children: ReactNode }) {
     );
   }
 
-  if (!isAuthenticated && !devBypass) {
+  if (!isAuthenticated) {
     const returnTo = `${location.pathname}${location.search}`;
     return (
       <Navigate

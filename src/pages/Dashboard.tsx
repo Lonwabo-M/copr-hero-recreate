@@ -1,15 +1,65 @@
 import { useState, useEffect } from "react";
+import { useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import TopNavigation from "@/components/dashboard/TopNavigation";
 import Sidebar from "@/components/dashboard/Sidebar";
-import OrderPanel from "@/components/dashboard/OrderPanel";
-import DetailsPanel from "@/components/dashboard/DetailsPanel";
-import { orders } from "@/data/orders";
 import { useDashboardNav } from "@/hooks/useDashboardNav";
+import { Loader2 } from "lucide-react";
 import "@/styles/dashboard.css";
+
+// Order type that matches what the dashboard components expect
+interface DashboardOrder {
+  id: string;
+  status: "In Transit" | "Pending";
+  pickup: { name: string; address: string; date: string; time: string };
+  dropoff: { name: string; address: string };
+  vehicle: { registration: string; capacity: string; breaking: string; express: string; flammable: string; trailer: string; time: string };
+  driver: { name: string; license: string; phone: string; rating: string; trips: string };
+  customer: { name: string; company: string; email: string; phone: string };
+}
+
+function transformDeliveryToOrder(delivery: any, order: any): DashboardOrder {
+  return {
+    id: `#${delivery.trackingNumber}`,
+    status: delivery.status === "in_transit" ? "In Transit" : "Pending",
+    pickup: {
+      name: "Pickup Location",
+      address: delivery.pickupLat ? `${delivery.pickupLat.toFixed(4)}, ${delivery.pickupLng?.toFixed(4)}` : "N/A",
+      date: delivery.assignedAt ? new Date(delivery.assignedAt).toLocaleDateString("en-ZA", { day: "2-digit", month: "short" }) : "N/A",
+      time: delivery.assignedAt ? new Date(delivery.assignedAt).toLocaleTimeString("en-ZA", { hour: "2-digit", minute: "2-digit" }) : "N/A",
+    },
+    dropoff: {
+      name: "Dropoff Location",
+      address: delivery.dropoffLat ? `${delivery.dropoffLat.toFixed(4)}, ${delivery.dropoffLng?.toFixed(4)}` : "N/A",
+    },
+    vehicle: {
+      registration: "N/A",
+      capacity: "N/A",
+      breaking: "N/A",
+      express: "N/A",
+      flammable: "N/A",
+      trailer: "N/A",
+      time: "N/A",
+    },
+    driver: {
+      name: "Unassigned",
+      license: "N/A",
+      phone: "N/A",
+      rating: "N/A",
+      trips: "N/A",
+    },
+    customer: {
+      name: "Customer",
+      company: "N/A",
+      email: "N/A",
+      phone: "N/A",
+    },
+  };
+}
 
 export default function Dashboard() {
   const { handleSidebarNavigation } = useDashboardNav();
-  const [selectedOrder, setSelectedOrder] = useState(orders[0]?.id ?? "");
+  const [selectedOrder, setSelectedOrder] = useState("");
   const [activeFilter, setActiveFilter] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
   const [activeSidebarItem, setActiveSidebarItem] = useState("Activity Center");
@@ -17,6 +67,12 @@ export default function Dashboard() {
   const [activeDetailTab, setActiveDetailTab] = useState("Vehicle Details");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
+
+  // Fetch deliveries from Convex
+  const deliveries = useQuery(api.deliveries.state_machine.getMyDeliveries, {});
+
+  // Transform deliveries into the format the dashboard expects
+  const orders: DashboardOrder[] = deliveries?.map((d: any) => transformDeliveryToOrder(d, null)) ?? [];
 
   const selectedOrderData = orders.find((o) => o.id === selectedOrder);
 
@@ -36,6 +92,13 @@ export default function Dashboard() {
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
+
+  // Auto-select first order
+  useEffect(() => {
+    if (orders.length > 0 && !selectedOrder) {
+      setSelectedOrder(orders[0].id);
+    }
+  }, [orders, selectedOrder]);
 
   const handleSelectOrder = (id: string) => {
     setSelectedOrder(id);
@@ -81,26 +144,88 @@ export default function Dashboard() {
 
         {/* Workspace */}
         <div className="dash-workspace">
-          {/* Order panel */}
-          <OrderPanel
-            orders={orders}
-            selectedId={selectedOrder}
-            searchQuery={searchQuery}
-            activeFilter={activeFilter}
-            onSearchChange={setSearchQuery}
-            onFilterChange={setActiveFilter}
-            onSelectOrder={handleSelectOrder}
-          />
+          {/* Loading state */}
+          {deliveries === undefined ? (
+            <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100%", gridColumn: "1 / -1" }}>
+              <Loader2 size={24} className="animate-spin" style={{ color: "#999" }} />
+            </div>
+          ) : orders.length === 0 ? (
+            <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", height: "100%", gridColumn: "1 / -1", gap: 16 }}>
+              <div style={{ fontSize: 48, opacity: 0.3 }}>📦</div>
+              <h3 style={{ fontSize: 18, fontWeight: 600, color: "#333" }}>No deliveries yet</h3>
+              <p style={{ fontSize: 14, color: "#999" }}>Create your first delivery to get started.</p>
+            </div>
+          ) : (
+            <>
+              {/* Order panel */}
+              <div className="dash-order-panel">
+                <div className="dash-search-bar">
+                  <input
+                    type="text"
+                    placeholder="Search orders..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="dash-search-input"
+                  />
+                </div>
+                <div className="dash-order-filters">
+                  {["All", "Pending", "In Transit"].map((f) => (
+                    <button
+                      key={f}
+                      className={`dash-filter-btn ${activeFilter === f ? "active" : ""}`}
+                      onClick={() => setActiveFilter(f)}
+                    >
+                      {f}
+                    </button>
+                  ))}
+                </div>
+                <div className="dash-order-list">
+                  {orders
+                    .filter((o) => {
+                      const matchesFilter = activeFilter === "All" ||
+                        (activeFilter === "Pending" && o.status === "Pending") ||
+                        (activeFilter === "In Transit" && o.status === "In Transit");
+                      const matchesSearch = o.id.toLowerCase().includes(searchQuery.toLowerCase());
+                      return matchesFilter && matchesSearch;
+                    })
+                    .map((order) => (
+                      <div
+                        key={order.id}
+                        className={`dash-order-card ${selectedOrder === order.id ? "active" : ""}`}
+                        onClick={() => handleSelectOrder(order.id)}
+                      >
+                        <div className="dash-order-card-header">
+                          <span className="dash-order-id">{order.id}</span>
+                          <span className={`dash-order-status ${order.status === "In Transit" ? "transit" : "pending"}`}>
+                            {order.status}
+                          </span>
+                        </div>
+                        <div className="dash-order-card-route">
+                          <span>{order.pickup.name}</span>
+                          <span style={{ color: "#999" }}>→</span>
+                          <span>{order.dropoff.name}</span>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              </div>
 
-          {/* Details panel */}
-          {selectedOrderData && (
-            <DetailsPanel
-              order={selectedOrderData}
-              activeTab={activeDetailTab}
-              onTabChange={setActiveDetailTab}
-              isOpen={detailsOpen}
-              onClose={() => setDetailsOpen(false)}
-            />
+              {/* Details panel */}
+              {selectedOrderData && (
+                <div className={`dash-details-panel ${detailsOpen ? "open" : ""}`}>
+                  <div className="dash-order-header">
+                    <span className="dash-order-header-label">Order:</span>
+                    <span className="dash-order-header-id">{selectedOrderData.id}</span>
+                  </div>
+                  <div style={{ padding: 16 }}>
+                    <p style={{ fontSize: 13, color: "#666" }}>Status: {selectedOrderData.status}</p>
+                    <p style={{ fontSize: 13, color: "#666", marginTop: 8 }}>Pickup: {selectedOrderData.pickup.address}</p>
+                    <p style={{ fontSize: 13, color: "#666" }}>Dropoff: {selectedOrderData.dropoff.address}</p>
+                    <p style={{ fontSize: 13, color: "#666", marginTop: 8 }}>Driver: {selectedOrderData.driver.name}</p>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>

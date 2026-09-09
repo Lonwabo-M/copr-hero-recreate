@@ -1,28 +1,33 @@
 import { useState, useEffect } from "react";
+import { useQuery, useMutation } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import Sidebar from "@/components/dashboard/Sidebar";
 import { useDashboardNav } from "@/hooks/useDashboardNav";
-import { Package, CreditCard, AlertTriangle } from "lucide-react";
+import { Package, CreditCard, AlertTriangle, Bell, Loader2 } from "lucide-react";
 import "@/styles/dashboard.css";
 import "@/styles/pages.css";
 
-const notifications = [
-  { id: 1, type: "delivery" as const, title: "Delivery Completed", desc: "Order #55667 has been successfully delivered to Fourways Mall.", time: "2 min ago", unread: true },
-  { id: 2, type: "payment" as const, title: "Payment Received", desc: "R1,450.00 has been credited to your Lasha Wallet from INV-2024-003.", time: "1 hour ago", unread: true },
-  { id: 3, type: "delivery" as const, title: "Driver Assigned", desc: "Lusanda Miya has been assigned to order #55668 for pickup at Sammy's Kitchen.", time: "3 hours ago", unread: false },
-  { id: 4, type: "alert" as const, title: "Delivery Delayed", desc: "Order #55660 is experiencing a 30-minute delay due to traffic on the N1.", time: "5 hours ago", unread: false },
-  { id: 5, type: "payment" as const, title: "Invoice Generated", desc: "INV-2024-007 for R2,340.00 has been generated and is awaiting payment.", time: "Yesterday", unread: false },
-  { id: 6, type: "delivery" as const, title: "Pickup Scheduled", desc: "Your pickup at Sandton City has been scheduled for tomorrow at 09:00 AM.", time: "Yesterday", unread: false },
-];
-
-const iconMap = { delivery: Package, payment: CreditCard, alert: AlertTriangle };
+const iconMap: Record<string, typeof Package> = {
+  delivery: Package,
+  payment: CreditCard,
+  alert: AlertTriangle,
+  system: Bell,
+  security: AlertTriangle,
+};
 
 export default function Notifications() {
   const { handleSidebarNavigation } = useDashboardNav();
   const [activeSidebarItem, setActiveSidebarItem] = useState("Notifications");
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  const notifications = useQuery(api.notifications.service.getMyNotifications, {});
+  const markAsRead = useMutation(api.notifications.service.markAsRead);
+  const markAllAsRead = useMutation(api.notifications.service.markAllAsRead);
+
   useEffect(() => {
-    const onResize = () => { if (window.innerWidth > 1024) setSidebarOpen(false); };
+    const onResize = () => {
+      if (window.innerWidth > 1024) setSidebarOpen(false);
+    };
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
@@ -30,6 +35,37 @@ export default function Notifications() {
   const onSidebarNav = (item: string) => {
     setActiveSidebarItem(item);
     handleSidebarNavigation(item);
+  };
+
+  const handleMarkAllRead = async () => {
+    try {
+      await markAllAsRead();
+    } catch (error) {
+      console.error("Failed to mark all as read:", error);
+    }
+  };
+
+  const handleMarkRead = async (notificationId: string) => {
+    try {
+      await markAsRead({ notificationId: notificationId as any });
+    } catch (error) {
+      console.error("Failed to mark as read:", error);
+    }
+  };
+
+  const getTimeAgo = (timestamp: number) => {
+    const diff = Date.now() - timestamp;
+    const minutes = Math.floor(diff / 60000);
+    if (minutes < 1) return "Just now";
+    if (minutes < 60) return `${minutes} min ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours} hour${hours > 1 ? "s" : ""} ago`;
+    const days = Math.floor(hours / 24);
+    if (days < 7) return `${days} day${days > 1 ? "s" : ""} ago`;
+    return new Date(timestamp).toLocaleDateString("en-ZA", {
+      day: "2-digit",
+      month: "short",
+    });
   };
 
   return (
@@ -57,29 +93,64 @@ export default function Notifications() {
 
       <div className="dash-app">
         {sidebarOpen && <div className="dash-mobile-overlay visible" onClick={() => setSidebarOpen(false)} />}
-        <Sidebar activeItem={activeSidebarItem}          onItemChange={onSidebarNav} isOpen={sidebarOpen} />
+        <Sidebar activeItem={activeSidebarItem} onItemChange={onSidebarNav} isOpen={sidebarOpen} />
 
         <div className="dash-workspace" style={{ overflow: "auto" }}>
           <div className="page-container">
             <div className="page-header">
               <h1 className="page-title">Notifications</h1>
               <p className="page-subtitle">Stay updated on your deliveries and account activity</p>
+              {notifications && notifications.length > 0 && (
+                <button
+                  onClick={handleMarkAllRead}
+                  style={{
+                    marginTop: 8,
+                    padding: "6px 12px",
+                    fontSize: 13,
+                    color: "#0794B5",
+                    background: "none",
+                    border: "1px solid #0794B5",
+                    borderRadius: 6,
+                    cursor: "pointer",
+                  }}
+                >
+                  Mark all as read
+                </button>
+              )}
             </div>
-            <div className="notification-list">
-              {notifications.map((n) => {
-                const Icon = iconMap[n.type];
-                return (
-                  <div key={n.id} className={`notification-item ${n.unread ? "unread" : ""}`}>
-                    <div className={`notification-icon ${n.type}`}><Icon size={20} /></div>
-                    <div className="notification-content">
-                      <div className="notification-title">{n.title}</div>
-                      <div className="notification-desc">{n.desc}</div>
+
+            {notifications === undefined ? (
+              <div style={{ display: "flex", justifyContent: "center", padding: 60 }}>
+                <Loader2 size={24} className="animate-spin" style={{ color: "#999" }} />
+              </div>
+            ) : notifications.length === 0 ? (
+              <div className="empty-state" style={{ padding: 60 }}>
+                <div className="empty-state-icon"><Bell size={24} /></div>
+                <div className="empty-state-title">No notifications</div>
+                <div className="empty-state-desc">You're all caught up! Notifications will appear here.</div>
+              </div>
+            ) : (
+              <div className="notification-list">
+                {notifications.map((n) => {
+                  const Icon = iconMap[n.type] ?? Bell;
+                  return (
+                    <div
+                      key={n._id}
+                      className={`notification-item ${!n.isRead ? "unread" : ""}`}
+                      onClick={() => !n.isRead && handleMarkRead(n._id)}
+                      style={{ cursor: n.isRead ? "default" : "pointer" }}
+                    >
+                      <div className={`notification-icon ${n.type}`}><Icon size={20} /></div>
+                      <div className="notification-content">
+                        <div className="notification-title">{n.title}</div>
+                        <div className="notification-desc">{n.description}</div>
+                      </div>
+                      <div className="notification-time">{getTimeAgo(n.createdAt)}</div>
                     </div>
-                    <div className="notification-time">{n.time}</div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       </div>

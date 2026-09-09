@@ -1,22 +1,18 @@
 import { useState, useEffect } from "react";
+import { useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import Sidebar from "@/components/dashboard/Sidebar";
 import { useDashboardNav } from "@/hooks/useDashboardNav";
+import { Loader2, Package } from "lucide-react";
 import "@/styles/dashboard.css";
 import "@/styles/pages.css";
-
-const pastDeliveries = [
-  { id: "ORD-54321", date: "28 Aug 2025", from: "Sandton City", to: "Rosebank Mall", status: "completed", driver: "Sipho M.", amount: "R145.00" },
-  { id: "ORD-54298", date: "26 Aug 2025", from: "Melrose Arch", to: "Menlyn Park", status: "completed", driver: "Thabo K.", amount: "R210.00" },
-  { id: "ORD-54265", date: "24 Aug 2025", from: "V&A Waterfront", to: "Canal Walk", status: "completed", driver: "Lusanda M.", amount: "R89.00" },
-  { id: "ORD-54230", date: "22 Aug 2025", from: "Gateway Mall", to: "uMhlanga Ridge", status: "cancelled", driver: "N/A", amount: "R0.00" },
-  { id: "ORD-54198", date: "20 Aug 2025", from: "Eastgate Mall", to: "Bedford Centre", status: "completed", driver: "Pieter V.", amount: "R67.50" },
-  { id: "ORD-54155", date: "18 Aug 2025", from: "Brooklyn Mall", to: "Hatfield Plaza", status: "completed", driver: "Sipho M.", amount: "R52.00" },
-];
 
 export default function PastDeliveries() {
   const { handleSidebarNavigation } = useDashboardNav();
   const [activeSidebarItem, setActiveSidebarItem] = useState("Past Deliveries");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  const pastDeliveries = useQuery(api.users.getPastDeliveries);
 
   useEffect(() => {
     const onResize = () => { if (window.innerWidth > 1024) setSidebarOpen(false); };
@@ -27,6 +23,15 @@ export default function PastDeliveries() {
   const onSidebarNav = (item: string) => {
     setActiveSidebarItem(item);
     handleSidebarNavigation(item);
+  };
+
+  const formatDate = (timestamp?: number) => {
+    if (!timestamp) return "N/A";
+    return new Date(timestamp).toLocaleDateString("en-ZA", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
   };
 
   return (
@@ -54,7 +59,7 @@ export default function PastDeliveries() {
 
       <div className="dash-app">
         {sidebarOpen && <div className="dash-mobile-overlay visible" onClick={() => setSidebarOpen(false)} />}
-        <Sidebar activeItem={activeSidebarItem}          onItemChange={onSidebarNav} isOpen={sidebarOpen} />
+        <Sidebar activeItem={activeSidebarItem} onItemChange={onSidebarNav} isOpen={sidebarOpen} />
 
         <div className="dash-workspace" style={{ overflow: "auto" }}>
           <div className="page-container">
@@ -62,32 +67,43 @@ export default function PastDeliveries() {
               <h1 className="page-title">Past Deliveries</h1>
               <p className="page-subtitle">View your delivery history and details</p>
             </div>
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Order ID</th>
-                  <th>Date</th>
-                  <th>From</th>
-                  <th>To</th>
-                  <th>Driver</th>
-                  <th>Amount</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pastDeliveries.map((d) => (
-                  <tr key={d.id}>
-                    <td style={{ fontWeight: 600 }}>{d.id}</td>
-                    <td>{d.date}</td>
-                    <td>{d.from}</td>
-                    <td>{d.to}</td>
-                    <td>{d.driver}</td>
-                    <td>{d.amount}</td>
-                    <td><span className={`status-badge ${d.status}`}>{d.status.charAt(0).toUpperCase() + d.status.slice(1)}</span></td>
+
+            {pastDeliveries === undefined ? (
+              <div style={{ display: "flex", justifyContent: "center", padding: 60 }}>
+                <Loader2 size={24} className="animate-spin" style={{ color: "#999" }} />
+              </div>
+            ) : pastDeliveries.length === 0 ? (
+              <div className="empty-state" style={{ padding: 60 }}>
+                <div className="empty-state-icon"><Package size={24} /></div>
+                <div className="empty-state-title">No past deliveries</div>
+                <div className="empty-state-desc">Your completed and cancelled deliveries will appear here.</div>
+              </div>
+            ) : (
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Tracking #</th>
+                    <th>Date</th>
+                    <th>Driver</th>
+                    <th>Status</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {pastDeliveries.map((d: any) => (
+                    <tr key={d._id}>
+                      <td style={{ fontWeight: 600 }}>{d.trackingNumber}</td>
+                      <td>{formatDate(d.completedAt)}</td>
+                      <td>{d.driverName}</td>
+                      <td>
+                        <span className={`status-badge ${d.status}`}>
+                          {d.status.charAt(0).toUpperCase() + d.status.slice(1).replace(/_/g, " ")}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
       </div>

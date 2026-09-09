@@ -1,5 +1,5 @@
 import { Circle, MapPin, Truck } from "lucide-react";
-import type { Order } from "@/data/orders";
+import type { Order } from "@/types/dashboard";
 
 interface OrderCardProps {
   order: Order;

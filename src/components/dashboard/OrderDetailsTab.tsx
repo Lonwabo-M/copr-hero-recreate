@@ -1,5 +1,5 @@
 import { Circle, MapPin, Calendar, Clock } from "lucide-react";
-import type { Order } from "@/data/orders";
+import type { Order } from "@/types/dashboard";
 
 interface OrderDetailsTabProps {
   order: Order;

@@ -1,7 +1,7 @@
 import SearchBar from "./SearchBar";
 import OrderFilters from "./OrderFilters";
 import OrderCard from "./OrderCard";
-import type { Order } from "@/data/orders";
+import type { Order } from "@/types/dashboard";
 
 interface OrderPanelProps {
   orders: Order[];

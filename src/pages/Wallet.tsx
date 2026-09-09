@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import Sidebar from "@/components/dashboard/Sidebar";
 import { useDashboardNav } from "@/hooks/useDashboardNav";
 import {
@@ -11,76 +13,10 @@ import {
   Download,
   CreditCard,
   Building,
+  Loader2,
 } from "lucide-react";
 import "@/styles/dashboard.css";
 import "@/styles/wallet.css";
-
-interface Transaction {
-  id: string;
-  type: "credit" | "debit";
-  amount: number;
-  description: string;
-  date: string;
-  status: "completed" | "pending" | "failed";
-  reference?: string;
-}
-
-const transactions: Transaction[] = [
-  {
-    id: "TXN001",
-    type: "credit",
-    amount: 5000,
-    description: "Wallet Top-Up",
-    date: "2026-09-01",
-    status: "completed",
-    reference: "TOP-20260901-001",
-  },
-  {
-    id: "TXN002",
-    type: "debit",
-    amount: 450,
-    description: "Delivery #ORD-55667",
-    date: "2026-08-31",
-    status: "completed",
-    reference: "DEL-20260831-042",
-  },
-  {
-    id: "TXN003",
-    type: "debit",
-    amount: 320,
-    description: "Delivery #ORD-55666",
-    date: "2026-08-30",
-    status: "completed",
-    reference: "DEL-20260830-038",
-  },
-  {
-    id: "TXN004",
-    type: "credit",
-    amount: 2000,
-    description: "Refund - Delivery #ORD-55660",
-    date: "2026-08-29",
-    status: "completed",
-    reference: "REF-20260829-015",
-  },
-  {
-    id: "TXN005",
-    type: "debit",
-    amount: 780,
-    description: "Delivery #ORD-55665",
-    date: "2026-08-28",
-    status: "pending",
-    reference: "DEL-20260828-031",
-  },
-  {
-    id: "TXN006",
-    type: "credit",
-    amount: 10000,
-    description: "Business Account Top-Up",
-    date: "2026-08-27",
-    status: "completed",
-    reference: "TOP-20260827-008",
-  },
-];
 
 export default function Wallet() {
   const { handleSidebarNavigation } = useDashboardNav();
@@ -90,26 +26,29 @@ export default function Wallet() {
   const [showTopUpModal, setShowTopUpModal] = useState(false);
   const [topUpAmount, setTopUpAmount] = useState("");
 
-  const balance = 15450;
+  const wallet = useQuery(api.users.getWallet);
+  const transactions = useQuery(api.users.getTransactions, {});
+
+  const balance = wallet?.balance ?? 0;
 
   const onSidebarNav = (item: string) => {
     setActiveSidebarItem(item);
     handleSidebarNavigation(item);
   };
 
-  const filteredTransactions = transactions.filter((t) => {
+  const filteredTransactions = transactions?.filter((t: any) => {
     if (activeFilter === "All") return true;
     if (activeFilter === "Credits") return t.type === "credit";
     if (activeFilter === "Debits") return t.type === "debit";
     return true;
-  });
+  }) ?? [];
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-ZA", {
       style: "currency",
       currency: "ZAR",
       minimumFractionDigits: 2,
-    }).format(amount);
+    }).format(amount / 100); // Convert cents to rand
   };
 
   return (
@@ -188,7 +127,13 @@ export default function Wallet() {
                   </div>
                   <div>
                     <p className="wallet-balance-label">Available Balance</p>
-                    <h2 className="wallet-balance-amount">{formatCurrency(balance)}</h2>
+                    <h2 className="wallet-balance-amount">
+                      {wallet === undefined ? (
+                        <Loader2 size={20} className="animate-spin" style={{ color: "#999" }} />
+                      ) : (
+                        formatCurrency(balance)
+                      )}
+                    </h2>
                   </div>
                 </div>
                 <button
@@ -248,45 +193,55 @@ export default function Wallet() {
 
               {/* Transactions List */}
               <div className="wallet-transactions-list">
-                {filteredTransactions.map((txn) => (
-                  <div key={txn.id} className="wallet-transaction">
-                    <div className="wallet-transaction-icon">
-                      {txn.type === "credit" ? (
-                        <ArrowDownLeft size={18} className="text-emerald-500" />
-                      ) : (
-                        <ArrowUpRight size={18} className="text-red-500" />
-                      )}
-                    </div>
-                    <div className="wallet-transaction-info">
-                      <p className="wallet-transaction-desc">{txn.description}</p>
-                      <p className="wallet-transaction-date">
-                        {new Date(txn.date).toLocaleDateString("en-ZA", {
-                          day: "2-digit",
-                          month: "short",
-                          year: "numeric",
-                        })}
-                        {txn.reference && (
-                          <span className="wallet-transaction-ref">{txn.reference}</span>
-                        )}
-                      </p>
-                    </div>
-                    <div className="wallet-transaction-amounts">
-                      <p
-                        className={`wallet-transaction-amount ${
-                          txn.type === "credit" ? "credit" : "debit"
-                        }`}
-                      >
-                        {txn.type === "credit" ? "+" : "-"}
-                        {formatCurrency(txn.amount)}
-                      </p>
-                      <span
-                        className={`wallet-transaction-status ${txn.status}`}
-                      >
-                        {txn.status}
-                      </span>
-                    </div>
+                {transactions === undefined ? (
+                  <div style={{ display: "flex", justifyContent: "center", padding: 40 }}>
+                    <Loader2 size={20} className="animate-spin" style={{ color: "#999" }} />
                   </div>
-                ))}
+                ) : filteredTransactions.length === 0 ? (
+                  <div style={{ textAlign: "center", padding: 40, color: "#999" }}>
+                    <p>No transactions yet</p>
+                  </div>
+                ) : (
+                  filteredTransactions.map((txn: any) => (
+                    <div key={txn._id} className="wallet-transaction">
+                      <div className="wallet-transaction-icon">
+                        {txn.type === "credit" ? (
+                          <ArrowDownLeft size={18} className="text-emerald-500" />
+                        ) : (
+                          <ArrowUpRight size={18} className="text-red-500" />
+                        )}
+                      </div>
+                      <div className="wallet-transaction-info">
+                        <p className="wallet-transaction-desc">{txn.description}</p>
+                        <p className="wallet-transaction-date">
+                          {new Date(txn.createdAt).toLocaleDateString("en-ZA", {
+                            day: "2-digit",
+                            month: "short",
+                            year: "numeric",
+                          })}
+                          {txn.reference && (
+                            <span className="wallet-transaction-ref">{txn.reference}</span>
+                          )}
+                        </p>
+                      </div>
+                      <div className="wallet-transaction-amounts">
+                        <p
+                          className={`wallet-transaction-amount ${
+                            txn.type === "credit" ? "credit" : "debit"
+                          }`}
+                        >
+                          {txn.type === "credit" ? "+" : "-"}
+                          {formatCurrency(txn.amount)}
+                        </p>
+                        <span
+                          className={`wallet-transaction-status ${txn.status}`}
+                        >
+                          {txn.status}
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           </div>
@@ -321,7 +276,7 @@ export default function Wallet() {
               <button
                 className="wallet-modal-confirm"
                 onClick={() => {
-                  // Handle top up
+                  // Handle top up - will be implemented with payment integration
                   setShowTopUpModal(false);
                   setTopUpAmount("");
                 }}

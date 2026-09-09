@@ -3,7 +3,7 @@ import VehiclePanel from "./VehiclePanel";
 import OrderDetailsTab from "./OrderDetailsTab";
 import DriverDetailsTab from "./DriverDetailsTab";
 import CustomerDetailsTab from "./CustomerDetailsTab";
-import type { Order } from "@/data/orders";
+import type { Order } from "@/types/dashboard";
 
 interface DetailsPanelProps {
   order: Order;

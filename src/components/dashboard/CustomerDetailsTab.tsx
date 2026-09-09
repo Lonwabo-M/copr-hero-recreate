@@ -1,4 +1,4 @@
-import type { CustomerInfo } from "@/data/orders";
+import type { CustomerInfo } from "@/types/dashboard";
 
 interface CustomerDetailsTabProps {
   customer: CustomerInfo;

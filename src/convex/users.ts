@@ -1,5 +1,7 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { query, QueryCtx } from "./_generated/server";
+import { requireAuth, getCurrentAuthUser } from "./auth/authorization";
+import { ROLES } from "./schema";
 
 /**
  * Get the current signed in user. Returns null if the user is not signed in.
@@ -31,3 +33,152 @@ export const getCurrentUser = async (ctx: QueryCtx) => {
   }
   return await ctx.db.get(userId);
 };
+
+/**
+ * Get the current user's wallet.
+ */
+export const getWallet = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await requireAuth(ctx);
+    const wallet = await ctx.db
+      .query("wallets")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .unique();
+
+    // Return wallet or a default empty wallet shape
+    return wallet ?? {
+      _id: null,
+      balance: 0,
+      currency: "ZAR" as const,
+      isActive: true,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+  },
+});
+
+/**
+ * Get the current user's transactions.
+ */
+export const getTransactions = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await requireAuth(ctx);
+    const wallet = await ctx.db
+      .query("wallets")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .unique();
+
+    if (!wallet) return [];
+
+    const transactions = await ctx.db
+      .query("transactions")
+      .withIndex("by_wallet", (q) => q.eq("walletId", wallet._id))
+      .order("desc")
+      .take(50);
+
+    return transactions;
+  },
+});
+
+/**
+ * Get invoices for the current user.
+ */
+export const getInvoices = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await requireAuth(ctx);
+    const user = await getCurrentAuthUser(ctx);
+    if (!user) throw new Error("User not found");
+
+    // Super admin and operations see all invoices
+    if (user.role === ROLES.SUPER_ADMIN || user.role === ROLES.OPERATIONS) {
+      return await ctx.db.query("invoices").order("desc").take(50);
+    }
+
+    // Others see only their own invoices
+    return await ctx.db
+      .query("invoices")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .order("desc")
+      .take(50);
+  },
+});
+
+/**
+ * Get past deliveries for the current user.
+ */
+export const getPastDeliveries = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await requireAuth(ctx);
+    const user = await getCurrentAuthUser(ctx);
+    if (!user) throw new Error("User not found");
+
+    let deliveries;
+
+    if (user.role === ROLES.SUPER_ADMIN || user.role === ROLES.OPERATIONS) {
+      // Admin sees all completed/cancelled deliveries
+      deliveries = await ctx.db
+        .query("deliveries")
+        .withIndex("by_status", (q) => q.eq("status", "delivered"))
+        .order("desc")
+        .take(50);
+
+      const cancelled = await ctx.db
+        .query("deliveries")
+        .withIndex("by_status", (q) => q.eq("status", "cancelled"))
+        .order("desc")
+        .take(50);
+
+      deliveries = [...deliveries, ...cancelled].sort((a, b) => (b.completedAt ?? 0) - (a.completedAt ?? 0));
+    } else if (user.role === ROLES.DRIVER) {
+      // Driver sees their assigned deliveries
+      deliveries = await ctx.db
+        .query("deliveries")
+        .withIndex("by_courier_status", (q) => q.eq("courierId", userId).eq("status", "delivered"))
+        .order("desc")
+        .take(50);
+    } else {
+      // Customer sees their orders' deliveries
+      const orders = await ctx.db
+        .query("orders")
+        .withIndex("by_sender", (q) => q.eq("senderId", userId))
+        .collect();
+
+      const orderIds = new Set(orders.map((o) => o._id));
+      const allDeliveries: any[] = [];
+
+      for (const order of orders) {
+        const delivery = await ctx.db
+          .query("deliveries")
+          .withIndex("by_order", (q) => q.eq("orderId", order._id))
+          .unique();
+        if (delivery && (delivery.status === "delivered" || delivery.status === "cancelled")) {
+          allDeliveries.push(delivery);
+        }
+      }
+
+      deliveries = allDeliveries.sort((a, b) => (b.completedAt ?? 0) - (a.completedAt ?? 0));
+    }
+
+    // Enrich with driver info
+    const enriched = [];
+    for (const d of deliveries) {
+      let driverName = "N/A";
+      if (d.courierId) {
+        const driver = await ctx.db.get(d.courierId);
+        if (driver && "name" in driver) {
+          driverName = (driver as any).name ?? "Unknown";
+        }
+      }
+      enriched.push({
+        ...d,
+        driverName,
+      });
+    }
+
+    return enriched;
+  },
+});

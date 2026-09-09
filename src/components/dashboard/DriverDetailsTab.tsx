@@ -1,4 +1,4 @@
-import type { DriverInfo } from "@/data/orders";
+import type { DriverInfo } from "@/types/dashboard";
 
 interface DriverDetailsTabProps {
   driver: DriverInfo;

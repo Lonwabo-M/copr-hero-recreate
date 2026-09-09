@@ -1,23 +1,19 @@
 import { useState, useEffect } from "react";
+import { useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import Sidebar from "@/components/dashboard/Sidebar";
 import { useDashboardNav } from "@/hooks/useDashboardNav";
+import { Loader2, FileText } from "lucide-react";
 import "@/styles/dashboard.css";
 import "@/styles/pages.css";
-
-const invoices = [
-  { id: "INV-2024-001", date: "30 Aug 2025", client: "TechCorp SA", amount: "R4,250.00", status: "paid" },
-  { id: "INV-2024-002", date: "28 Aug 2025", client: "FreshMart Logistics", amount: "R1,890.00", status: "pending" },
-  { id: "INV-2024-003", date: "25 Aug 2025", client: "UrbanDelivery Co", amount: "R3,120.00", status: "paid" },
-  { id: "INV-2024-004", date: "22 Aug 2025", client: "MediExpress", amount: "R2,680.00", status: "pending" },
-  { id: "INV-2024-005", date: "20 Aug 2025", client: "QuickShip PTY", amount: "R5,400.00", status: "paid" },
-  { id: "INV-2024-006", date: "18 Aug 2025", client: "GreenRoute", amount: "R950.00", status: "cancelled" },
-];
 
 export default function Invoices() {
   const { handleSidebarNavigation } = useDashboardNav();
   const [activeSidebarItem, setActiveSidebarItem] = useState("Invoices");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [filter, setFilter] = useState("All");
+
+  const invoices = useQuery(api.users.getInvoices);
 
   useEffect(() => {
     const onResize = () => { if (window.innerWidth > 1024) setSidebarOpen(false); };
@@ -30,7 +26,26 @@ export default function Invoices() {
     handleSidebarNavigation(item);
   };
 
-  const filtered = filter === "All" ? invoices : invoices.filter((i) => i.status === filter.toLowerCase());
+  const filtered = filter === "All"
+    ? invoices
+    : invoices?.filter((i: any) => i.status === filter.toLowerCase());
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat("en-ZA", {
+      style: "currency",
+      currency: "ZAR",
+      minimumFractionDigits: 2,
+    }).format(amount / 100);
+  };
+
+  const formatDate = (timestamp?: number) => {
+    if (!timestamp) return "N/A";
+    return new Date(timestamp).toLocaleDateString("en-ZA", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
+  };
 
   return (
     <div className="dashboard">
@@ -57,7 +72,7 @@ export default function Invoices() {
 
       <div className="dash-app">
         {sidebarOpen && <div className="dash-mobile-overlay visible" onClick={() => setSidebarOpen(false)} />}
-        <Sidebar activeItem={activeSidebarItem}          onItemChange={onSidebarNav} isOpen={sidebarOpen} />
+        <Sidebar activeItem={activeSidebarItem} onItemChange={onSidebarNav} isOpen={sidebarOpen} />
 
         <div className="dash-workspace" style={{ overflow: "auto" }}>
           <div className="page-container">
@@ -70,30 +85,43 @@ export default function Invoices() {
                 <button key={f} className={`filter-tab ${filter === f ? "active" : ""}`} onClick={() => setFilter(f)}>{f}</button>
               ))}
             </div>
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Invoice ID</th>
-                  <th>Date</th>
-                  <th>Client</th>
-                  <th>Amount</th>
-                  <th>Status</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((inv) => (
-                  <tr key={inv.id}>
-                    <td style={{ fontWeight: 600 }}>{inv.id}</td>
-                    <td>{inv.date}</td>
-                    <td>{inv.client}</td>
-                    <td style={{ fontWeight: 600 }}>{inv.amount}</td>
-                    <td><span className={`status-badge ${inv.status}`}>{inv.status.charAt(0).toUpperCase() + inv.status.slice(1)}</span></td>
-                    <td><button className="download-btn">Download</button></td>
+
+            {invoices === undefined ? (
+              <div style={{ display: "flex", justifyContent: "center", padding: 60 }}>
+                <Loader2 size={24} className="animate-spin" style={{ color: "#999" }} />
+              </div>
+            ) : !filtered || filtered.length === 0 ? (
+              <div className="empty-state" style={{ padding: 60 }}>
+                <div className="empty-state-icon"><FileText size={24} /></div>
+                <div className="empty-state-title">No invoices</div>
+                <div className="empty-state-desc">Your invoices will appear here.</div>
+              </div>
+            ) : (
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Invoice #</th>
+                    <th>Date</th>
+                    <th>Amount</th>
+                    <th>Status</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {filtered.map((inv: any) => (
+                    <tr key={inv._id}>
+                      <td style={{ fontWeight: 600 }}>{inv.invoiceNumber}</td>
+                      <td>{formatDate(inv.createdAt)}</td>
+                      <td style={{ fontWeight: 600 }}>{formatCurrency(inv.amount)}</td>
+                      <td>
+                        <span className={`status-badge ${inv.status}`}>
+                          {inv.status.charAt(0).toUpperCase() + inv.status.slice(1)}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
       </div>
