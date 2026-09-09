@@ -102,6 +102,115 @@ async function recordDeliveryEvent(
 // ─── Public Mutations ─────────────────────────────────────────────────────────
 
 /**
+ * Create an order and its delivery in one step.
+ *
+ * This is the primary entry point for the Request Delivery form.
+ * It creates addresses, an order, and a delivery atomically.
+ */
+export const createOrderAndDelivery = mutation({
+  args: {
+    orderName: v.string(),
+    parcelType: v.optional(v.string()),
+    expeditionType: v.optional(v.string()),
+    width: v.optional(v.number()),
+    height: v.optional(v.number()),
+    weight: v.optional(v.number()),
+    pickupAddress: v.string(),
+    dropoffAddress: v.string(),
+    pickupLat: v.number(),
+    pickupLng: v.number(),
+    dropoffLat: v.number(),
+    dropoffLng: v.number(),
+    scheduledTime: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    // 1. Authenticate
+    const userId = await requireAuth(ctx);
+    const user = await getCurrentAuthUser(ctx);
+    if (!user) throw new Error("User not found");
+
+    // 2. Create pickup address
+    const pickupAddressId = await ctx.db.insert("addresses", {
+      userId,
+      label: "Pickup",
+      street: args.pickupAddress,
+      city: "",
+      zip: "",
+      lat: args.pickupLat,
+      lng: args.pickupLng,
+    });
+
+    // 3. Create dropoff address
+    const dropoffAddressId = await ctx.db.insert("addresses", {
+      userId,
+      label: "Dropoff",
+      street: args.dropoffAddress,
+      city: "",
+      zip: "",
+      lat: args.dropoffLat,
+      lng: args.dropoffLng,
+    });
+
+    // 4. Create order
+    const now = Date.now();
+    const orderId = await ctx.db.insert("orders", {
+      senderId: userId,
+      businessId: user.businessId,
+      pickupAddressId,
+      dropoffAddressId,
+      status: "pending",
+      description: args.orderName,
+      packageSize: args.weight && args.weight > 30 ? "large" : args.weight && args.weight > 5 ? "medium" : "small",
+      parcelType: args.parcelType as any,
+      expeditionType: args.expeditionType as any,
+      width: args.width,
+      height: args.height,
+      weight: args.weight,
+      price: 0, // Will be calculated by pricing service
+      scheduledTime: args.scheduledTime,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    // 5. Generate tracking number
+    const trackingNumber = `LSH-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+
+    // 6. Create delivery in REQUESTED state
+    const deliveryId = await ctx.db.insert("deliveries", {
+      orderId,
+      status: DELIVERY_STATUS.REQUESTED,
+      trackingNumber,
+      pickupLat: args.pickupLat,
+      pickupLng: args.pickupLng,
+      dropoffLat: args.dropoffLat,
+      dropoffLng: args.dropoffLng,
+      startedAt: now,
+    });
+
+    // 7. Update order status
+    await ctx.db.patch(orderId, {
+      status: "confirmed",
+      trackingNumber,
+      updatedAt: now,
+    });
+
+    // 8. Record audit
+    await ctx.runMutation(internal.audit.service.recordDeliveryTransition, {
+      actorId: userId,
+      actorRole: user.role ?? "customer",
+      deliveryId,
+      orderId,
+      action: AUDIT_ACTIONS.DELIVERY_CREATED,
+      fromStatus: "none",
+      toStatus: DELIVERY_STATUS.REQUESTED,
+      metadata: JSON.stringify({ trackingNumber, orderName: args.orderName }),
+    });
+
+    return { orderId, deliveryId, trackingNumber };
+  },
+});
+
+/**
  * Create a new delivery request.
  *
  * Transitions: (any) -> REQUESTED

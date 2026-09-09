@@ -1,4 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useMutation } from "convex/react";
+import { api } from "@/convex/_generated/api";
+import { useCurrentUser, useNotificationPreferences, useUpdateNotificationPreferences } from "@/hooks/use-lasha";
 import Sidebar from "@/components/dashboard/Sidebar";
 import { useDashboardNav } from "@/hooks/useDashboardNav";
 import {
@@ -13,9 +16,10 @@ import {
   Phone,
   MapPin,
   Save,
+  Loader2,
 } from "lucide-react";
-import "@/styles/dashboard.css";
-import "@/styles/settings.css";
+import "styles/dashboard.css";
+import "styles/settings.css";
 
 type SettingsTab = "profile" | "business" | "notifications" | "security";
 
@@ -32,22 +36,28 @@ export default function Settings() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<SettingsTab>("profile");
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  // Profile state
-  const [firstName, setFirstName] = useState("Lusanda");
-  const [lastName, setLastName] = useState("Miya");
-  const [email, setEmail] = useState("lusanda@lasha.co.za");
-  const [phone, setPhone] = useState("+27 82 555 1234");
-  const [address, setAddress] = useState("12 Main Road, Sandton, Johannesburg");
+  // Convex data
+  const currentUser = useCurrentUser();
+  const preferences = useNotificationPreferences();
+  const updatePreferences = useUpdateNotificationPreferences();
+
+  // Profile state (initialized from Convex)
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [address, setAddress] = useState("");
 
   // Business state
-  const [companyName, setCompanyName] = useState("Miya Logistics");
-  const [companyEmail, setCompanyEmail] = useState("info@miyalogistics.co.za");
-  const [companyPhone, setCompanyPhone] = useState("+27 11 555 9876");
-  const [companyAddress, setCompanyAddress] = useState("45 Business Park, Midrand");
-  const [companyReg, setCompanyReg] = useState("2024/123456/07");
+  const [companyName, setCompanyName] = useState("");
+  const [companyEmail, setCompanyEmail] = useState("");
+  const [companyPhone, setCompanyPhone] = useState("");
+  const [companyAddress, setCompanyAddress] = useState("");
+  const [companyReg, setCompanyReg] = useState("");
 
-  // Notification state
+  // Notification state (from Convex preferences)
   const [emailNotifications, setEmailNotifications] = useState(true);
   const [smsNotifications, setSmsNotifications] = useState(true);
   const [pushNotifications, setPushNotifications] = useState(false);
@@ -60,15 +70,58 @@ export default function Settings() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [twoFactor, setTwoFactor] = useState(false);
 
+  // Initialize form from Convex user data
+  useEffect(() => {
+    if (currentUser) {
+      const nameParts = (currentUser.name ?? "").split(" ");
+      setFirstName(nameParts[0] ?? "");
+      setLastName(nameParts.slice(1).join(" ") ?? "");
+      setEmail(currentUser.email ?? "");
+      setPhone(currentUser.phone ?? "");
+    }
+  }, [currentUser]);
+
+  // Initialize notification preferences from Convex
+  useEffect(() => {
+    if (preferences) {
+      setEmailNotifications(preferences.emailNotifications ?? true);
+      setSmsNotifications(preferences.smsNotifications ?? true);
+      setPushNotifications(preferences.pushNotifications ?? false);
+      setDeliveryUpdates(preferences.deliveryUpdates ?? true);
+      setMarketingEmails(preferences.marketingEmails ?? false);
+    }
+  }, [preferences]);
+
   const onSidebarNav = (item: string) => {
     setActiveSidebarItem(item);
     handleSidebarNavigation(item);
   };
 
-  const handleSave = () => {
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      // Save notification preferences to Convex
+      if (activeTab === "notifications") {
+        await updatePreferences({
+          emailNotifications,
+          smsNotifications,
+          pushNotifications,
+          deliveryUpdates,
+          marketingEmails,
+        });
+      }
+      // Profile/business updates would require additional mutations
+      // For now, just save notification preferences
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (err) {
+      console.error("Failed to save settings:", err);
+    } finally {
+      setSaving(false);
+    }
   };
+
+  const isLoading = currentUser === undefined;
 
   return (
     <div className="dashboard">
@@ -114,7 +167,7 @@ export default function Settings() {
         )}
 
         {/* Sidebar */}
-        <Sidebar activeItem={activeSidebarItem}          onItemChange={onSidebarNav} isOpen={sidebarOpen} />
+        <Sidebar activeItem={activeSidebarItem} onItemChange={onSidebarNav} isOpen={sidebarOpen} />
 
         {/* Main content */}
         <main className="settings-main">
@@ -127,362 +180,389 @@ export default function Settings() {
               </p>
             </div>
 
-            {/* Settings layout */}
-            <div className="settings-layout">
-              {/* Settings tabs sidebar */}
-              <div className="settings-tabs">
-                {settingsTabs.map((tab) => {
-                  const Icon = tab.icon;
-                  return (
-                    <button
-                      key={tab.id}
-                      className={`settings-tab ${activeTab === tab.id ? "active" : ""}`}
-                      onClick={() => setActiveTab(tab.id)}
-                    >
-                      <Icon size={18} />
-                      <span>{tab.label}</span>
-                      <ChevronRight size={16} className="settings-tab-arrow" />
-                    </button>
-                  );
-                })}
+            {/* Loading state */}
+            {isLoading ? (
+              <div style={{ display: "flex", justifyContent: "center", padding: 60 }}>
+                <Loader2 size={24} className="animate-spin" style={{ color: "#999" }} />
               </div>
+            ) : (
+              /* Settings layout */
+              <div className="settings-layout">
+                {/* Settings tabs sidebar */}
+                <div className="settings-tabs">
+                  {settingsTabs.map((tab) => {
+                    const Icon = tab.icon;
+                    return (
+                      <button
+                        key={tab.id}
+                        className={`settings-tab ${activeTab === tab.id ? "active" : ""}`}
+                        onClick={() => setActiveTab(tab.id)}
+                      >
+                        <Icon size={18} />
+                        <span>{tab.label}</span>
+                        <ChevronRight size={16} className="settings-tab-arrow" />
+                      </button>
+                    );
+                  })}
+                </div>
 
-              {/* Settings content */}
-              <div className="settings-content">
-                {activeTab === "profile" && (
-                  <div className="settings-section">
-                    <h2 className="settings-section-title">Profile Information</h2>
-                    <p className="settings-section-desc">
-                      Update your personal information and how others see you on the platform.
-                    </p>
+                {/* Settings content */}
+                <div className="settings-content">
+                  {activeTab === "profile" && (
+                    <div className="settings-section">
+                      <h2 className="settings-section-title">Profile Information</h2>
+                      <p className="settings-section-desc">
+                        Update your personal information and how others see you on the platform.
+                      </p>
 
-                    {/* Avatar */}
-                    <div className="settings-avatar-section">
-                      <div className="settings-avatar">
-                        <img
-                          src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&q=80"
-                          alt="Profile"
-                          className="settings-avatar-img"
-                        />
-                        <button className="settings-avatar-edit">
-                          <Camera size={14} />
-                        </button>
+                      {/* Avatar */}
+                      <div className="settings-avatar-section">
+                        <div className="settings-avatar">
+                          {currentUser?.image ? (
+                            <img
+                              src={currentUser.image}
+                              alt="Profile"
+                              className="settings-avatar-img"
+                            />
+                          ) : (
+                            <div style={{
+                              width: 80, height: 80, borderRadius: "50%",
+                              background: "#42b4d0", display: "flex",
+                              alignItems: "center", justifyContent: "center",
+                              fontSize: 32, fontWeight: 600, color: "#fff",
+                            }}>
+                              {(firstName || "U")[0].toUpperCase()}
+                            </div>
+                          )}
+                          <button className="settings-avatar-edit">
+                            <Camera size={14} />
+                          </button>
+                        </div>
+                        <div>
+                          <p className="settings-avatar-name">{firstName} {lastName}</p>
+                          <p className="settings-avatar-email">{email}</p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="settings-avatar-name">{firstName} {lastName}</p>
-                        <p className="settings-avatar-email">{email}</p>
+
+                      {/* Form fields */}
+                      <div className="settings-form-grid">
+                        <div className="settings-field">
+                          <label className="settings-label">First Name</label>
+                          <input
+                            type="text"
+                            className="settings-input"
+                            value={firstName}
+                            onChange={(e) => setFirstName(e.target.value)}
+                          />
+                        </div>
+                        <div className="settings-field">
+                          <label className="settings-label">Last Name</label>
+                          <input
+                            type="text"
+                            className="settings-input"
+                            value={lastName}
+                            onChange={(e) => setLastName(e.target.value)}
+                          />
+                        </div>
+                        <div className="settings-field">
+                          <label className="settings-label">
+                            <Mail size={14} />
+                            Email
+                          </label>
+                          <input
+                            type="email"
+                            className="settings-input"
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                          />
+                        </div>
+                        <div className="settings-field">
+                          <label className="settings-label">
+                            <Phone size={14} />
+                            Phone
+                          </label>
+                          <input
+                            type="tel"
+                            className="settings-input"
+                            value={phone}
+                            onChange={(e) => setPhone(e.target.value)}
+                          />
+                        </div>
+                        <div className="settings-field full-width">
+                          <label className="settings-label">
+                            <MapPin size={14} />
+                            Address
+                          </label>
+                          <input
+                            type="text"
+                            className="settings-input"
+                            value={address}
+                            onChange={(e) => setAddress(e.target.value)}
+                          />
+                        </div>
                       </div>
                     </div>
+                  )}
 
-                    {/* Form fields */}
-                    <div className="settings-form-grid">
-                      <div className="settings-field">
-                        <label className="settings-label">First Name</label>
-                        <input
-                          type="text"
-                          className="settings-input"
-                          value={firstName}
-                          onChange={(e) => setFirstName(e.target.value)}
-                        />
-                      </div>
-                      <div className="settings-field">
-                        <label className="settings-label">Last Name</label>
-                        <input
-                          type="text"
-                          className="settings-input"
-                          value={lastName}
-                          onChange={(e) => setLastName(e.target.value)}
-                        />
-                      </div>
-                      <div className="settings-field">
-                        <label className="settings-label">
-                          <Mail size={14} />
-                          Email
-                        </label>
-                        <input
-                          type="email"
-                          className="settings-input"
-                          value={email}
-                          onChange={(e) => setEmail(e.target.value)}
-                        />
-                      </div>
-                      <div className="settings-field">
-                        <label className="settings-label">
-                          <Phone size={14} />
-                          Phone
-                        </label>
-                        <input
-                          type="tel"
-                          className="settings-input"
-                          value={phone}
-                          onChange={(e) => setPhone(e.target.value)}
-                        />
-                      </div>
-                      <div className="settings-field full-width">
-                        <label className="settings-label">
-                          <MapPin size={14} />
-                          Address
-                        </label>
-                        <input
-                          type="text"
-                          className="settings-input"
-                          value={address}
-                          onChange={(e) => setAddress(e.target.value)}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                )}
+                  {activeTab === "business" && (
+                    <div className="settings-section">
+                      <h2 className="settings-section-title">Business Information</h2>
+                      <p className="settings-section-desc">
+                        Manage your business details and company information.
+                      </p>
 
-                {activeTab === "business" && (
-                  <div className="settings-section">
-                    <h2 className="settings-section-title">Business Information</h2>
-                    <p className="settings-section-desc">
-                      Manage your business details and company information.
-                    </p>
-
-                    <div className="settings-form-grid">
-                      <div className="settings-field full-width">
-                        <label className="settings-label">Company Name</label>
-                        <input
-                          type="text"
-                          className="settings-input"
-                          value={companyName}
-                          onChange={(e) => setCompanyName(e.target.value)}
-                        />
-                      </div>
-                      <div className="settings-field">
-                        <label className="settings-label">
-                          <Mail size={14} />
-                          Business Email
-                        </label>
-                        <input
-                          type="email"
-                          className="settings-input"
-                          value={companyEmail}
-                          onChange={(e) => setCompanyEmail(e.target.value)}
-                        />
-                      </div>
-                      <div className="settings-field">
-                        <label className="settings-label">
-                          <Phone size={14} />
-                          Business Phone
-                        </label>
-                        <input
-                          type="tel"
-                          className="settings-input"
-                          value={companyPhone}
-                          onChange={(e) => setCompanyPhone(e.target.value)}
-                        />
-                      </div>
-                      <div className="settings-field full-width">
-                        <label className="settings-label">
-                          <MapPin size={14} />
-                          Business Address
-                        </label>
-                        <input
-                          type="text"
-                          className="settings-input"
-                          value={companyAddress}
-                          onChange={(e) => setCompanyAddress(e.target.value)}
-                        />
-                      </div>
-                      <div className="settings-field">
-                        <label className="settings-label">Registration Number</label>
-                        <input
-                          type="text"
-                          className="settings-input"
-                          value={companyReg}
-                          onChange={(e) => setCompanyReg(e.target.value)}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {activeTab === "notifications" && (
-                  <div className="settings-section">
-                    <h2 className="settings-section-title">Notification Preferences</h2>
-                    <p className="settings-section-desc">
-                      Choose how you want to be notified about deliveries and account updates.
-                    </p>
-
-                    <div className="settings-toggles">
-                      <div className="settings-toggle-row">
-                        <div className="settings-toggle-info">
-                          <p className="settings-toggle-label">Email Notifications</p>
-                          <p className="settings-toggle-desc">
-                            Receive delivery updates and account alerts via email
-                          </p>
-                        </div>
-                        <label className="settings-switch">
-                          <input
-                            type="checkbox"
-                            checked={emailNotifications}
-                            onChange={(e) => setEmailNotifications(e.target.checked)}
-                          />
-                          <span className="settings-switch-slider" />
-                        </label>
-                      </div>
-
-                      <div className="settings-toggle-row">
-                        <div className="settings-toggle-info">
-                          <p className="settings-toggle-label">SMS Notifications</p>
-                          <p className="settings-toggle-desc">
-                            Get text messages for critical delivery updates
-                          </p>
-                        </div>
-                        <label className="settings-switch">
-                          <input
-                            type="checkbox"
-                            checked={smsNotifications}
-                            onChange={(e) => setSmsNotifications(e.target.checked)}
-                          />
-                          <span className="settings-switch-slider" />
-                        </label>
-                      </div>
-
-                      <div className="settings-toggle-row">
-                        <div className="settings-toggle-info">
-                          <p className="settings-toggle-label">Push Notifications</p>
-                          <p className="settings-toggle-desc">
-                            Receive push notifications on your devices
-                          </p>
-                        </div>
-                        <label className="settings-switch">
-                          <input
-                            type="checkbox"
-                            checked={pushNotifications}
-                            onChange={(e) => setPushNotifications(e.target.checked)}
-                          />
-                          <span className="settings-switch-slider" />
-                        </label>
-                      </div>
-
-                      <div className="settings-toggle-row">
-                        <div className="settings-toggle-info">
-                          <p className="settings-toggle-label">Delivery Updates</p>
-                          <p className="settings-toggle-desc">
-                            Real-time status updates for all your shipments
-                          </p>
-                        </div>
-                        <label className="settings-switch">
-                          <input
-                            type="checkbox"
-                            checked={deliveryUpdates}
-                            onChange={(e) => setDeliveryUpdates(e.target.checked)}
-                          />
-                          <span className="settings-switch-slider" />
-                        </label>
-                      </div>
-
-                      <div className="settings-toggle-row">
-                        <div className="settings-toggle-info">
-                          <p className="settings-toggle-label">Marketing Emails</p>
-                          <p className="settings-toggle-desc">
-                            Promotional offers and product updates
-                          </p>
-                        </div>
-                        <label className="settings-switch">
-                          <input
-                            type="checkbox"
-                            checked={marketingEmails}
-                            onChange={(e) => setMarketingEmails(e.target.checked)}
-                          />
-                          <span className="settings-switch-slider" />
-                        </label>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {activeTab === "security" && (
-                  <div className="settings-section">
-                    <h2 className="settings-section-title">Security Settings</h2>
-                    <p className="settings-section-desc">
-                      Manage your password and security preferences.
-                    </p>
-
-                    {/* Change password */}
-                    <div className="settings-security-card">
-                      <h3 className="settings-security-title">Change Password</h3>
                       <div className="settings-form-grid">
                         <div className="settings-field full-width">
-                          <label className="settings-label">Current Password</label>
+                          <label className="settings-label">Company Name</label>
                           <input
-                            type="password"
+                            type="text"
                             className="settings-input"
-                            placeholder="Enter current password"
-                            value={currentPassword}
-                            onChange={(e) => setCurrentPassword(e.target.value)}
+                            value={companyName}
+                            onChange={(e) => setCompanyName(e.target.value)}
                           />
                         </div>
                         <div className="settings-field">
-                          <label className="settings-label">New Password</label>
+                          <label className="settings-label">
+                            <Mail size={14} />
+                            Business Email
+                          </label>
                           <input
-                            type="password"
+                            type="email"
                             className="settings-input"
-                            placeholder="Enter new password"
-                            value={newPassword}
-                            onChange={(e) => setNewPassword(e.target.value)}
+                            value={companyEmail}
+                            onChange={(e) => setCompanyEmail(e.target.value)}
                           />
                         </div>
                         <div className="settings-field">
-                          <label className="settings-label">Confirm Password</label>
+                          <label className="settings-label">
+                            <Phone size={14} />
+                            Business Phone
+                          </label>
                           <input
-                            type="password"
+                            type="tel"
                             className="settings-input"
-                            placeholder="Confirm new password"
-                            value={confirmPassword}
-                            onChange={(e) => setConfirmPassword(e.target.value)}
+                            value={companyPhone}
+                            onChange={(e) => setCompanyPhone(e.target.value)}
                           />
                         </div>
-                      </div>
-                    </div>
-
-                    {/* Two-factor auth */}
-                    <div className="settings-security-card">
-                      <div className="settings-toggle-row">
-                        <div className="settings-toggle-info">
-                          <p className="settings-toggle-label">Two-Factor Authentication</p>
-                          <p className="settings-toggle-desc">
-                            Add an extra layer of security to your account
-                          </p>
-                        </div>
-                        <label className="settings-switch">
+                        <div className="settings-field full-width">
+                          <label className="settings-label">
+                            <MapPin size={14} />
+                            Business Address
+                          </label>
                           <input
-                            type="checkbox"
-                            checked={twoFactor}
-                            onChange={(e) => setTwoFactor(e.target.checked)}
+                            type="text"
+                            className="settings-input"
+                            value={companyAddress}
+                            onChange={(e) => setCompanyAddress(e.target.value)}
                           />
-                          <span className="settings-switch-slider" />
-                        </label>
-                      </div>
-                    </div>
-
-                    {/* Session info */}
-                    <div className="settings-security-card">
-                      <h3 className="settings-security-title">Active Sessions</h3>
-                      <div className="settings-session">
-                        <div className="settings-session-info">
-                          <p className="settings-session-device">Chrome on MacOS</p>
-                          <p className="settings-session-time">Last active: Now</p>
                         </div>
-                        <span className="settings-session-current">Current</span>
+                        <div className="settings-field">
+                          <label className="settings-label">Registration Number</label>
+                          <input
+                            type="text"
+                            className="settings-input"
+                            value={companyReg}
+                            onChange={(e) => setCompanyReg(e.target.value)}
+                          />
+                        </div>
                       </div>
                     </div>
+                  )}
+
+                  {activeTab === "notifications" && (
+                    <div className="settings-section">
+                      <h2 className="settings-section-title">Notification Preferences</h2>
+                      <p className="settings-section-desc">
+                        Choose how you want to be notified about deliveries and account updates.
+                      </p>
+
+                      <div className="settings-toggles">
+                        <div className="settings-toggle-row">
+                          <div className="settings-toggle-info">
+                            <p className="settings-toggle-label">Email Notifications</p>
+                            <p className="settings-toggle-desc">
+                              Receive delivery updates and account alerts via email
+                            </p>
+                          </div>
+                          <label className="settings-switch">
+                            <input
+                              type="checkbox"
+                              checked={emailNotifications}
+                              onChange={(e) => setEmailNotifications(e.target.checked)}
+                            />
+                            <span className="settings-switch-slider" />
+                          </label>
+                        </div>
+
+                        <div className="settings-toggle-row">
+                          <div className="settings-toggle-info">
+                            <p className="settings-toggle-label">SMS Notifications</p>
+                            <p className="settings-toggle-desc">
+                              Get text messages for critical delivery updates
+                            </p>
+                          </div>
+                          <label className="settings-switch">
+                            <input
+                              type="checkbox"
+                              checked={smsNotifications}
+                              onChange={(e) => setSmsNotifications(e.target.checked)}
+                            />
+                            <span className="settings-switch-slider" />
+                          </label>
+                        </div>
+
+                        <div className="settings-toggle-row">
+                          <div className="settings-toggle-info">
+                            <p className="settings-toggle-label">Push Notifications</p>
+                            <p className="settings-toggle-desc">
+                              Receive push notifications on your devices
+                            </p>
+                          </div>
+                          <label className="settings-switch">
+                            <input
+                              type="checkbox"
+                              checked={pushNotifications}
+                              onChange={(e) => setPushNotifications(e.target.checked)}
+                            />
+                            <span className="settings-switch-slider" />
+                          </label>
+                        </div>
+
+                        <div className="settings-toggle-row">
+                          <div className="settings-toggle-info">
+                            <p className="settings-toggle-label">Delivery Updates</p>
+                            <p className="settings-toggle-desc">
+                              Real-time status updates for all your shipments
+                            </p>
+                          </div>
+                          <label className="settings-switch">
+                            <input
+                              type="checkbox"
+                              checked={deliveryUpdates}
+                              onChange={(e) => setDeliveryUpdates(e.target.checked)}
+                            />
+                            <span className="settings-switch-slider" />
+                          </label>
+                        </div>
+
+                        <div className="settings-toggle-row">
+                          <div className="settings-toggle-info">
+                            <p className="settings-toggle-label">Marketing Emails</p>
+                            <p className="settings-toggle-desc">
+                              Promotional offers and product updates
+                            </p>
+                          </div>
+                          <label className="settings-switch">
+                            <input
+                              type="checkbox"
+                              checked={marketingEmails}
+                              onChange={(e) => setMarketingEmails(e.target.checked)}
+                            />
+                            <span className="settings-switch-slider" />
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {activeTab === "security" && (
+                    <div className="settings-section">
+                      <h2 className="settings-section-title">Security Settings</h2>
+                      <p className="settings-section-desc">
+                        Manage your password and security preferences.
+                      </p>
+
+                      {/* Change password */}
+                      <div className="settings-security-card">
+                        <h3 className="settings-security-title">Change Password</h3>
+                        <div className="settings-form-grid">
+                          <div className="settings-field full-width">
+                            <label className="settings-label">Current Password</label>
+                            <input
+                              type="password"
+                              className="settings-input"
+                              placeholder="Enter current password"
+                              value={currentPassword}
+                              onChange={(e) => setCurrentPassword(e.target.value)}
+                            />
+                          </div>
+                          <div className="settings-field">
+                            <label className="settings-label">New Password</label>
+                            <input
+                              type="password"
+                              className="settings-input"
+                              placeholder="Enter new password"
+                              value={newPassword}
+                              onChange={(e) => setNewPassword(e.target.value)}
+                            />
+                          </div>
+                          <div className="settings-field">
+                            <label className="settings-label">Confirm Password</label>
+                            <input
+                              type="password"
+                              className="settings-input"
+                              placeholder="Confirm new password"
+                              value={confirmPassword}
+                              onChange={(e) => setConfirmPassword(e.target.value)}
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Two-factor auth */}
+                      <div className="settings-security-card">
+                        <div className="settings-toggle-row">
+                          <div className="settings-toggle-info">
+                            <p className="settings-toggle-label">Two-Factor Authentication</p>
+                            <p className="settings-toggle-desc">
+                              Add an extra layer of security to your account
+                            </p>
+                          </div>
+                          <label className="settings-switch">
+                            <input
+                              type="checkbox"
+                              checked={twoFactor}
+                              onChange={(e) => setTwoFactor(e.target.checked)}
+                            />
+                            <span className="settings-switch-slider" />
+                          </label>
+                        </div>
+                      </div>
+
+                      {/* Session info */}
+                      <div className="settings-security-card">
+                        <h3 className="settings-security-title">Active Sessions</h3>
+                        <div className="settings-session">
+                          <div className="settings-session-info">
+                            <p className="settings-session-device">Current Browser</p>
+                            <p className="settings-session-time">Last active: Now</p>
+                          </div>
+                          <span className="settings-session-current">Current</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Save button */}
+                  <div className="settings-actions">
+                    <button
+                      className="settings-save-btn"
+                      onClick={handleSave}
+                      disabled={saving}
+                      style={{ opacity: saving ? 0.7 : 1 }}
+                    >
+                      {saving ? (
+                        <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} />
+                      ) : (
+                        <Save size={16} />
+                      )}
+                      {saved ? "Saved!" : saving ? "Saving..." : "Save Changes"}
+                    </button>
                   </div>
-                )}
-
-                {/* Save button */}
-                <div className="settings-actions">
-                  <button className="settings-save-btn" onClick={handleSave}>
-                    <Save size={16} />
-                    {saved ? "Saved!" : "Save Changes"}
-                  </button>
                 </div>
               </div>
-            </div>
+            )}
           </div>
         </main>
       </div>

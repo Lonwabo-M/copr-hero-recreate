@@ -1,6 +1,7 @@
 import { useState } from "react";
 import Sidebar from "@/components/dashboard/Sidebar";
 import { useDashboardNav } from "@/hooks/useDashboardNav";
+import { useCreateOrderAndDelivery } from "@/hooks/use-lasha";
 import {
   Package,
   MapPin,
@@ -9,15 +10,22 @@ import {
   Clock,
   ChevronDown,
   Weight,
-  Ruler,
+  Loader2,
+  CheckCircle2,
+  AlertCircle,
 } from "lucide-react";
-import "@/styles/dashboard.css";
-import "@/styles/request-delivery.css";
+import "styles/dashboard.css";
+import "styles/request-delivery.css";
 
 export default function RequestDelivery() {
   const { handleSidebarNavigation } = useDashboardNav();
   const [activeSidebarItem, setActiveSidebarItem] = useState("Request Delivery");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [success, setSuccess] = useState<{ trackingNumber: string } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const createOrderAndDelivery = useCreateOrderAndDelivery();
 
   // Form state
   const [orderName, setOrderName] = useState("");
@@ -35,6 +43,75 @@ export default function RequestDelivery() {
   const onSidebarNav = (item: string) => {
     setActiveSidebarItem(item);
     handleSidebarNavigation(item);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setSuccess(null);
+
+    // Basic validation
+    if (!orderName.trim()) {
+      setError("Order name is required");
+      return;
+    }
+    if (!pickupLocation.trim()) {
+      setError("Pickup location is required");
+      return;
+    }
+    if (!dropoffLocation.trim()) {
+      setError("Drop-off location is required");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      // Use default Johannesburg coordinates for now
+      // In production, these would come from geocoding the address strings
+      const pickupLat = -26.2041 + (Math.random() - 0.5) * 0.02;
+      const pickupLng = 28.0473 + (Math.random() - 0.5) * 0.02;
+      const dropoffLat = -26.1367 + (Math.random() - 0.5) * 0.02;
+      const dropoffLng = 28.0433 + (Math.random() - 0.5) * 0.02;
+
+      const scheduledTime = scheduleDate
+        ? new Date(`${scheduleDate}T${timeFrom}`).getTime()
+        : undefined;
+
+      const result = await createOrderAndDelivery({
+        orderName: orderName.trim(),
+        parcelType: parcelType || undefined,
+        expeditionType: expeditionType || undefined,
+        width: width ? parseFloat(width) : undefined,
+        height: height ? parseFloat(height) : undefined,
+        weight: weight ? parseFloat(weight) : undefined,
+        pickupAddress: pickupLocation.trim(),
+        dropoffAddress: dropoffLocation.trim(),
+        pickupLat,
+        pickupLng,
+        dropoffLat,
+        dropoffLng,
+        scheduledTime,
+      });
+
+      setSuccess({ trackingNumber: result.trackingNumber });
+
+      // Reset form
+      setOrderName("");
+      setParcelType("");
+      setExpeditionType("");
+      setWidth("");
+      setHeight("");
+      setWeight("");
+      setPickupLocation("");
+      setDropoffLocation("");
+      setScheduleDate("");
+      setTimeFrom("00:00");
+      setTimeTo("00:00");
+    } catch (err: any) {
+      setError(err.message || "Failed to create delivery. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -101,8 +178,49 @@ export default function RequestDelivery() {
               </p>
             </div>
 
+            {/* Success message */}
+            {success && (
+              <div style={{
+                padding: "16px 20px",
+                borderRadius: 10,
+                background: "#f0fdf4",
+                border: "1px solid #bbf7d0",
+                marginBottom: 24,
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+              }}>
+                <CheckCircle2 size={20} style={{ color: "#16a34a", flexShrink: 0 }} />
+                <div>
+                  <p style={{ fontSize: 14, fontWeight: 600, color: "#166534" }}>
+                    Delivery created successfully!
+                  </p>
+                  <p style={{ fontSize: 13, color: "#15803d", marginTop: 2 }}>
+                    Tracking number: <strong>{success.trackingNumber}</strong>
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Error message */}
+            {error && (
+              <div style={{
+                padding: "16px 20px",
+                borderRadius: 10,
+                background: "#fef2f2",
+                border: "1px solid #fecaca",
+                marginBottom: 24,
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+              }}>
+                <AlertCircle size={20} style={{ color: "#dc2626", flexShrink: 0 }} />
+                <p style={{ fontSize: 14, color: "#991b1b" }}>{error}</p>
+              </div>
+            )}
+
             {/* Form */}
-            <form className="request-delivery-form" onSubmit={(e) => e.preventDefault()}>
+            <form className="request-delivery-form" onSubmit={handleSubmit}>
               <div className="form-grid">
                 {/* Left column */}
                 <div className="form-column">
@@ -319,8 +437,20 @@ export default function RequestDelivery() {
 
               {/* Submit button */}
               <div className="form-actions">
-                <button type="submit" className="form-submit-btn">
-                  Request Delivery
+                <button
+                  type="submit"
+                  className="form-submit-btn"
+                  disabled={submitting}
+                  style={{ opacity: submitting ? 0.7 : 1 }}
+                >
+                  {submitting ? (
+                    <>
+                      <Loader2 size={16} style={{ marginRight: 8, animation: "spin 1s linear infinite" }} />
+                      Creating Delivery...
+                    </>
+                  ) : (
+                    "Request Delivery"
+                  )}
                 </button>
               </div>
             </form>
