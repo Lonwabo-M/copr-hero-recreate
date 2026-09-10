@@ -3,8 +3,8 @@ import { useWallet } from "@/hooks/use-lasha";
 import Sidebar from "@/components/dashboard/Sidebar";
 import { useDashboardNav } from "@/hooks/useDashboardNav";
 import { CreditCard, Wallet, Building2, Smartphone, Loader2 } from "lucide-react";
-import "styles/dashboard.css";
-import "styles/pages.css";
+import "@/styles/dashboard.css";
+import "@/styles/pages.css";
 
 export default function MakePayment() {
   const { handleSidebarNavigation } = useDashboardNav();

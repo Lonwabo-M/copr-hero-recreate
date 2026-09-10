@@ -14,8 +14,8 @@ import {
   CheckCircle2,
   AlertCircle,
 } from "lucide-react";
-import "styles/dashboard.css";
-import "styles/request-delivery.css";
+import "@/styles/dashboard.css";
+import "@/styles/request-delivery.css";
 
 export default function RequestDelivery() {
   const { handleSidebarNavigation } = useDashboardNav();

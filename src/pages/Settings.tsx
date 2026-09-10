@@ -18,8 +18,8 @@ import {
   Save,
   Loader2,
 } from "lucide-react";
-import "styles/dashboard.css";
-import "styles/settings.css";
+import "@/styles/dashboard.css";
+import "@/styles/settings.css";
 
 type SettingsTab = "profile" | "business" | "notifications" | "security";
 
