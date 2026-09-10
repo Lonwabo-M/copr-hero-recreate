@@ -11,6 +11,7 @@ import { v } from "convex/values";
 import { Id, Doc } from "../_generated/dataModel";
 import { ROLES, DELIVERY_STATUS } from "../schema";
 import { requireAuth, getCurrentAuthUser } from "../auth/authorization";
+import { createLogger, LOG_CATEGORIES } from "../logging/service";
 
 // ─── Notification Event Types ─────────────────────────────────────────────────
 
@@ -455,6 +456,12 @@ export const sendDeliveryNotification = internalMutation({
     const now = Date.now();
     const results = [];
 
+    const log = createLogger(LOG_CATEGORIES.NOTIFICATION);
+    log.info(`Sending delivery notification: ${args.eventType}`, {
+      operation: "sendDeliveryNotification",
+      metadata: { recipientCount: args.recipientUserIds.length, eventType: args.eventType },
+    });
+
     for (const userId of args.recipientUserIds) {
       // Check preferences
       const prefs = await ctx.db
@@ -494,6 +501,11 @@ export const sendDeliveryNotification = internalMutation({
 
       results.push(userId);
     }
+
+    log.info(`Delivery notification sent: ${results.length}/${args.recipientUserIds.length}`, {
+      operation: "sendDeliveryNotification",
+      metadata: { sent: results.length, total: args.recipientUserIds.length },
+    });
 
     return { sent: results.length };
   },

@@ -10,6 +10,7 @@
 
 import { action } from "../_generated/server";
 import { v } from "convex/values";
+import { createLogger, LOG_CATEGORIES, generateCorrelationId } from "../logging/service";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -82,14 +83,29 @@ export const getRoute = action({
     ),
   },
   handler: async (ctx, args) => {
+    const log = createLogger(LOG_CATEGORIES.ROUTING);
     const apiKey = process.env.GOOGLE_MAPS_API_KEY;
 
-    if (!apiKey) {
-      // Fall back to OSRM (no API key required)
-      return await getRouteOSRM(args);
-    }
+    const provider = apiKey ? "google-maps" : "osrm";
+    log.info(`Route request: ${provider}`, {
+      operation: "getRoute",
+      metadata: { provider },
+    });
 
-    return await getRouteGoogle(args, apiKey);
+    try {
+      if (!apiKey) {
+        return await getRouteOSRM(args);
+      }
+      return await getRouteGoogle(args, apiKey);
+    } catch (err) {
+      log.error(`Routing failed: ${provider}`, {
+        operation: "getRoute",
+        error: err instanceof Error
+          ? { name: err.name, message: err.message }
+          : { name: "UnknownError", message: String(err) },
+      });
+      throw err;
+    }
   },
 });
 
@@ -156,6 +172,7 @@ export const calculateDistance = action({
     ),
   },
   handler: async (ctx, args) => {
+    const log = createLogger(LOG_CATEGORIES.ROUTING);
     // Calculate straight-line distance
     const straightLineDistance = haversineDistance(
       args.origin.lat,
@@ -171,12 +188,29 @@ export const calculateDistance = action({
         travelMode: args.travelMode,
       });
 
+      log.info("Distance calculation completed", {
+        operation: "calculateDistance",
+        metadata: {
+          routeDistance: route.distance,
+          straightLineDistance,
+          ratio: route.distance / straightLineDistance,
+        },
+      });
+
       return {
         straightLineDistance,
         routeDistance: route.distance,
         routeDuration: route.duration,
       };
-    } catch {
+    } catch (err) {
+      // Graceful degradation: return straight-line distance
+      log.warn("Routing failed, using straight-line distance", {
+        operation: "calculateDistance",
+        error: err instanceof Error
+          ? { name: err.name, message: err.message }
+          : { name: "UnknownError", message: String(err) },
+        metadata: { degraded: true, straightLineDistance },
+      });
       return {
         straightLineDistance,
       };

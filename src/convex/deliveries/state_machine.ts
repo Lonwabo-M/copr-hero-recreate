@@ -32,6 +32,7 @@ import {
 import { PERMISSIONS, ROLES } from "../schema";
 import { AUDIT_ACTIONS } from "../audit/service";
 import { internal } from "../_generated/api";
+import { createLogger, LOG_CATEGORIES, generateCorrelationId } from "../logging/service";
 
 // ─── Helper Functions ─────────────────────────────────────────────────────────
 

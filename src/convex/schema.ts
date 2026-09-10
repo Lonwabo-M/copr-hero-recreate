@@ -881,6 +881,27 @@ const schema = defineSchema(
       .index("by_order", ["orderId", "timestamp"])
       .index("by_timestamp", ["timestamp"])  
       .index("by_action", ["action", "timestamp"]),
+
+    // ─── Metrics Storage ────────────────────────────────────────────────
+    // Aggregated operational metrics for monitoring.
+    // Stored at regular intervals by background jobs or manual collection.
+    metrics_storage: defineTable({
+      metricName: v.string(),           // e.g., "delivery.completed", "dispatch.latency",
+      metricType: v.union(
+        v.literal("counter"),
+        v.literal("gauge"),
+        v.literal("histogram"),
+      ),
+      value: v.number(),
+      dimensions: v.optional(v.record(v.string(), v.string())),  // e.g., { status: "delivered", role: "driver" }
+      timestamp: v.number(),
+      periodStart: v.number(),           // aggregation window start
+      periodEnd: v.number(),             // aggregation window end
+      sampleCount: v.optional(v.number()),  // for histograms
+    })
+      .index("by_name_time", ["metricName", "timestamp"])
+      .index("by_period", ["periodStart", "periodEnd"])
+      .index("by_name_period", ["metricName", "periodStart"]),
   },
   {
     schemaValidation: false,
