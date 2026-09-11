@@ -111,7 +111,7 @@ export default function DriverActiveDelivery() {
   const completeDelivery = useMutation(api.deliveries.state_machine.completeDelivery);
   const rejectAssignment = useMutation(api.deliveries.state_machine.rejectAssignment);
 
-  const mutations: Record<string, (args: { deliveryId: string }) => Promise<unknown>> = useMemo(
+  const mutations: Record<string, (args: { deliveryId: any }) => Promise<unknown>> = useMemo(
     () => ({
       acceptAssignment,
       startEnRouteToPickup,
@@ -153,8 +153,8 @@ export default function DriverActiveDelivery() {
     const items: { time: number; text: string }[] = [];
     if (tracking.delivery.startedAt) items.push({ time: tracking.delivery.startedAt, text: "Delivery started" });
     for (const e of tracking.routeHistory ?? []) {
-      if (e.type === "status_change" || e.type === "arrival") {
-        items.push({ time: e.timestamp, text: e.type === "arrival" ? "Location arrival event" : "Status updated" });
+      if (e.type !== "location_update") {
+        items.push({ time: e.timestamp, text: `Status: ${e.type.replace(/_/g, " ")}` });
       }
     }
     if (tracking.delivery.completedAt) items.push({ time: tracking.delivery.completedAt, text: "Delivered" });

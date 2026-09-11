@@ -6,6 +6,7 @@ const routes: Record<string, string> = {
   "Past Deliveries": "/past-deliveries",
   "Request Delivery": "/request-delivery",
   "Track Delivery": "/track-delivery",
+  "Active Delivery": "/driver/active-delivery",
   Invoices: "/invoices",
   Wallet: "/wallet",
   "Make Payment": "/make-payment",

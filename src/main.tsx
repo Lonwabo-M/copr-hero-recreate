@@ -25,6 +25,7 @@ import Legal from "./pages/Legal.tsx";
 import Downloads from "./pages/Downloads.tsx";
 import NotFound from "./pages/NotFound.tsx";
 import OperationsCentre from "./pages/OperationsCentre.tsx";
+import DriverActiveDelivery from "./pages/DriverActiveDelivery.tsx";
 
 /** Silent error boundary — if VlyToolbar crashes it renders nothing instead of
  *  crashing the whole app (e.g. hook errors in WebContainer environment). */

@@ -197,7 +197,7 @@
 | **Status** | **PARTIAL** |
 | **Evidence** | All primary pages use Convex queries/mutations. The hook layer (`use-lasha.ts`) provides clean abstractions. Real-time subscriptions work via Convex reactive queries. Auth integration is complete (RequireAuth wrapper, auth redirect, sign-in/sign-out). |
 | **Relevant files** | All `src/pages/`, `src/hooks/use-lasha.ts`, `src/components/RequireAuth.tsx` |
-| **What is not connected** | 1. MakePayment page does not call any Convex mutation. 2. ~~Settings page cannot save profile changes.~~ **FIXED** — Settings now persists profile, business, and notification changes via `users.updateMyProfile` / `users.businessProfile.updateMyBusiness` / `notifications.service.updatePreferences`, with saving/success/error states. 3. ~~RequestDelivery uses random coordinates.~~ **FIXED** — now uses `geocodeAddress` Convex action. 4. No driver-specific active delivery UI page. 5. No POD submission UI. 6. No dispatch management UI actions. 7. Offline hooks exist but no page uses them. 8. Routing hooks exist but no page uses them. 9. No trip management UI. Settings Security tab (password/2FA/sessions) remains display-only — no password auth exists (OTP-based). |
+| **What is not connected** | 1. MakePayment page does not call any Convex mutation. 2. ~~Settings page cannot save profile changes.~~ **FIXED** — Settings now persists profile, business, and notification changes via `users.updateMyProfile` / `users.businessProfile.updateMyBusiness` / `notifications.service.updatePreferences`, with saving/success/error states. 3. ~~RequestDelivery uses random coordinates.~~ **FIXED** — now uses `geocodeAddress` Convex action. 4. ~~No driver-specific active delivery UI page.~~ **FIXED** — `DriverActiveDelivery.tsx` at `/driver/active-delivery` (sidebar "Active Delivery"), wired to `getMyCurrentDelivery`, `getDeliveryTracking`, all 7 driver state-machine mutations, and `updateDeliveryLocation`. 5. No POD submission UI. 6. No dispatch management UI actions. 7. Offline hooks exist but no page uses them. 8. Routing hooks exist but no page uses them (driver page links to Google Maps directions instead). 9. No trip management UI. Settings Security tab (password/2FA/sessions) remains display-only — no password auth exists (OTP-based). |
 
 ---
 
@@ -206,8 +206,8 @@
 | | |
 |---|---|
 | **Status** | **PARTIAL** |
-| **Evidence** | 9 test files exist: state machine tests (552 lines), production-readiness tests (937 lines), authorization tests, dispatch scoring tests, audit tests, notification tests, POD tests, pricing tests, tracking tests. All are pure-logic tests that validate schema constants, transition rules, scoring functions, and data structures. |
-| **Relevant files** | `src/convex/deliveries/state_machine.test.ts`, `src/convex/testing/production-readiness.test.ts`, `src/convex/auth/authorization.test.ts`, `src/convex/dispatch/scoring_service.test.ts`, `src/convex/audit/audit.test.ts`, `src/convex/notifications/notifications.test.ts`, `src/convex/pod/pod.test.ts`, `src/convex/pricing/pricing.test.ts`, `src/convex/tracking/tracking.test.ts` |
+| **Evidence** | 11 test files exist: state machine tests (552 lines), production-readiness tests (937 lines), authorization tests, dispatch scoring tests, audit tests, notification tests, POD tests, pricing tests (incl. order-creation pricing integration + failure rollback), tracking tests, profile validation tests (15), driver workflow tests (8 — verify the driver UI's status→action map exactly mirrors server `VALID_TRANSITIONS`/`TRANSITION_PERMISSIONS` and that terminal statuses offer no actions). All are pure-logic tests that validate schema constants, transition rules, scoring functions, and data structures. |
+| **Relevant files** | `src/convex/deliveries/state_machine.test.ts`, `src/convex/testing/production-readiness.test.ts`, `src/convex/testing/driver-workflow.test.ts`, `src/convex/auth/authorization.test.ts`, `src/convex/dispatch/scoring_service.test.ts`, `src/convex/audit/audit.test.ts`, `src/convex/notifications/notifications.test.ts`, `src/convex/pod/pod.test.ts`, `src/convex/pricing/pricing.test.ts`, `src/convex/tracking/tracking.test.ts`, `src/convex/users/profileValidation.test.ts` |
 | **What is missing** | 1. No integration tests that run against a real Convex database. 2. No React component tests. 3. No E2E tests. 4. No concurrent acceptance tests against real mutations. 5. No vitest config found — tests use custom simple runners, not a standard test framework. Tests are run via `bunx tsx <file>`, not `vitest`. |
 
 ---
@@ -287,12 +287,12 @@ The codebase **correctly follows the intended Vite + React + Convex architecture
 | Area | What Exists | What Is Missing |
 |------|-------------|-----------------|
 | Offline Sync Integration | Libraries exist, hooks exist | NOT connected to any React page |
-| Routing Integration | Client+server routing, hooks exist; geocoding now connected | NOT used for directions; RequestDelivery geocoding fixed |
+| Routing Integration | Client+server routing, hooks exist; geocoding connected; driver page exposes directions via Google Maps deep links | NOT used for in-app directions; no map rendering; RequestDelivery geocoding fixed |
 | Pricing Integration | Engine exists; `calculateAndStoreQuote` mandatory; failure rolls back transaction | No UI for pricing rules; uses haversine distance (not routing distance) |
 | Operations Centre | Overview tab with real data | Tabs beyond Overview are minimal; no dispatch actions, no map, no audit viewer |
 | Observability | Logging + metrics services defined | Not called by most Convex functions; no external monitoring |
 | Testing | 9 pure-logic test files | No integration tests, no React tests, no E2E tests |
-| UI/Backend Integration | Primary pages connected; Settings profile/business saving now works | MakePayment stub, no driver/POD/dispatch UI |
+| UI/Backend Integration | Primary pages connected; Settings profile/business saving now works; Driver Active Delivery UI built on existing state machine | MakePayment stub, no POD submission UI, no dispatch management UI |
 
 ### What Is INCORRECT
 
@@ -309,7 +309,7 @@ The codebase **correctly follows the intended Vite + React + Convex architecture
 
 | Area | Status |
 |------|--------|
-| Driver active delivery UI page | No page exists for drivers to view/manage their active delivery |
+| Driver active delivery UI page | ~~No page exists for drivers to view/manage their active delivery~~ **BUILT** — `src/pages/DriverActiveDelivery.tsx` (`/driver/active-delivery`): session-derived assignment via `getMyCurrentDelivery`, per-state primary action mapped 1:1 to existing state-machine mutations, progress steps, pickup/dropoff cards with Google Maps directions links, package details, timeline from `getDeliveryTracking`, one-shot location sharing via `updateDeliveryLocation`, loading/empty/error states, responsive layout with safe-driving notice |
 | POD submission UI | No page for drivers to submit proof of delivery |
 | Trip management UI | No trip viewing/management page |
 | Map component | No map display for tracking or dispatch |
@@ -319,7 +319,7 @@ The codebase **correctly follows the intended Vite + React + Convex architecture
 | SMS/Email notifications | Only in-app notifications; no external delivery channels |
 | Rate limiting | Not implemented |
 | Profile mutation | ~~Cannot save profile changes~~ **FIXED** — `users.updateMyProfile` + `users.businessProfile.updateMyBusiness` connected to Settings |
-| Driver GPS reporting UI | No page for drivers to report GPS (hooks exist but are unused) |
+| Driver GPS reporting UI | ~~No page for drivers to report GPS~~ **PARTIALLY BUILT** — one-shot "Share my location" button on Driver Active Delivery calls existing `tracking.mutations.updateDeliveryLocation` (browser Geolocation API). No background/continuous GPS loop, no offline queue |
 
 ### Critical Architectural Problems
 
