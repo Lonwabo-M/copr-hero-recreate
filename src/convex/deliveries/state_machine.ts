@@ -100,6 +100,27 @@ async function recordDeliveryEvent(
   });
 }
 
+// ─── Helpers ───────────────────────────────────────────────────────────────
+
+/**
+ * Calculate haversine distance between two coordinates in kilometers.
+ * Used for pricing when no routing distance is available.
+ */
+function haversineDistanceKm(
+  lat1: number, lng1: number,
+  lat2: number, lng2: number
+): number {
+  const R = 6371; // Earth radius in km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
 // ─── Public Mutations ─────────────────────────────────────────────────────────
 
 /**
@@ -195,7 +216,26 @@ export const createOrderAndDelivery = mutation({
       updatedAt: now,
     });
 
-    // 8. Record audit
+    // 8. Calculate price using the existing pricing engine
+    let orderPrice = 0;
+    try {
+      const distanceKm = haversineDistanceKm(
+        args.pickupLat, args.pickupLng,
+        args.dropoffLat, args.dropoffLng
+      );
+      const quote = await ctx.runMutation(
+        internal.pricing.service.calculateAndStoreQuote,
+        { orderId, distanceKm }
+      );
+      orderPrice = quote.totalCharge;
+    } catch (pricingError: any) {
+      // Pricing failure should not prevent delivery creation,
+      // but we log it and keep price as 0 (fallback)
+      // This preserves the delivery lifecycle while flagging the issue.
+      console.warn(`Pricing calculation failed for order ${orderId}:`, pricingError?.message);
+    }
+
+    // 9. Record audit
     await ctx.runMutation(internal.audit.service.recordDeliveryTransition, {
       actorId: userId,
       actorRole: user.role ?? "customer",
@@ -207,7 +247,7 @@ export const createOrderAndDelivery = mutation({
       metadata: JSON.stringify({ trackingNumber, orderName: args.orderName }),
     });
 
-    return { orderId, deliveryId, trackingNumber };
+    return { orderId, deliveryId, trackingNumber, price: orderPrice };
   },
 });
 

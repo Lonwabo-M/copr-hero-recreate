@@ -438,6 +438,88 @@ export const deactivatePricingRule = mutation({
 // ─── Internal Mutations (for state machine integration) ──────────────────────
 
 /**
+ * Calculate and store a quote for an order.
+ * Called internally by the delivery state machine during order creation.
+ * This is the authoritative pricing calculation used by createOrderAndDelivery.
+ */
+export const calculateAndStoreQuote = internalMutation({
+  args: {
+    orderId: v.id("orders"),
+    distanceKm: v.number(),
+  },
+  handler: async (ctx, args) => {
+    // Get the order
+    const order = await ctx.db.get(args.orderId);
+    if (!order) throw new Error("Order not found");
+
+    // Find matching pricing rule
+    const rule = await ctx.db
+      .query("pricing_rules")
+      .withIndex("size_expedition", (q) =>
+        q
+          .eq("packageSize", order.packageSize)
+          .eq("expeditionType", order.expeditionType ?? "standard")
+          .eq("isActive", true)
+      )
+      .first();
+
+    if (!rule) {
+      throw new Error("No active pricing rule found for this delivery type");
+    }
+
+    // Calculate pricing
+    const input: PricingInput = {
+      packageSize: order.packageSize,
+      parcelType: order.parcelType,
+      expeditionType: order.expeditionType ?? "standard",
+      distanceKm: args.distanceKm,
+      weightKg: order.weight ?? 0,
+    };
+
+    const breakdown = calculatePricingBreakdown(input, rule);
+
+    // Store the quote
+    const quoteId = await ctx.db.insert("delivery_quotes", {
+      orderId: args.orderId,
+      pricingRuleId: breakdown.pricingRuleId,
+      userId: order.senderId,
+      basePrice: breakdown.basePrice,
+      distanceFee: breakdown.distanceFee,
+      weightFee: breakdown.weightFee,
+      subtotal: breakdown.subtotal,
+      expressSurcharge: breakdown.expressSurcharge,
+      sameDaySurcharge: breakdown.sameDaySurcharge,
+      additionalFees: breakdown.additionalFees,
+      deliveryFee: breakdown.deliveryFee,
+      platformFee: breakdown.platformFee,
+      totalCharge: breakdown.totalCharge,
+      driverEarnings: breakdown.driverEarnings,
+      distanceKm: breakdown.distanceKm,
+      weightKg: breakdown.weightKg,
+      calculatedAt: Date.now(),
+    });
+
+    // Update order with the quote price
+    await ctx.db.patch(args.orderId, {
+      price: breakdown.totalCharge,
+      updatedAt: Date.now(),
+    });
+
+    return {
+      quoteId,
+      totalCharge: breakdown.totalCharge,
+      driverEarnings: breakdown.driverEarnings,
+      platformFee: breakdown.platformFee,
+    };
+  },
+});
+
+/**
+ * Create settlement when delivery is completed.
+ * Called by the delivery state machine.
+ */
+
+/**
  * Create settlement when delivery is completed.
  * Called by the delivery state machine.
  */

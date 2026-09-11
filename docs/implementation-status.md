@@ -127,10 +127,11 @@
 | | |
 |---|---|
 | **Status** | **PARTIAL** |
-| **Evidence** | `src/convex/pricing/service.ts` (577 lines): full pricing calculation (base price, distance fee, weight fee, surcharges, platform fee, driver earnings), quote generation, pricing rule CRUD, active rule queries. `pricing_rules` table with versioning, effectiveness dates, platform fee config. `delivery_quotes` table stores per-delivery pricing breakdown. `settlements` table with idempotency. Pricing tests (269 lines). |
-| **Relevant files** | `src/convex/pricing/service.ts`, `src/convex/pricing/pricing.test.ts` |
-| **What is missing** | Settlement processing mutation does not exist (only the table schema). No payout/disbursement logic. Price is calculated on order creation (`createOrderAndDelivery` calls pricing internally), but there is no UI to view/manage pricing rules. No React hook exposes settlement data. `src/convex/pricing/service.ts` contains `calculateQuote` but it is not called from `createOrderAndDelivery` — the order creation function calculates price inline. |
-| **What is incorrect** | Pricing rules exist in DB but the `createOrderAndDelivery` mutation calculates price without looking up active rules — it uses hardcoded defaults. The `calculateQuote` function in pricing/service.ts is never called from the delivery creation flow. |
+| **Evidence** | `src/convex/pricing/service.ts` (~660 lines): full pricing calculation (base price, distance fee, weight fee, surcharges, platform fee, driver earnings), quote generation, pricing rule CRUD, active rule queries. `pricing_rules` table with versioning, effectiveness dates, platform fee config. `delivery_quotes` table stores per-delivery pricing breakdown. `settlements` table with idempotency. Pricing tests (269 lines). **`calculateAndStoreQuote` internalMutation added** — called by `createOrderAndDelivery` to calculate price using active pricing rules and store a quote. |
+| **Relevant files** | `src/convex/pricing/service.ts`, `src/convex/pricing/pricing.test.ts`, `src/convex/deliveries/state_machine.ts` |
+| **What was repaired** | `createOrderAndDelivery` now calls `internal.pricing.service.calculateAndStoreQuote` after order creation, computing haversine distance between pickup/dropoff coordinates and looking up the active pricing rule matching the order's packageSize + expeditionType. The calculated `totalCharge` is stored on the order. If no matching pricing rule exists, the delivery is still created with price 0 (graceful degradation). |
+| **What is missing** | Settlement processing mutation does not exist (only the table schema). No payout/disbursement logic. No UI to view/manage pricing rules. No React hook exposes settlement data. No real routing distance (uses haversine straight-line distance as fallback). |
+| **What is incorrect** | None remaining for pricing calculation during order creation. Settlement/payout processing still not implemented. |
 
 ---
 
@@ -287,7 +288,7 @@ The codebase **correctly follows the intended Vite + React + Convex architecture
 |------|-------------|-----------------|
 | Offline Sync Integration | Libraries exist, hooks exist | NOT connected to any React page |
 | Routing Integration | Client+server routing, hooks exist; geocoding now connected | NOT used for directions; RequestDelivery geocoding fixed |
-| Pricing Integration | Engine exists | `createOrderAndDelivery` does not call it; uses inline calculation |
+| Pricing Integration | Engine exists; `calculateAndStoreQuote` internalMutation added | No UI for pricing rules; uses haversine distance (not routing distance) |
 | Operations Centre | Overview tab with real data | Tabs beyond Overview are minimal; no dispatch actions, no map, no audit viewer |
 | Observability | Logging + metrics services defined | Not called by most Convex functions; no external monitoring |
 | Testing | 9 pure-logic test files | No integration tests, no React tests, no E2E tests |
@@ -299,7 +300,7 @@ The codebase **correctly follows the intended Vite + React + Convex architecture
 |------|-------|
 | RequestDelivery | ~~Uses `Math.random()` for coordinates~~ **FIXED** — now uses `geocodeAddress` Convex action with Google Maps/Nominatim |
 | MakePayment | Uses `setTimeout` stub — should call a Convex action/payment provider |
-| Pricing flow | `createOrderAndDelivery` does not use `pricing.service.calculateQuote` |
+| Pricing flow | ~~`createOrderAndDelivery` does not use `pricing.service.calculateQuote`~~ **FIXED** — now calls `calculateAndStoreQuote` internalMutation |
 | Dashboard transform | `transformDeliveryToOrder()` has hardcoded fallback values for vehicle/driver/customer |
 | Settings | Profile fields displayed but no mutation to save changes |
 | Docs | `docs/architecture.md` references non-existent `domains/` structure, `trips` table, Paystack integration |
@@ -327,7 +328,7 @@ None. The architecture is sound. The issue is that several subsystems were imple
 ### Important Technical Problems
 
 1. ~~**RequestDelivery uses random coordinates**~~ **FIXED** — Now uses `geocodeAddress` Convex action (Google Maps Geocoding API with Nominatim fallback). Both pickup and dropoff addresses are geocoded via server-side Convex action before order creation. Failed geocoding prevents submission with a clear user-facing error. Button shows "Resolving addresses..." during geocoding phase.
-2. **Pricing not called from order creation** — Orders get a default price, not a calculated one.
+2. ~~**Pricing not called from order creation**~~ **FIXED** — `createOrderAndDelivery` now calls `internal.pricing.service.calculateAndStoreQuote` to calculate price using active pricing rules, then stores the result on the order.
 3. **MakePayment is a no-op** — Users cannot actually add funds.
 4. **Settings is read-only** — Users cannot update their profile.
 
