@@ -114,10 +114,11 @@
 | | |
 |---|---|
 | **Status** | **PARTIAL** |
-| **Evidence** | Client-side: `src/lib/routing/index.ts` (RoutingService with Google Maps + OSRM fallback, caching, retry), `src/lib/routing/providers/google-maps.ts`, `src/lib/routing/providers/osrm.ts`, `src/lib/routing/cache.ts`, `src/lib/routing/errors.ts`. Server-side: `src/convex/routing/actions.ts` (Convex action for server-side routing with API key). React hooks: `src/hooks/use-routing.ts` (useRoute, useETA, useDistanceMatrix, useGeocoding). |
-| **Relevant files** | `src/lib/routing/` (6 files), `src/convex/routing/actions.ts`, `src/hooks/use-routing.ts` |
-| **What is missing** | No React page uses `useRoute` or `useRouting` hooks. RequestDelivery generates random coordinates instead of geocoding. The routing system is fully implemented but not integrated into any user-facing flow. |
-| **What is incorrect** | `src/pages/RequestDelivery.tsx` line ~76-82 uses `Math.random()` for pickup/dropoff coordinates instead of geocoding. This is mock data that should use the routing service. |
+| **Evidence** | Client-side: `src/lib/routing/index.ts` (RoutingService with Google Maps + OSRM fallback, caching, retry), `src/lib/routing/providers/google-maps.ts`, `src/lib/routing/providers/osrm.ts`, `src/lib/routing/cache.ts`, `src/lib/routing/errors.ts`. Server-side: `src/convex/routing/actions.ts` (Convex actions for server-side routing and geocoding with API key). React hooks: `src/hooks/use-routing.ts` (useRoute, useETA, useDistanceMatrix). **Geocoding now integrated** via `geocodeAddress` Convex action (Google Maps Geocoding API with Nominatim fallback). RequestDelivery calls this action before order creation. |
+| **Relevant files** | `src/lib/routing/` (6 files), `src/convex/routing/actions.ts`, `src/hooks/use-routing.ts`, `src/pages/RequestDelivery.tsx` |
+| **What is missing** | No React page uses `useRoute` or `useRouting` hooks for turn-by-turn directions. The routing/direction system is fully implemented but not integrated into any user-facing flow. |
+| **What was repaired** | `src/convex/routing/actions.ts`: Added `geocodeAddress` Convex action (Google Maps Geocoding API + Nominatim fallback). `src/pages/RequestDelivery.tsx`: Replaced `Math.random()` coordinates with real geocoding via the action. Added geocoding loading state ("Resolving addresses...") and error handling for failed geocoding. |
+| **What is incorrect** | None remaining for geocoding. Routing/directions still not used by any page. |
 
 ---
 
@@ -184,7 +185,7 @@
 | **Status** | **PARTIAL** |
 | **Evidence** | Most pages connect to real Convex queries. No mock arrays, fake user objects, or hardcoded driver lists remain. Dashboard transforms delivery data from Convex. Notifications read from Convex. Wallet/Transactions read from Convex. PastDeliveries, Invoices read from Convex. |
 | **Relevant files** | All pages in `src/pages/` |
-| **What is remaining mock data** | 1. `src/pages/RequestDelivery.tsx` lines 76-82: random Johannesburg coordinates (`Math.random()`) instead of real geocoding. 2. `src/pages/MakePayment.tsx` lines 47-53: `setTimeout` stub instead of real payment processing — no Convex action called. 3. `src/pages/Dashboard.tsx` `transformDeliveryToOrder()`: hardcoded placeholder strings for vehicle ("N/A"), driver ("Unassigned"), customer ("Customer") — these are fallback strings for unpopulated fields, not fake data per se, but the vehicle/driver/customer enrichment is not done (no joins to enrich delivery with driver name, vehicle details). 4. `src/pages/Settings.tsx`: profile fields are read-only display of `currentUser` — no mutation to save profile changes. |
+| **What is remaining mock data** | 1. ~~`src/pages/RequestDelivery.tsx`: random Johannesburg coordinates (`Math.random()`)~~ **FIXED** — now uses `geocodeAddress` Convex action. 2. `src/pages/MakePayment.tsx` lines 47-53: `setTimeout` stub instead of real payment processing — no Convex action called. 3. `src/pages/Dashboard.tsx` `transformDeliveryToOrder()`: hardcoded placeholder strings for vehicle ("N/A"), driver ("Unassigned"), customer ("Customer") — these are fallback strings for unpopulated fields, not fake data per se, but the vehicle/driver/customer enrichment is not done (no joins to enrich delivery with driver name, vehicle details). 4. `src/pages/Settings.tsx`: profile fields are read-only display of `currentUser` — no mutation to save profile changes. |
 
 ---
 
@@ -195,7 +196,7 @@
 | **Status** | **PARTIAL** |
 | **Evidence** | All primary pages use Convex queries/mutations. The hook layer (`use-lasha.ts`) provides clean abstractions. Real-time subscriptions work via Convex reactive queries. Auth integration is complete (RequireAuth wrapper, auth redirect, sign-in/sign-out). |
 | **Relevant files** | All `src/pages/`, `src/hooks/use-lasha.ts`, `src/components/RequireAuth.tsx` |
-| **What is not connected** | 1. MakePayment page does not call any Convex mutation. 2. Settings page cannot save profile changes. 3. RequestDelivery uses random coordinates. 4. No driver-specific active delivery UI page. 5. No POD submission UI. 6. No dispatch management UI actions. 7. Offline hooks exist but no page uses them. 8. Routing hooks exist but no page uses them. 9. No trip management UI. |
+| **What is not connected** | 1. MakePayment page does not call any Convex mutation. 2. Settings page cannot save profile changes. 3. ~~RequestDelivery uses random coordinates.~~ **FIXED** — now uses `geocodeAddress` Convex action. 4. No driver-specific active delivery UI page. 5. No POD submission UI. 6. No dispatch management UI actions. 7. Offline hooks exist but no page uses them. 8. Routing hooks exist but no page uses them. 9. No trip management UI. |
 
 ---
 
@@ -250,7 +251,7 @@
 | **Status** | **PARTIAL** |
 | **Evidence** | The hook layer (`use-lasha.ts`) properly abstracts Convex calls. Pages use `useQuery`/`useMutation` for server state. Local React state is used only for UI concerns (sidebar, filters, modals, form inputs). Pricing calculation is server-side. Delivery state transitions are server-side. Notification creation is server-side. |
 | **Relevant files** | `src/hooks/use-lasha.ts`, all pages |
-| **What is incorrect** | 1. `src/pages/Dashboard.tsx` `transformDeliveryToOrder()` performs data transformation in React that could be a Convex view. 2. `src/pages/RequestDelivery.tsx` generates coordinates in React (should be server-side geocoding). 3. `src/pages/MakePayment.tsx` `handlePayment` uses `setTimeout` — payment logic should be a Convex mutation/action. |
+| **What is incorrect** | 1. `src/pages/Dashboard.tsx` `transformDeliveryToOrder()` performs data transformation in React that could be a Convex view. 2. ~~`src/pages/RequestDelivery.tsx` generates coordinates in React~~ **FIXED** — now uses server-side `geocodeAddress` Convex action. 3. `src/pages/MakePayment.tsx` `handlePayment` uses `setTimeout` — payment logic should be a Convex mutation/action. |
 
 ---
 
@@ -285,7 +286,7 @@ The codebase **correctly follows the intended Vite + React + Convex architecture
 | Area | What Exists | What Is Missing |
 |------|-------------|-----------------|
 | Offline Sync Integration | Libraries exist, hooks exist | NOT connected to any React page |
-| Routing Integration | Client+server routing, hooks exist | NOT used by any page; RequestDelivery uses random coords |
+| Routing Integration | Client+server routing, hooks exist; geocoding now connected | NOT used for directions; RequestDelivery geocoding fixed |
 | Pricing Integration | Engine exists | `createOrderAndDelivery` does not call it; uses inline calculation |
 | Operations Centre | Overview tab with real data | Tabs beyond Overview are minimal; no dispatch actions, no map, no audit viewer |
 | Observability | Logging + metrics services defined | Not called by most Convex functions; no external monitoring |
@@ -296,7 +297,7 @@ The codebase **correctly follows the intended Vite + React + Convex architecture
 
 | Area | Issue |
 |------|-------|
-| RequestDelivery | Uses `Math.random()` for coordinates — should use geocoding |
+| RequestDelivery | ~~Uses `Math.random()` for coordinates~~ **FIXED** — now uses `geocodeAddress` Convex action with Google Maps/Nominatim |
 | MakePayment | Uses `setTimeout` stub — should call a Convex action/payment provider |
 | Pricing flow | `createOrderAndDelivery` does not use `pricing.service.calculateQuote` |
 | Dashboard transform | `transformDeliveryToOrder()` has hardcoded fallback values for vehicle/driver/customer |
@@ -325,7 +326,7 @@ None. The architecture is sound. The issue is that several subsystems were imple
 
 ### Important Technical Problems
 
-1. **RequestDelivery uses random coordinates** — This is the most impactful mock data remaining. Every delivery created will have fake pickup/dropoff locations.
+1. ~~**RequestDelivery uses random coordinates**~~ **FIXED** — Now uses `geocodeAddress` Convex action (Google Maps Geocoding API with Nominatim fallback). Both pickup and dropoff addresses are geocoded via server-side Convex action before order creation. Failed geocoding prevents submission with a clear user-facing error. Button shows "Resolving addresses..." during geocoding phase.
 2. **Pricing not called from order creation** — Orders get a default price, not a calculated one.
 3. **MakePayment is a no-op** — Users cannot actually add funds.
 4. **Settings is read-only** — Users cannot update their profile.
@@ -333,7 +334,7 @@ None. The architecture is sound. The issue is that several subsystems were imple
 ### Remaining Dependencies
 
 - Payment provider (Paystack/Stripe) needs to be integrated via Convex action for MakePayment
-- Geocoding service needs to be connected to RequestDelivery (Google Maps API key or client-side geocoding)
+- ~~Geocoding service needs to be connected to RequestDelivery~~ **FIXED** — `geocodeAddress` Convex action added and connected to RequestDelivery
 - Profile mutation needs a Convex mutation and Settings page wiring
 - Driver-specific pages need to be built for active delivery management and POD submission
 
@@ -341,7 +342,7 @@ None. The architecture is sound. The issue is that several subsystems were imple
 
 **Fix the four critical integration gaps, in order of impact:**
 
-1. **Fix RequestDelivery coordinates** — Connect to the existing routing service for geocoding instead of random coords. The routing infrastructure (`src/lib/routing/`) already exists; it just needs to be called from the form.
+1. ~~**Fix RequestDelivery coordinates**~~ **DONE** — Added `geocodeAddress` Convex action to `src/convex/routing/actions.ts` (Google Maps Geocoding API with Nominatim fallback). Updated `src/pages/RequestDelivery.tsx` to call this action via `useAction(api.routing.actions.geocodeAddress)` before creating the order. Removed all `Math.random()` coordinate generation. Added geocoding loading state and error handling.
 2. **Wire pricing into order creation** — `createOrderAndDelivery` should call `pricing.service.calculateQuote` instead of using a default price.
 3. **Fix MakePayment** — Connect to a payment provider (or at minimum a wallet top-up mutation) so users can actually fund their accounts.
 4. **Add profile save mutation** — Add a Convex mutation for updating user profile fields and wire it to the Settings page.

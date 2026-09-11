@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { useAction } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import Sidebar from "@/components/dashboard/Sidebar";
 import { useDashboardNav } from "@/hooks/useDashboardNav";
 import { useCreateOrderAndDelivery } from "@/hooks/use-lasha";
@@ -22,10 +24,12 @@ export default function RequestDelivery() {
   const [activeSidebarItem, setActiveSidebarItem] = useState("Request Delivery");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [geocoding, setGeocoding] = useState(false);
   const [success, setSuccess] = useState<{ trackingNumber: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const createOrderAndDelivery = useCreateOrderAndDelivery();
+  const geocodeAddress = useAction(api.routing.actions.geocodeAddress);
 
   // Form state
   const [orderName, setOrderName] = useState("");
@@ -65,13 +69,29 @@ export default function RequestDelivery() {
     }
 
     setSubmitting(true);
+    setGeocoding(true);
     try {
-      // Use default Johannesburg coordinates for now
-      // In production, these would come from geocoding the address strings
-      const pickupLat = -26.2041 + (Math.random() - 0.5) * 0.02;
-      const pickupLng = 28.0473 + (Math.random() - 0.5) * 0.02;
-      const dropoffLat = -26.1367 + (Math.random() - 0.5) * 0.02;
-      const dropoffLng = 28.0433 + (Math.random() - 0.5) * 0.02;
+      // Geocode pickup and dropoff addresses via server-side Convex action
+      let pickupCoords: { lat: number; lng: number };
+      let dropoffCoords: { lat: number; lng: number };
+
+      try {
+        const [pickupResult, dropoffResult] = await Promise.all([
+          geocodeAddress({ address: pickupLocation.trim() }),
+          geocodeAddress({ address: dropoffLocation.trim() }),
+        ]);
+        pickupCoords = { lat: pickupResult.lat, lng: pickupResult.lng };
+        dropoffCoords = { lat: dropoffResult.lat, lng: dropoffResult.lng };
+      } catch (geocodeError: any) {
+        setError(
+          `Could not resolve address location: ${geocodeError.message || "Please check the addresses and try again."}`
+        );
+        setGeocoding(false);
+        setSubmitting(false);
+        return;
+      }
+
+      setGeocoding(false);
 
       const scheduledTime = scheduleDate
         ? new Date(`${scheduleDate}T${timeFrom}`).getTime()
@@ -86,10 +106,10 @@ export default function RequestDelivery() {
         weight: weight ? parseFloat(weight) : undefined,
         pickupAddress: pickupLocation.trim(),
         dropoffAddress: dropoffLocation.trim(),
-        pickupLat,
-        pickupLng,
-        dropoffLat,
-        dropoffLng,
+        pickupLat: pickupCoords.lat,
+        pickupLng: pickupCoords.lng,
+        dropoffLat: dropoffCoords.lat,
+        dropoffLng: dropoffCoords.lng,
         scheduledTime,
       });
 
@@ -110,6 +130,7 @@ export default function RequestDelivery() {
     } catch (err: any) {
       setError(err.message || "Failed to create delivery. Please try again.");
     } finally {
+      setGeocoding(false);
       setSubmitting(false);
     }
   };
@@ -446,7 +467,7 @@ export default function RequestDelivery() {
                   {submitting ? (
                     <>
                       <Loader2 size={16} style={{ marginRight: 8, animation: "spin 1s linear infinite" }} />
-                      Creating Delivery...
+                      {geocoding ? "Resolving addresses..." : "Creating Delivery..."}
                     </>
                   ) : (
                     "Request Delivery"

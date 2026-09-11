@@ -218,6 +218,119 @@ export const calculateDistance = action({
   },
 });
 
+// ─── Geocoding ────────────────────────────────────────────────────────────────
+
+/**
+ * Geocode an address string into lat/lng coordinates.
+ *
+ * Uses Google Maps Geocoding API if the key is available,
+ * otherwise falls back to OpenStreetMap Nominatim (free, no key).
+ *
+ * This action MUST run server-side to protect the API key.
+ */
+export const geocodeAddress = action({
+  args: {
+    address: v.string(),
+  },
+  returns: v.object({
+    lat: v.number(),
+    lng: v.number(),
+    formattedAddress: v.string(),
+  }),
+  handler: async (ctx, args) => {
+    const log = createLogger(LOG_CATEGORIES.ROUTING);
+    const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+
+    if (apiKey) {
+      return geocodeGoogle(args.address, apiKey, log);
+    }
+    return geocodeNominatim(args.address, log);
+  },
+});
+
+async function geocodeGoogle(
+  address: string,
+  apiKey: string,
+  log: ReturnType<typeof createLogger>
+): Promise<{ lat: number; lng: number; formattedAddress: string }> {
+  log.info("Geocoding via Google Maps", {
+    operation: "geocodeAddress",
+    metadata: { provider: "google-maps", address },
+  });
+
+  const params = new URLSearchParams({
+    address,
+    key: apiKey,
+  });
+
+  const response = await fetch(
+    `https://maps.googleapis.com/maps/api/geocode/json?${params.toString()}`
+  );
+
+  if (!response.ok) {
+    throw new Error(`Google Geocoding API error: ${response.status}`);
+  }
+
+  const data = await response.json();
+
+  if (data.status !== "OK" || !data.results || data.results.length === 0) {
+    throw new Error(
+      `Could not geocode address: ${data.error_message ?? data.status}`
+    );
+  }
+
+  const result = data.results[0];
+  return {
+    lat: result.geometry.location.lat,
+    lng: result.geometry.location.lng,
+    formattedAddress: result.formatted_address,
+  };
+}
+
+async function geocodeNominatim(
+  address: string,
+  log: ReturnType<typeof createLogger>
+): Promise<{ lat: number; lng: number; formattedAddress: string }> {
+  log.info("Geocoding via Nominatim (fallback)", {
+    operation: "geocodeAddress",
+    metadata: { provider: "nominatim", address },
+  });
+
+  const params = new URLSearchParams({
+    q: address,
+    format: "json",
+    limit: "1",
+  });
+
+  const response = await fetch(
+    `https://nominatim.openstreetmap.org/search?${params.toString()}`,
+    {
+      headers: {
+        "User-Agent": "Lasha/1.0 (delivery-platform)",
+      },
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(`Nominatim API error: ${response.status}`);
+  }
+
+  const data = await response.json();
+
+  if (!data || data.length === 0) {
+    throw new Error(
+      `Could not geocode address: no results found for "${address}"`
+    );
+  }
+
+  const result = data[0];
+  return {
+    lat: parseFloat(result.lat),
+    lng: parseFloat(result.lon),
+    formattedAddress: result.display_name,
+  };
+}
+
 // ─── Internal Handlers ────────────────────────────────────────────────────────
 
 async function getRouteHandler(request: RouteRequest): Promise<RouteResult> {
