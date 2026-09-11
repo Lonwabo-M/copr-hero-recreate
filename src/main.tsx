@@ -150,6 +150,14 @@ createRoot(document.getElementById("root")!).render(
                 }
               />
               <Route
+                path="/driver/active-delivery"
+                element={
+                  <RequireAuth>
+                    <DriverActiveDelivery />
+                  </RequireAuth>
+                }
+              />
+              <Route
                 path="/track-delivery"
                 element={
                   <RequireAuth>
