@@ -1,7 +1,16 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
-import { query, QueryCtx } from "./_generated/server";
+import { query, mutation, QueryCtx } from "./_generated/server";
+import { v } from "convex/values";
+import { internal } from "./_generated/api";
 import { requireAuth, getCurrentAuthUser } from "./auth/authorization";
 import { ROLES } from "./schema";
+import {
+  AUDIT_ACTIONS,
+} from "./audit/service";
+import {
+  validateName,
+  validatePhone,
+} from "./users/profileValidation";
 
 /**
  * Get the current signed in user. Returns null if the user is not signed in.
@@ -33,6 +42,81 @@ export const getCurrentUser = async (ctx: QueryCtx) => {
   }
   return await ctx.db.get(userId);
 };
+
+/**
+ * Update the authenticated user's own profile.
+ *
+ * Security model:
+ * - The target user is ALWAYS the authenticated session user. There are no
+ *   client-provided user IDs, so one user can never modify another user's
+ *   profile through this mutation.
+ * - Only name and phone are accepted. Privileged fields (role, businessId,
+ *   email, verification state, GPS) are not part of the mutation args and
+ *   cannot be changed here.
+ * - Input is validated server-side (see users/profileValidation.ts).
+ * - Changes are recorded in the audit log (user.updated).
+ */
+export const updateMyProfile = mutation({
+  args: {
+    name: v.optional(v.string()),
+    phone: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const userId = await requireAuth(ctx);
+    const user = await ctx.db.get(userId);
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    // Server-side validation of the permitted fields
+    if (args.name !== undefined) {
+      const nameError = validateName(args.name);
+      if (nameError) throw new Error(nameError);
+    }
+    if (args.phone !== undefined) {
+      const phoneError = validatePhone(args.phone);
+      if (phoneError) throw new Error(phoneError);
+    }
+
+    // Build the patch from the whitelisted fields only
+    const patch: { name?: string; phone?: string; updatedAt?: number } = {};
+    if (args.name !== undefined) {
+      patch.name = args.name.trim();
+    }
+    if (args.phone !== undefined) {
+      patch.phone = args.phone.trim() === "" ? undefined : args.phone.trim();
+    }
+
+    const changed = Object.keys(patch);
+    if (changed.length === 0) {
+      return { success: true, updated: [] };
+    }
+
+    const before = JSON.stringify({ name: user.name ?? null, phone: user.phone ?? null });
+
+    await ctx.db.patch(userId, patch);
+
+    const after = JSON.stringify({
+      name: patch.name ?? user.name ?? null,
+      phone: patch.phone ?? null,
+    });
+
+    // Audit: record who changed their own profile and what changed
+    await ctx.runMutation(internal.audit.service.recordGenericEvent, {
+      actorId: userId,
+      actorRole: (user.role as string) ?? "customer",
+      category: "user",
+      action: AUDIT_ACTIONS.USER_UPDATED,
+      entityType: "users",
+      entityId: userId,
+      before,
+      after,
+      metadata: JSON.stringify({ fields: changed }),
+    });
+
+    return { success: true, updated: changed };
+  },
+});
 
 /**
  * Get the current user's wallet.

@@ -167,3 +167,13 @@ export function useMarkAllNotificationsRead() {
 export function useUpdateNotificationPreferences() {
   return useMutation(api.notifications.service.updatePreferences);
 }
+
+/** Update the current user's own profile (name, phone). */
+export function useUpdateMyProfile() {
+  return useMutation(api.users.updateMyProfile);
+}
+
+/** Update the current user's business profile (name, phone, address, registration). */
+export function useUpdateMyBusiness() {
+  return useMutation(api.users.businessProfile.updateMyBusiness);
+}
