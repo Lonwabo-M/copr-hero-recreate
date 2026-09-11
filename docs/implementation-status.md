@@ -127,11 +127,11 @@
 | | |
 |---|---|
 | **Status** | **PARTIAL** |
-| **Evidence** | `src/convex/pricing/service.ts` (~660 lines): full pricing calculation (base price, distance fee, weight fee, surcharges, platform fee, driver earnings), quote generation, pricing rule CRUD, active rule queries. `pricing_rules` table with versioning, effectiveness dates, platform fee config. `delivery_quotes` table stores per-delivery pricing breakdown. `settlements` table with idempotency. Pricing tests (269 lines). **`calculateAndStoreQuote` internalMutation added** — called by `createOrderAndDelivery` to calculate price using active pricing rules and store a quote. |
+| **Evidence** | `src/convex/pricing/service.ts` (~660 lines): full pricing calculation (base price, distance fee, weight fee, surcharges, platform fee, driver earnings), quote generation, pricing rule CRUD, active rule queries. `pricing_rules` table with versioning, effectiveness dates, platform fee config. `delivery_quotes` table stores per-delivery pricing breakdown. `settlements` table with idempotency. Pricing tests (269+ lines, 19 tests). **`calculateAndStoreQuote` internalMutation** — called by `createOrderAndDelivery` to calculate price using active pricing rules and store a quote. **Pricing is mandatory** — no delivery can be created without a matching pricing rule; the entire transaction rolls back on failure. |
 | **Relevant files** | `src/convex/pricing/service.ts`, `src/convex/pricing/pricing.test.ts`, `src/convex/deliveries/state_machine.ts` |
-| **What was repaired** | `createOrderAndDelivery` now calls `internal.pricing.service.calculateAndStoreQuote` after order creation, computing haversine distance between pickup/dropoff coordinates and looking up the active pricing rule matching the order's packageSize + expeditionType. The calculated `totalCharge` is stored on the order. If no matching pricing rule exists, the delivery is still created with price 0 (graceful degradation). |
+| **What was repaired** | `createOrderAndDelivery` now calls `internal.pricing.service.calculateAndStoreQuote` before delivery creation, computing haversine distance and looking up the active pricing rule matching packageSize + expeditionType. The `calculateAndStoreQuote` call is NOT wrapped in try/catch — if pricing fails (no matching rule, calculation error), the Convex transaction rolls back all writes (addresses, order, delivery, tracking event, audit), leaving no orphaned records. The error propagates to the client as a clear failure. Three pricing failure tests added. |
 | **What is missing** | Settlement processing mutation does not exist (only the table schema). No payout/disbursement logic. No UI to view/manage pricing rules. No React hook exposes settlement data. No real routing distance (uses haversine straight-line distance as fallback). |
-| **What is incorrect** | None remaining for pricing calculation during order creation. Settlement/payout processing still not implemented. |
+| **What is incorrect** | None remaining for pricing calculation and failure handling during order creation. Settlement/payout processing still not implemented. |
 
 ---
 
@@ -288,7 +288,7 @@ The codebase **correctly follows the intended Vite + React + Convex architecture
 |------|-------------|-----------------|
 | Offline Sync Integration | Libraries exist, hooks exist | NOT connected to any React page |
 | Routing Integration | Client+server routing, hooks exist; geocoding now connected | NOT used for directions; RequestDelivery geocoding fixed |
-| Pricing Integration | Engine exists; `calculateAndStoreQuote` internalMutation added | No UI for pricing rules; uses haversine distance (not routing distance) |
+| Pricing Integration | Engine exists; `calculateAndStoreQuote` mandatory; failure rolls back transaction | No UI for pricing rules; uses haversine distance (not routing distance) |
 | Operations Centre | Overview tab with real data | Tabs beyond Overview are minimal; no dispatch actions, no map, no audit viewer |
 | Observability | Logging + metrics services defined | Not called by most Convex functions; no external monitoring |
 | Testing | 9 pure-logic test files | No integration tests, no React tests, no E2E tests |
@@ -300,7 +300,7 @@ The codebase **correctly follows the intended Vite + React + Convex architecture
 |------|-------|
 | RequestDelivery | ~~Uses `Math.random()` for coordinates~~ **FIXED** — now uses `geocodeAddress` Convex action with Google Maps/Nominatim |
 | MakePayment | Uses `setTimeout` stub — should call a Convex action/payment provider |
-| Pricing flow | ~~`createOrderAndDelivery` does not use `pricing.service.calculateQuote`~~ **FIXED** — now calls `calculateAndStoreQuote` internalMutation |
+| Pricing flow | ~~`createOrderAndDelivery` does not use `pricing.service.calculateQuote`~~ **FIXED** — now calls `calculateAndStoreQuote` internalMutation. ~~Previously degraded to price: 0 on failure~~ **FIXED** — pricing failure now causes full transaction rollback, no delivery created. |
 | Dashboard transform | `transformDeliveryToOrder()` has hardcoded fallback values for vehicle/driver/customer |
 | Settings | Profile fields displayed but no mutation to save changes |
 | Docs | `docs/architecture.md` references non-existent `domains/` structure, `trips` table, Paystack integration |
