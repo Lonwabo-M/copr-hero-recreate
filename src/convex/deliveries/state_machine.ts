@@ -1051,6 +1051,21 @@ export const completeDelivery = mutation({
     // 5. Validate transition
     validateTransition(delivery.status, DELIVERY_STATUS.DELIVERED);
 
+    // 5b. Require proof of delivery before completion.
+    // The server is authoritative: completion is blocked until a POD record
+    // exists for this delivery (created via pod.service.createPOD or
+    // completeDeliveryWithPOD). The UI alone never grants completion.
+    const existingPOD = await ctx.db
+      .query("proof_of_delivery")
+      .withIndex("by_delivery", (q) => q.eq("deliveryId", args.deliveryId))
+      .order("desc")
+      .first();
+    if (!existingPOD) {
+      throw new Error(
+        "Proof of delivery is required before completing this delivery. Submit the POD first."
+      );
+    }
+
     // 6. Perform transition
     const now = Date.now();
     await ctx.db.patch(args.deliveryId, {

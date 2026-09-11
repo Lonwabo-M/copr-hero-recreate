@@ -140,9 +140,9 @@
 | | |
 |---|---|
 | **Status** | **COMPLETE** |
-| **Evidence** | `src/convex/pod/service.ts` (735 lines): POD creation with idempotency, file upload (photos, signatures, documents via Convex File Storage), POD queries (by delivery, by order, by submitter), delivery completion with POD, failure recording with reason classification. `proof_of_delivery` and `pod_files` tables with proper indexes. POD tests exist. |
-| **Relevant files** | `src/convex/pod/service.ts`, `src/convex/pod/pod.test.ts` |
-| **What is missing** | No React UI for POD submission or viewing. No driver-facing POD page. No customer-facing POD receipt view. |
+| **Evidence** | `src/convex/pod/service.ts` (735 lines): POD creation with idempotency, file upload (photos, signatures, documents via Convex File Storage), POD queries (by delivery, by order, by submitter), delivery completion with POD, failure recording with reason classification. `proof_of_delivery` and `pod_files` tables with proper indexes. POD tests exist. **POD submission UI now exists** in `DriverActiveDelivery.tsx` (AT_DROPOFF state): file upload via `generateUploadUrl` action + direct POST to Convex File Storage, `createPOD` → `addPODEvidence` → `completeDelivery`, with per-phase progress feedback. **Server-authoritative POD gate:** `state_machine.completeDelivery` now requires an existing POD record before transitioning to DELIVERED. |
+| **Relevant files** | `src/convex/pod/service.ts`, `src/convex/pod/pod.test.ts`, `src/pages/DriverActiveDelivery.tsx`, `src/convex/deliveries/state_machine.ts`, `src/convex/testing/pod-workflow.test.ts` |
+| **What is missing** | No customer-facing POD receipt view. No dedicated signature capture canvas (driver attaches photo/PDF files instead; the backend `signatureFileId` path exists but the UI uses the generic evidence flow). |
 
 ---
 
@@ -197,7 +197,7 @@
 | **Status** | **PARTIAL** |
 | **Evidence** | All primary pages use Convex queries/mutations. The hook layer (`use-lasha.ts`) provides clean abstractions. Real-time subscriptions work via Convex reactive queries. Auth integration is complete (RequireAuth wrapper, auth redirect, sign-in/sign-out). |
 | **Relevant files** | All `src/pages/`, `src/hooks/use-lasha.ts`, `src/components/RequireAuth.tsx` |
-| **What is not connected** | 1. MakePayment page does not call any Convex mutation. 2. ~~Settings page cannot save profile changes.~~ **FIXED** — Settings now persists profile, business, and notification changes via `users.updateMyProfile` / `users.businessProfile.updateMyBusiness` / `notifications.service.updatePreferences`, with saving/success/error states. 3. ~~RequestDelivery uses random coordinates.~~ **FIXED** — now uses `geocodeAddress` Convex action. 4. ~~No driver-specific active delivery UI page.~~ **FIXED** — `DriverActiveDelivery.tsx` at `/driver/active-delivery` (sidebar "Active Delivery"), wired to `getMyCurrentDelivery`, `getDeliveryTracking`, all 7 driver state-machine mutations, and `updateDeliveryLocation`. 5. No POD submission UI. 6. No dispatch management UI actions. 7. Offline hooks exist but no page uses them. 8. Routing hooks exist but no page uses them (driver page links to Google Maps directions instead). 9. No trip management UI. Settings Security tab (password/2FA/sessions) remains display-only — no password auth exists (OTP-based). |
+| **What is not connected** | 1. MakePayment page does not call any Convex mutation. 2. ~~Settings page cannot save profile changes.~~ **FIXED** — Settings now persists profile, business, and notification changes via `users.updateMyProfile` / `users.businessProfile.updateMyBusiness` / `notifications.service.updatePreferences`, with saving/success/error states. 3. ~~RequestDelivery uses random coordinates.~~ **FIXED** — now uses `geocodeAddress` Convex action. 4. ~~No driver-specific active delivery UI page.~~ **FIXED** — `DriverActiveDelivery.tsx` at `/driver/active-delivery` (sidebar "Active Delivery"), wired to `getMyCurrentDelivery`, `getDeliveryTracking`, all 7 driver state-machine mutations, and `updateDeliveryLocation`. 5. ~~No POD submission UI.~~ **FIXED** — POD submission embedded in Driver Active Delivery at dropoff (file upload to Convex File Storage, recipient + notes, evidence attachment, POD-gated completion). 6. No dispatch management UI actions. 7. Offline hooks exist but no page uses them. 8. Routing hooks exist but no page uses them (driver page links to Google Maps directions instead). 9. No trip management UI. Settings Security tab (password/2FA/sessions) remains display-only — no password auth exists (OTP-based). |
 
 ---
 
@@ -206,7 +206,7 @@
 | | |
 |---|---|
 | **Status** | **PARTIAL** |
-| **Evidence** | 11 test files exist: state machine tests (552 lines), production-readiness tests (937 lines), authorization tests, dispatch scoring tests, audit tests, notification tests, POD tests, pricing tests (incl. order-creation pricing integration + failure rollback), tracking tests, profile validation tests (15), driver workflow tests (8 — verify the driver UI's status→action map exactly mirrors server `VALID_TRANSITIONS`/`TRANSITION_PERMISSIONS` and that terminal statuses offer no actions). All are pure-logic tests that validate schema constants, transition rules, scoring functions, and data structures. |
+| **Evidence** | 12 test files exist: state machine tests (552 lines), production-readiness tests (937 lines), authorization tests, dispatch scoring tests, audit tests, notification tests, POD tests (17), pricing tests (incl. order-creation pricing integration + failure rollback), tracking tests, profile validation tests (15), driver workflow tests (8 — verify the driver UI's status→action map exactly mirrors server `VALID_TRANSITIONS`/`TRANSITION_PERMISSIONS`), POD workflow tests (13 — POD-gated completion, cross-driver rejection, file validation rules, UI POD contract). All are pure-logic tests that validate schema constants, transition rules, scoring functions, and data structures. |
 | **Relevant files** | `src/convex/deliveries/state_machine.test.ts`, `src/convex/testing/production-readiness.test.ts`, `src/convex/testing/driver-workflow.test.ts`, `src/convex/auth/authorization.test.ts`, `src/convex/dispatch/scoring_service.test.ts`, `src/convex/audit/audit.test.ts`, `src/convex/notifications/notifications.test.ts`, `src/convex/pod/pod.test.ts`, `src/convex/pricing/pricing.test.ts`, `src/convex/tracking/tracking.test.ts`, `src/convex/users/profileValidation.test.ts` |
 | **What is missing** | 1. No integration tests that run against a real Convex database. 2. No React component tests. 3. No E2E tests. 4. No concurrent acceptance tests against real mutations. 5. No vitest config found — tests use custom simple runners, not a standard test framework. Tests are run via `bunx tsx <file>`, not `vitest`. |
 
@@ -292,7 +292,7 @@ The codebase **correctly follows the intended Vite + React + Convex architecture
 | Operations Centre | Overview tab with real data | Tabs beyond Overview are minimal; no dispatch actions, no map, no audit viewer |
 | Observability | Logging + metrics services defined | Not called by most Convex functions; no external monitoring |
 | Testing | 9 pure-logic test files | No integration tests, no React tests, no E2E tests |
-| UI/Backend Integration | Primary pages connected; Settings profile/business saving now works; Driver Active Delivery UI built on existing state machine | MakePayment stub, no POD submission UI, no dispatch management UI |
+| UI/Backend Integration | Primary pages connected; Settings profile/business saving now works; Driver Active Delivery UI built on existing state machine; POD submission UI integrated at dropoff | MakePayment stub, no dispatch management UI |
 
 ### What Is INCORRECT
 
@@ -310,7 +310,7 @@ The codebase **correctly follows the intended Vite + React + Convex architecture
 | Area | Status |
 |------|--------|
 | Driver active delivery UI page | ~~No page exists for drivers to view/manage their active delivery~~ **BUILT** — `src/pages/DriverActiveDelivery.tsx` (`/driver/active-delivery`): session-derived assignment via `getMyCurrentDelivery`, per-state primary action mapped 1:1 to existing state-machine mutations, progress steps, pickup/dropoff cards with Google Maps directions links, package details, timeline from `getDeliveryTracking`, one-shot location sharing via `updateDeliveryLocation`, loading/empty/error states, responsive layout with safe-driving notice |
-| POD submission UI | No page for drivers to submit proof of delivery |
+| POD submission UI | ~~No page for drivers to submit proof of delivery~~ **BUILT** — POD card in Driver Active Delivery (AT_DROPOFF only): recipient name (required) + optional notes, up to 5 photos/PDFs via camera/file input, direct-to-storage upload using `generateUploadUrl` action, server re-validation of size/MIME, phase-by-phase progress (uploading → recording → attaching → completing), success confirmation, previously-submitted POD display from `getPODForDelivery`. Completion blocked server-side without POD. |
 | Trip management UI | No trip viewing/management page |
 | Map component | No map display for tracking or dispatch |
 | Audit log viewer | No UI to view audit events |

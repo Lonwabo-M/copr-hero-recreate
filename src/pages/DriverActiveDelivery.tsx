@@ -19,7 +19,7 @@
  */
 
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { useQuery, useMutation } from "convex/react";
+import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import Sidebar from "@/components/dashboard/Sidebar";
 import { useDashboardNav } from "@/hooks/useDashboardNav";
@@ -37,6 +37,12 @@ import {
   Share2,
   ExternalLink,
   ShieldCheck,
+  Camera,
+  FileText,
+  ClipboardCheck,
+  PenLine,
+  Upload,
+  Check,
 } from "lucide-react";
 import {
   DELIVERY_STATUS,
@@ -99,6 +105,10 @@ export default function DriverActiveDelivery() {
     api.tracking.queries.getDeliveryTracking,
     deliveryId ? { deliveryId } : "skip"
   );
+  const existingPOD = useQuery(
+    api.pod.service.getPODForDelivery,
+    deliveryId ? { deliveryId } : "skip"
+  );
   const updateDeliveryLocation = useMutation(api.tracking.mutations.updateDeliveryLocation);
 
   // State-machine transition mutations (existing domain operations)
@@ -110,6 +120,11 @@ export default function DriverActiveDelivery() {
   const arriveAtDropoff = useMutation(api.deliveries.state_machine.arriveAtDropoff);
   const completeDelivery = useMutation(api.deliveries.state_machine.completeDelivery);
   const rejectAssignment = useMutation(api.deliveries.state_machine.rejectAssignment);
+
+  // POD mutations (existing POD backend)
+  const createPOD = useMutation(api.pod.service.createPOD);
+  const addPODEvidence = useMutation(api.pod.service.addPODEvidence);
+  const generateUploadUrl = useAction(api.pod.service.generateUploadUrl);
 
   const mutations: Record<string, (args: { deliveryId: any }) => Promise<unknown>> = useMemo(
     () => ({
@@ -226,7 +241,119 @@ export default function DriverActiveDelivery() {
     );
   }, [deliveryId, updateDeliveryLocation]);
 
-  // ─── Helpers ───────────────────────────────────────────────────────────────
+  // ─── POD submission ────────────────────────────────────────────────────
+  // Flow (all server-validated, existing POD backend):
+  //   1. generateUploadUrl → Convex File Storage upload URL
+  //   2. POST file directly to storage (credentials never touch React)
+  //   3. createPOD → idempotent POD record (authorization + state checked)
+  //   4. addPODEvidence per file → server re-validates size/MIME/type
+  //   5. completeDelivery → server requires the POD to exist (authoritative)
+
+  const [podRecipient, setPodRecipient] = useState("");
+  const [podNotes, setPodNotes] = useState("");
+  const [podFiles, setPodFiles] = useState<File[]>([]);
+  const [podPhase, setPodPhase] = useState<
+    null | "uploading" | "creating" | "evidence" | "completing"
+  >(null);
+  const [podSuccess, setPodSuccess] = useState(false);
+  const podBusy = podPhase !== null;
+
+  const showPODForm = status === DELIVERY_STATUS.AT_DROPOFF && !podSuccess;
+
+  const handleFileSelect = (files: FileList | null) => {
+    if (!files) return;
+    // Client-side pre-check for UX; server re-validates authoritatively.
+    const MAX = 10 * 1024 * 1024;
+    const allowed = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
+    const valid: File[] = [];
+    for (const f of Array.from(files)) {
+      if (f.size > MAX) {
+        setError(`${f.name} exceeds the 10MB limit`);
+        continue;
+      }
+      if (!allowed.includes(f.type)) {
+        setError(`${f.name} is not a supported file type (JPEG, PNG, WebP, PDF)`);
+        continue;
+      }
+      valid.push(f);
+    }
+    if (valid.length > 0) {
+      setError(null);
+      setPodFiles((prev) => [...prev, ...valid].slice(0, 5));
+    }
+  };
+
+  const handlePodSubmit = useCallback(async () => {
+    if (!deliveryId) return;
+    setError(null);
+
+    if (!podRecipient.trim()) {
+      setError("Recipient name is required");
+      return;
+    }
+
+    try {
+      // 1–2. Upload each file to Convex File Storage
+      const uploadedIds: string[] = [];
+      if (podFiles.length > 0) {
+        setPodPhase("uploading");
+        for (const file of podFiles) {
+          const uploadUrl = await generateUploadUrl();
+          const result = await fetch(uploadUrl, {
+            method: "POST",
+            headers: { "Content-Type": file.type },
+            body: file,
+          });
+          if (!result.ok) {
+            throw new Error(`Upload failed for ${file.name}`);
+          }
+          const { storageId } = (await result.json()) as { storageId: string };
+          uploadedIds.push(JSON.stringify({ storageId, name: file.name, size: file.size, mime: file.type }));
+        }
+      }
+
+      // 3. Create the idempotent POD record
+      setPodPhase("creating");
+      const { podId } = await createPOD({
+        deliveryId,
+        outcome: "delivered",
+        recipientName: podRecipient.trim(),
+        deliveryNotes: podNotes.trim() || undefined,
+      });
+
+      // 4. Attach evidence (server re-validates size/MIME)
+      if (uploadedIds.length > 0) {
+        setPodPhase("evidence");
+        for (const raw of uploadedIds) {
+          const meta = JSON.parse(raw) as { storageId: string; name: string; size: number; mime: string };
+          await addPODEvidence({
+            podId,
+            fileId: meta.storageId,
+            fileType: meta.mime === "application/pdf" ? "document" : "photo",
+            fileName: meta.name,
+            fileSize: meta.size,
+            mimeType: meta.mime,
+          });
+        }
+      }
+
+      // 5. Complete the delivery — server verifies the POD exists
+      setPodPhase("completing");
+      await completeDelivery({ deliveryId });
+
+      setPodSuccess(true);
+      setPodFiles([]);
+      setPodRecipient("");
+      setPodNotes("");
+      setTimeout(() => setPodSuccess(false), 6000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "POD submission failed");
+    } finally {
+      setPodPhase(null);
+    }
+  }, [deliveryId, podRecipient, podNotes, podFiles, generateUploadUrl, createPOD, addPODEvidence, completeDelivery]);
+
+  // ─── Helpers ───────────────────────────────────────────────────────────
 
   const formatTime = (timestamp?: number) =>
     timestamp
@@ -345,39 +472,217 @@ export default function DriverActiveDelivery() {
                   ))}
                 </div>
 
-                {/* Primary action card — next valid state transition only */}
-                <div className="driver-action-card">
-                  <p className="driver-action-hint">{status ? STATUS_COPY[status] : null}</p>
-                  {action ? (
+                {/* Primary action card — next valid state transition only.
+                    At dropoff, the primary action moves into the POD card. */}
+                {status !== DELIVERY_STATUS.AT_DROPOFF && (
+                  <div className="driver-action-card">
+                    <p className="driver-action-hint">{status ? STATUS_COPY[status] : null}</p>
+                    {action ? (
+                      <div className="driver-action-row">
+                        <button
+                          className="driver-primary-btn"
+                          onClick={() => handleAction(action.operation)}
+                          disabled={actionPending !== null || podBusy}
+                        >
+                          {actionPending === action.operation ? (
+                            <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} />
+                          ) : (
+                            <CheckCircle2 size={16} />
+                          )}
+                          {actionPending === action.operation ? "Updating..." : action.label}
+                        </button>
+                        {status === DELIVERY_STATUS.ASSIGNED && (
+                          <button
+                            className="driver-secondary-btn"
+                            onClick={handleReject}
+                            disabled={actionPending !== null}
+                          >
+                            Reject
+                          </button>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="driver-action-hint" style={{ marginBottom: 0 }}>
+                        No further driver actions for this delivery.
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* Proof of Delivery — required at dropoff before completion */}
+                {showPODForm && (
+                  <div className="driver-action-card">
+                    <div className="driver-location-head">
+                      <ClipboardCheck size={16} style={{ color: "var(--primary)" }} />
+                      <span className="driver-timeline-title" style={{ marginBottom: 0 }}>
+                        Proof of Delivery
+                      </span>
+                    </div>
+                    <p className="driver-action-hint">
+                      Record the handover, then complete the delivery. Proof of delivery is required
+                      by the system before completion.
+                    </p>
+
+                    <div style={{ display: "grid", gap: 12, marginBottom: 14 }}>
+                      <div>
+                        <label className="driver-detail-label" htmlFor="pod-recipient">
+                          Recipient name *
+                        </label>
+                        <input
+                          id="pod-recipient"
+                          type="text"
+                          className="settings-input"
+                          style={{ width: "100%" }}
+                          placeholder="Who received the package?"
+                          value={podRecipient}
+                          onChange={(e) => setPodRecipient(e.target.value)}
+                          disabled={podBusy}
+                        />
+                      </div>
+                      <div>
+                        <label className="driver-detail-label" htmlFor="pod-notes">
+                          Delivery notes
+                        </label>
+                        <input
+                          id="pod-notes"
+                          type="text"
+                          className="settings-input"
+                          style={{ width: "100%" }}
+                          placeholder="Optional notes (e.g. left with reception)"
+                          value={podNotes}
+                          onChange={(e) => setPodNotes(e.target.value)}
+                          disabled={podBusy}
+                        />
+                      </div>
+                    </div>
+
+                    {/* File capture / upload */}
+                    <label
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        padding: "12px 16px",
+                        border: "1px dashed var(--border)",
+                        borderRadius: 10,
+                        cursor: podBusy ? "not-allowed" : "pointer",
+                        color: "var(--text-secondary)",
+                        fontSize: 13,
+                        marginBottom: 12,
+                        opacity: podBusy ? 0.6 : 1,
+                      }}
+                    >
+                      <Camera size={16} />
+                      Add photo or document (max 5 files, 10MB each)
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,application/pdf"
+                        multiple
+                        capture="environment"
+                        style={{ display: "none" }}
+                        onChange={(e) => {
+                          handleFileSelect(e.target.files);
+                          e.target.value = "";
+                        }}
+                        disabled={podBusy}
+                      />
+                    </label>
+
+                    {podFiles.length > 0 && (
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+                        {podFiles.map((f, i) => (
+                          <span
+                            key={`${f.name}-${i}`}
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 6,
+                              fontSize: 12,
+                              color: "var(--text-primary)",
+                              background: "var(--surface-muted)",
+                              border: "1px solid var(--border-light)",
+                              borderRadius: 6,
+                              padding: "4px 8px",
+                            }}
+                          >
+                            {f.type === "application/pdf" ? <FileText size={12} /> : <Camera size={12} />}
+                            {f.name.length > 22 ? `${f.name.slice(0, 20)}…` : f.name}
+                            {!podBusy && (
+                              <button
+                                style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: "var(--text-muted)" }}
+                                onClick={() => setPodFiles((prev) => prev.filter((_, j) => j !== i))}
+                                aria-label={`Remove ${f.name}`}
+                              >
+                                ×
+                              </button>
+                            )}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
                     <div className="driver-action-row">
                       <button
                         className="driver-primary-btn"
-                        onClick={() => handleAction(action.operation)}
-                        disabled={actionPending !== null}
+                        onClick={handlePodSubmit}
+                        disabled={podBusy}
                       >
-                        {actionPending === action.operation ? (
+                        {podBusy ? (
                           <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} />
                         ) : (
                           <CheckCircle2 size={16} />
                         )}
-                        {actionPending === action.operation ? "Updating..." : action.label}
+                        {podPhase === "uploading"
+                          ? "Uploading proof..."
+                          : podPhase === "creating"
+                          ? "Recording POD..."
+                          : podPhase === "evidence"
+                          ? "Attaching files..."
+                          : podPhase === "completing"
+                          ? "Completing delivery..."
+                          : "Submit POD & Complete"}
                       </button>
-                      {status === DELIVERY_STATUS.ASSIGNED && (
-                        <button
-                          className="driver-secondary-btn"
-                          onClick={handleReject}
-                          disabled={actionPending !== null}
-                        >
-                          Reject
-                        </button>
-                      )}
                     </div>
-                  ) : (
-                    <p className="driver-action-hint" style={{ marginBottom: 0 }}>
-                      No further driver actions for this delivery.
-                    </p>
-                  )}
-                </div>
+                  </div>
+                )}
+
+                {/* POD submitted confirmation */}
+                {podSuccess && (
+                  <div className="driver-action-card" style={{ borderColor: "rgba(22, 163, 74, 0.4)" }}>
+                    <div className="driver-action-row" style={{ alignItems: "center" }}>
+                      <Check size={18} style={{ color: "#16a34a" }} />
+                      <span style={{ fontSize: 14, fontWeight: 600, color: "#16a34a" }}>
+                        Proof of delivery recorded. Delivery completed.
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Previously submitted POD info */}
+                {existingPOD && !podSuccess && (
+                  <div className="driver-timeline" style={{ marginBottom: 16 }}>
+                    <div className="driver-timeline-title">
+                      <PenLine size={13} style={{ display: "inline", marginRight: 6 }} />
+                      Proof of delivery on record
+                    </div>
+                    <div className="driver-timeline-item">
+                      <span className="driver-timeline-time">
+                        {new Date(existingPOD.createdAt).toLocaleString("en-ZA", {
+                          day: "2-digit",
+                          month: "short",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </span>
+                      <span className="driver-timeline-text">
+                        {existingPOD.outcome === "delivered"
+                          ? `Delivered to ${existingPOD.recipientName}`
+                          : `Outcome: ${existingPOD.outcome}`}
+                        {existingPOD.files?.length > 0 && ` · ${existingPOD.files.length} file(s) attached`}
+                      </span>
+                    </div>
+                  </div>
+                )}
 
                 {/* Locations */}
                 <div className="driver-locations">
