@@ -173,7 +173,7 @@ export const createOrderAndDelivery = mutation({
       lng: args.dropoffLng,
     });
 
-    // 4. Create order
+    // 4. Create order (price placeholder — will be set by pricing engine)
     const now = Date.now();
     const orderId = await ctx.db.insert("orders", {
       senderId: userId,
@@ -188,16 +188,30 @@ export const createOrderAndDelivery = mutation({
       width: args.width,
       height: args.height,
       weight: args.weight,
-      price: 0, // Will be calculated by pricing service
+      price: 0,
       scheduledTime: args.scheduledTime,
       createdAt: now,
       updatedAt: now,
     });
 
-    // 5. Generate tracking number
+    // 5. Calculate price using the existing pricing engine.
+    // This MUST succeed for a delivery to be created.
+    // If it throws (e.g. no matching pricing rule), the entire mutation
+    // rolls back — no orphaned order, addresses, or delivery.
+    const distanceKm = haversineDistanceKm(
+      args.pickupLat, args.pickupLng,
+      args.dropoffLat, args.dropoffLng
+    );
+    const quote: { quoteId: any; totalCharge: number; driverEarnings: number; platformFee: number } = await ctx.runMutation(
+      internal.pricing.service.calculateAndStoreQuote,
+      { orderId, distanceKm }
+    );
+    const orderPrice: number = quote.totalCharge;
+
+    // 6. Generate tracking number
     const trackingNumber = `LSH-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
 
-    // 6. Create delivery in REQUESTED state
+    // 7. Create delivery in REQUESTED state
     const deliveryId = await ctx.db.insert("deliveries", {
       orderId,
       status: DELIVERY_STATUS.REQUESTED,
@@ -209,31 +223,12 @@ export const createOrderAndDelivery = mutation({
       startedAt: now,
     });
 
-    // 7. Update order status
+    // 8. Update order status
     await ctx.db.patch(orderId, {
       status: "confirmed",
       trackingNumber,
       updatedAt: now,
     });
-
-    // 8. Calculate price using the existing pricing engine
-    let orderPrice = 0;
-    try {
-      const distanceKm = haversineDistanceKm(
-        args.pickupLat, args.pickupLng,
-        args.dropoffLat, args.dropoffLng
-      );
-      const quote = await ctx.runMutation(
-        internal.pricing.service.calculateAndStoreQuote,
-        { orderId, distanceKm }
-      );
-      orderPrice = quote.totalCharge;
-    } catch (pricingError: any) {
-      // Pricing failure should not prevent delivery creation,
-      // but we log it and keep price as 0 (fallback)
-      // This preserves the delivery lifecycle while flagging the issue.
-      console.warn(`Pricing calculation failed for order ${orderId}:`, pricingError?.message);
-    }
 
     // 9. Record audit
     await ctx.runMutation(internal.audit.service.recordDeliveryTransition, {
