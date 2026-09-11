@@ -60,7 +60,7 @@
 | **Status** | **COMPLETE** |
 | **Evidence** | Email OTP auth via `@convex-dev/auth` with `auth.freebuff.app` OTP endpoint. Anonymous auth supported. Freebuff federated JWT auth via `auth.config.ts`. Full RBAC with 6 roles: customer, driver, fleet_manager, operations, company_admin, super_admin. Permission map in schema. Authorization middleware (`requireAuth`, `requireRole`, `requirePermission`, `requireOwnership`, `requireCompanyAccess`, `requireDriverAccess`, `filterByCompany`, `filterByDriver`) in `src/convex/auth/authorization.ts` (493 lines). Tests in `authorization.test.ts`. |
 | **Relevant files** | `src/convex/auth.ts`, `src/convex/auth/authorization.ts`, `src/convex/auth.config.ts`, `src/convex/auth/emailOtp.ts` |
-| **What is missing** | No password-based auth (OTP only — by design). No account deletion/soft-delete mutation. |
+| **What is missing** | No password-based auth (OTP only — by design). No account deletion/soft-delete mutation. ~~No profile mutation~~ **FIXED** — `users.updateMyProfile` (name, phone) and `users.businessProfile.updateMyBusiness` (business fields) added with session-derived identity, server-side validation, protected-field whitelists, and audit logging (user.updated / company.updated). |
 
 ---
 
@@ -186,7 +186,7 @@
 | **Status** | **PARTIAL** |
 | **Evidence** | Most pages connect to real Convex queries. No mock arrays, fake user objects, or hardcoded driver lists remain. Dashboard transforms delivery data from Convex. Notifications read from Convex. Wallet/Transactions read from Convex. PastDeliveries, Invoices read from Convex. |
 | **Relevant files** | All pages in `src/pages/` |
-| **What is remaining mock data** | 1. ~~`src/pages/RequestDelivery.tsx`: random Johannesburg coordinates (`Math.random()`)~~ **FIXED** — now uses `geocodeAddress` Convex action. 2. `src/pages/MakePayment.tsx` lines 47-53: `setTimeout` stub instead of real payment processing — no Convex action called. 3. `src/pages/Dashboard.tsx` `transformDeliveryToOrder()`: hardcoded placeholder strings for vehicle ("N/A"), driver ("Unassigned"), customer ("Customer") — these are fallback strings for unpopulated fields, not fake data per se, but the vehicle/driver/customer enrichment is not done (no joins to enrich delivery with driver name, vehicle details). 4. `src/pages/Settings.tsx`: profile fields are read-only display of `currentUser` — no mutation to save profile changes. |
+| **What is remaining mock data** | 1. ~~`src/pages/RequestDelivery.tsx`: random Johannesburg coordinates (`Math.random()`)~~ **FIXED** — now uses `geocodeAddress` Convex action. 2. `src/pages/MakePayment.tsx` lines 47-53: `setTimeout` stub instead of real payment processing — no Convex action called. 3. `src/pages/Dashboard.tsx` `transformDeliveryToOrder()`: hardcoded placeholder strings for vehicle ("N/A"), driver ("Unassigned"), customer ("Customer") — these are fallback strings for unpopulated fields, not fake data per se, but the vehicle/driver/customer enrichment is not done (no joins to enrich delivery with driver name, vehicle details). 4. ~~`src/pages/Settings.tsx`: profile fields are read-only display of `currentUser` — no mutation to save profile changes.~~ **FIXED** — profile/business changes now persist to Convex and survive refresh. |
 
 ---
 
@@ -197,7 +197,7 @@
 | **Status** | **PARTIAL** |
 | **Evidence** | All primary pages use Convex queries/mutations. The hook layer (`use-lasha.ts`) provides clean abstractions. Real-time subscriptions work via Convex reactive queries. Auth integration is complete (RequireAuth wrapper, auth redirect, sign-in/sign-out). |
 | **Relevant files** | All `src/pages/`, `src/hooks/use-lasha.ts`, `src/components/RequireAuth.tsx` |
-| **What is not connected** | 1. MakePayment page does not call any Convex mutation. 2. Settings page cannot save profile changes. 3. ~~RequestDelivery uses random coordinates.~~ **FIXED** — now uses `geocodeAddress` Convex action. 4. No driver-specific active delivery UI page. 5. No POD submission UI. 6. No dispatch management UI actions. 7. Offline hooks exist but no page uses them. 8. Routing hooks exist but no page uses them. 9. No trip management UI. |
+| **What is not connected** | 1. MakePayment page does not call any Convex mutation. 2. ~~Settings page cannot save profile changes.~~ **FIXED** — Settings now persists profile, business, and notification changes via `users.updateMyProfile` / `users.businessProfile.updateMyBusiness` / `notifications.service.updatePreferences`, with saving/success/error states. 3. ~~RequestDelivery uses random coordinates.~~ **FIXED** — now uses `geocodeAddress` Convex action. 4. No driver-specific active delivery UI page. 5. No POD submission UI. 6. No dispatch management UI actions. 7. Offline hooks exist but no page uses them. 8. Routing hooks exist but no page uses them. 9. No trip management UI. Settings Security tab (password/2FA/sessions) remains display-only — no password auth exists (OTP-based). |
 
 ---
 
@@ -252,7 +252,7 @@
 | **Status** | **PARTIAL** |
 | **Evidence** | The hook layer (`use-lasha.ts`) properly abstracts Convex calls. Pages use `useQuery`/`useMutation` for server state. Local React state is used only for UI concerns (sidebar, filters, modals, form inputs). Pricing calculation is server-side. Delivery state transitions are server-side. Notification creation is server-side. |
 | **Relevant files** | `src/hooks/use-lasha.ts`, all pages |
-| **What is incorrect** | 1. `src/pages/Dashboard.tsx` `transformDeliveryToOrder()` performs data transformation in React that could be a Convex view. 2. ~~`src/pages/RequestDelivery.tsx` generates coordinates in React~~ **FIXED** — now uses server-side `geocodeAddress` Convex action. 3. `src/pages/MakePayment.tsx` `handlePayment` uses `setTimeout` — payment logic should be a Convex mutation/action. |
+| **What is incorrect** | 1. `src/pages/Dashboard.tsx` `transformDeliveryToOrder()` performs data transformation in React that could be a Convex view. 2. ~~`src/pages/RequestDelivery.tsx` generates coordinates in React~~ **FIXED** — now uses server-side `geocodeAddress` Convex action. 3. `src/pages/MakePayment.tsx` `handlePayment` uses `setTimeout` — payment logic should be a Convex mutation/action. 4. ~~Settings profile edits were discarded on save~~ **FIXED** — Settings now calls `updateMyProfile` / `updateMyBusiness` Convex mutations; identity is session-derived and privileged fields are structurally excluded from mutation args. |
 
 ---
 
@@ -292,7 +292,7 @@ The codebase **correctly follows the intended Vite + React + Convex architecture
 | Operations Centre | Overview tab with real data | Tabs beyond Overview are minimal; no dispatch actions, no map, no audit viewer |
 | Observability | Logging + metrics services defined | Not called by most Convex functions; no external monitoring |
 | Testing | 9 pure-logic test files | No integration tests, no React tests, no E2E tests |
-| UI/Backend Integration | Primary pages connected | MakePayment stub, Settings read-only, no driver/POD/dispatch UI |
+| UI/Backend Integration | Primary pages connected; Settings profile/business saving now works | MakePayment stub, no driver/POD/dispatch UI |
 
 ### What Is INCORRECT
 
@@ -318,7 +318,7 @@ The codebase **correctly follows the intended Vite + React + Convex architecture
 | Payment provider integration | No actual payment processing (Paystack, Stripe, etc.) |
 | SMS/Email notifications | Only in-app notifications; no external delivery channels |
 | Rate limiting | Not implemented |
-| Profile mutation | Cannot save profile changes |
+| Profile mutation | ~~Cannot save profile changes~~ **FIXED** — `users.updateMyProfile` + `users.businessProfile.updateMyBusiness` connected to Settings |
 | Driver GPS reporting UI | No page for drivers to report GPS (hooks exist but are unused) |
 
 ### Critical Architectural Problems

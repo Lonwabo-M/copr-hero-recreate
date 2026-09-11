@@ -114,6 +114,11 @@ export function useUnreadNotificationCount() {
   return useQuery(api.notifications.service.getUnreadCount, {});
 }
 
+/** The current user's business profile (or null). */
+export function useMyBusiness() {
+  return useQuery(api.users.businessProfile.getMyBusiness, {});
+}
+
 /** Notification preferences. */
 export function useNotificationPreferences() {
   return useQuery(api.notifications.service.getMyPreferences, {});

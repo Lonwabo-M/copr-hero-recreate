@@ -1,7 +1,5 @@
 import { useState, useEffect } from "react";
-import { useMutation } from "convex/react";
-import { api } from "@/convex/_generated/api";
-import { useCurrentUser, useNotificationPreferences, useUpdateNotificationPreferences } from "@/hooks/use-lasha";
+import { useCurrentUser, useNotificationPreferences, useUpdateNotificationPreferences, useUpdateMyProfile, useMyBusiness, useUpdateMyBusiness } from "@/hooks/use-lasha";
 import Sidebar from "@/components/dashboard/Sidebar";
 import { useDashboardNav } from "@/hooks/useDashboardNav";
 import {
@@ -37,11 +35,15 @@ export default function Settings() {
   const [activeTab, setActiveTab] = useState<SettingsTab>("profile");
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Convex data
   const currentUser = useCurrentUser();
   const preferences = useNotificationPreferences();
   const updatePreferences = useUpdateNotificationPreferences();
+  const updateMyProfile = useUpdateMyProfile();
+  const myBusiness = useMyBusiness();
+  const updateMyBusiness = useUpdateMyBusiness();
 
   // Profile state (initialized from Convex)
   const [firstName, setFirstName] = useState("");
@@ -92,6 +94,17 @@ export default function Settings() {
     }
   }, [preferences]);
 
+  // Initialize business form from Convex business data
+  useEffect(() => {
+    if (myBusiness) {
+      setCompanyName(myBusiness.name ?? "");
+      setCompanyEmail(""); // businesses table has no email field
+      setCompanyPhone(myBusiness.phone ?? "");
+      setCompanyAddress(myBusiness.address ?? "");
+      setCompanyReg(myBusiness.registrationNumber ?? "");
+    }
+  }, [myBusiness]);
+
   const onSidebarNav = (item: string) => {
     setActiveSidebarItem(item);
     handleSidebarNavigation(item);
@@ -99,9 +112,24 @@ export default function Settings() {
 
   const handleSave = async () => {
     setSaving(true);
+    setError(null);
     try {
-      // Save notification preferences to Convex
-      if (activeTab === "notifications") {
+      if (activeTab === "profile") {
+        const name = [firstName, lastName].filter(Boolean).join(" ").trim();
+        await updateMyProfile({
+          ...(name !== (currentUser?.name ?? "") && { name }),
+          ...(phone !== (currentUser?.phone ?? "") && { phone }),
+        });
+      } else if (activeTab === "business") {
+        await updateMyBusiness({
+          ...(companyName !== (myBusiness?.name ?? "") && { name: companyName }),
+          ...(companyPhone !== (myBusiness?.phone ?? "") && { phone: companyPhone }),
+          ...(companyAddress !== (myBusiness?.address ?? "") && { address: companyAddress }),
+          ...(companyReg !== (myBusiness?.registrationNumber ?? "") && {
+            registrationNumber: companyReg,
+          }),
+        });
+      } else if (activeTab === "notifications") {
         await updatePreferences({
           emailNotifications,
           smsNotifications,
@@ -110,12 +138,10 @@ export default function Settings() {
           marketingEmails,
         });
       }
-      // Profile/business updates would require additional mutations
-      // For now, just save notification preferences
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (err) {
-      console.error("Failed to save settings:", err);
+      setError(err instanceof Error ? err.message : "Failed to save changes");
     } finally {
       setSaving(false);
     }
@@ -545,6 +571,24 @@ export default function Settings() {
                   )}
 
                   {/* Save button */}
+                  {error && (
+                    <div
+                      className="settings-actions"
+                      style={{
+                        padding: "10px 14px",
+                        marginBottom: 12,
+                        borderRadius: 8,
+                        background: "rgba(220, 38, 38, 0.08)",
+                        border: "1px solid rgba(220, 38, 38, 0.3)",
+                        color: "#b91c1c",
+                        fontSize: 13,
+                        fontWeight: 500,
+                      }}
+                      role="alert"
+                    >
+                      {error}
+                    </div>
+                  )}
                   <div className="settings-actions">
                     <button
                       className="settings-save-btn"

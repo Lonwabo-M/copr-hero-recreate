@@ -13,7 +13,7 @@
  * - Changes are recorded in the audit log (company.updated).
  */
 
-import { mutation } from "../_generated/server";
+import { mutation, query } from "../_generated/server";
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import { requireAuth, getCurrentAuthUser } from "../auth/authorization";
@@ -26,6 +26,22 @@ import {
   BUSINESS_ADDRESS_MAX_LENGTH,
   BUSINESS_REGISTRATION_MAX_LENGTH,
 } from "./profileValidation";
+
+/**
+ * Get the business record for the authenticated user (or null if none).
+ * Used by the Settings > Business tab to display current values.
+ */
+export const getMyBusiness = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await requireAuth(ctx);
+    const user = await getCurrentAuthUser(ctx);
+    if (!user?.businessId) {
+      return null;
+    }
+    return await ctx.db.get(user.businessId);
+  },
+});
 
 export const updateMyBusiness = mutation({
   args: {
