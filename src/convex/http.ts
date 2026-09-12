@@ -1,6 +1,8 @@
 import { httpRouter } from "convex/server";
 import { httpAction } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { auth } from "./auth";
+import { computePaystackSignature } from "./payments/_provider";
 
 const http = httpRouter();
 
@@ -116,6 +118,97 @@ http.route({
         headers: { "Content-Type": "application/json", "Cache-Control": "no-cache" },
       }
     );
+  }),
+});
+
+/**
+ * Paystack payment webhook.
+ *
+ * Security:
+ *  - The signature header (x-paystack-signature, HMAC-SHA512 of the raw body
+ *    with PAYSTACK_SECRET_KEY) is verified BEFORE any processing. Invalid
+ *    signatures are rejected with 401 and no state changes occur.
+ *  - The internal payment transaction is resolved by the reference inside the
+ *    payload (our idempotency key) — payload order IDs are never trusted.
+ *  - Processing is idempotent: duplicate charge.success events short-circuit
+ *    inside completePaymentTransaction (already-completed guard).
+ */
+http.route({
+  path: "/payments/paystack/webhook",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const secretKey = process.env.PAYSTACK_SECRET_KEY;
+    if (!secretKey) {
+      return new Response(JSON.stringify({ error: "Payment provider not configured" }), {
+        status: 503,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    // Raw body is required for signature verification — never re-serialize.
+    const rawBody = await request.text();
+    const signatureHeader =
+      request.headers.get("x-paystack-signature") ??
+      request.headers.get("X-Paystack-Signature");
+
+    if (!signatureHeader) {
+      return new Response(JSON.stringify({ error: "Missing signature" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const expected = await computePaystackSignature(rawBody, secretKey);
+    if (expected !== signatureHeader) {
+      return new Response(JSON.stringify({ error: "Invalid signature" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    let event: {
+      event?: string;
+      data?: { reference?: string; id?: number; amount?: number };
+    };
+    try {
+      event = JSON.parse(rawBody);
+    } catch {
+      return new Response(JSON.stringify({ error: "Invalid JSON" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const reference = event.data?.reference;
+    if (!event.event || !reference) {
+      return new Response(JSON.stringify({ error: "Missing event or reference" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    try {
+      await ctx.runAction(internal.payments.actions.processWebhookEvent, {
+        reference,
+        event: event.event,
+        providerTransactionId: event.data?.id ? String(event.data.id) : undefined,
+        amountFromProvider: event.data?.amount,
+      });
+    } catch (err) {
+      // Return 500 so Paystack retries; the internal mutations are idempotent
+      // so replayed events are safe.
+      return new Response(
+        JSON.stringify({
+          error: err instanceof Error ? err.message : "webhook processing failed",
+        }),
+        { status: 500, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    return new Response(JSON.stringify({ status: "received" }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
   }),
 });
 

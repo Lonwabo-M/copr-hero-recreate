@@ -1,0 +1,207 @@
+/**
+ * Lasha Payment Queries
+ *
+ * Customer payment queries. All reads are scoped to the authenticated user —
+ * the client never supplies a customer/business/order owner identity.
+ *
+ * Layer 1 of the financial model (see docs/customer-payment.md):
+ *   Customer charge (orders.price / delivery_quotes) → payment_transactions.
+ * Payment status here NEVER touches driver settlements or delivery state.
+ */
+
+import { query, internalQuery } from "../_generated/server";
+import { v } from "convex/values";
+import type { Doc, Id } from "../_generated/dataModel";
+import { requireAuth, getCurrentAuthUser } from "../auth/authorization";
+import { ROLES } from "../schema";
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Payment inspection authorization. Resolves entirely from the authenticated
+ * session:
+ *  - the order's sender
+ *  - a company_admin belonging to the order's business
+ *  - super_admin
+ * Drivers / fleet managers / anonymous users have no access.
+ */
+function canInspectOrder(
+  user: NonNullable<Awaited<ReturnType<typeof getCurrentAuthUser>>>,
+  order: Doc<"orders">
+): boolean {
+  if (order.senderId === user.userId) return true;
+  if (user.role === ROLES.SUPER_ADMIN) return true;
+  if (
+    user.role === ROLES.COMPANY_ADMIN &&
+    order.businessId !== undefined &&
+    user.businessId !== undefined &&
+    order.businessId === user.businessId
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/** Latest payment transaction for an order (by creation, newest first). */
+async function latestPaymentForOrder(
+  ctx: { db: any },
+  orderId: Id<"orders">
+): Promise<Doc<"payment_transactions"> | null> {
+  const txs = await ctx.db
+    .query("payment_transactions")
+    .withIndex("by_order", (q: any) => q.eq("orderId", orderId))
+    .collect();
+  if (txs.length === 0) return null;
+  return txs.sort((a: any, b: any) => b.createdAt - a.createdAt)[0];
+}
+
+// ─── Public Queries ───────────────────────────────────────────────────────────
+
+/**
+ * Payment overview for the authenticated customer: their orders with the
+ * authoritative charge and the latest payment transaction state. Powers the
+ * MakePayment page and any customer payment-status display.
+ *
+ * Excludes settlement and wallet data — customers do not see driver financials.
+ */
+export const getMyPaymentOverview = query({
+  args: {},
+  handler: async (ctx) => {
+    const user = await getCurrentAuthUser(ctx);
+    if (!user) throw new Error("Authentication required");
+
+    // Customers see their own orders; company admins see their business's.
+    let orders: Doc<"orders">[];
+    if (user.role === ROLES.CUSTOMER || user.role === ROLES.SUPER_ADMIN) {
+      orders = await ctx.db
+        .query("orders")
+        .withIndex("by_sender", (q) => q.eq("senderId", user.userId))
+        .collect();
+    } else if (user.role === ROLES.COMPANY_ADMIN) {
+      if (user.businessId === undefined) return [];
+      orders = await ctx.db
+        .query("orders")
+        .withIndex("by_business", (q) => q.eq("businessId", user.businessId!))
+        .collect();
+    } else {
+      // Drivers, fleet managers, operations: no customer payment visibility.
+      return [];
+    }
+
+    const overview = [];
+    for (const order of orders) {
+      if (!canInspectOrder(user, order)) continue;
+      const payment = await latestPaymentForOrder(ctx, order._id);
+      overview.push({
+        orderId: order._id,
+        trackingNumber: order.trackingNumber ?? null,
+        orderStatus: order.status,
+        createdAt: order.createdAt,
+        // Authoritative customer charge — stored at order creation.
+        amount: order.price,
+        payment: payment
+          ? {
+              status: payment.status,
+              provider: payment.provider,
+              providerTransactionId: payment.providerTransactionId ?? null,
+              amount: payment.amount,
+              createdAt: payment.createdAt,
+              completedAt: payment.completedAt ?? null,
+            }
+          : null,
+      });
+    }
+
+    return overview.sort((a, b) => b.createdAt - a.createdAt);
+  },
+});
+
+// ─── Internal Queries (for payment actions) ──────────────────────────────────
+
+/**
+ * Resolve an order for payment initiation/verification. Authentication and
+ * ownership are enforced here (identity from the session, never from args).
+ * Returns the authoritative charge and any existing payment transactions so
+ * the action can stay idempotent.
+ */
+export const getAuthorizedOrderForPayment = internalQuery({
+  args: { orderId: v.id("orders") },
+  handler: async (ctx, args) => {
+    const user = await getCurrentAuthUser(ctx);
+    if (!user) throw new Error("Authentication required");
+
+    const order = await ctx.db.get(args.orderId);
+    if (!order) throw new Error("Order not found");
+
+    // Initiation is limited to the order's sender (the customer being
+    // charged). Company admins and operations may inspect but not initiate —
+    // no established business rule permits them to pay on a sender's behalf.
+    if (order.senderId !== user.userId && user.role !== ROLES.SUPER_ADMIN) {
+      throw new Error("Access denied: you can only pay for your own orders");
+    }
+
+    const sender = await ctx.db.get(order.senderId);
+    const email = sender && "email" in sender ? ((sender as any).email as string | undefined) : undefined;
+
+    const existing = await ctx.db
+      .query("payment_transactions")
+      .withIndex("by_order", (q) => q.eq("orderId", order._id))
+      .collect();
+
+    const sorted = existing.sort((a, b) => b.createdAt - a.createdAt);
+
+    return {
+      orderId: order._id,
+      orderStatus: order.status,
+      // The authoritative amount — never taken from the client.
+      amount: order.price,
+      senderEmail: email ?? null,
+      userId: user.userId,
+      userRole: user.role,
+      latestPayment: sorted[0] ?? null,
+      failedAttempts: sorted.filter((t) => t.status === "failed").length,
+    };
+  },
+});
+
+/**
+ * Resolve a payment transaction by provider reference (idempotency key).
+ * Used by the webhook handler and verification flows. Internal — no auth,
+ * the webhook route verifies the provider signature before calling.
+ */
+export const getPaymentByReference = internalQuery({
+  args: { reference: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("payment_transactions")
+      .withIndex("by_idempotency", (q) => q.eq("idempotencyKey", args.reference))
+      .first();
+  },
+});
+
+/**
+ * Full transaction record for completion checks (webhook/verify).
+ */
+export const getPaymentTransaction = internalQuery({
+  args: { transactionId: v.id("payment_transactions") },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.transactionId);
+  },
+});
+
+/**
+ * Load the authenticated user's role identity for action-level role checks
+ * (actions have no db access, so this internal query provides it).
+ */
+export const getUserRoleForPayment = internalQuery({
+  args: { userId: v.id("users") },
+  handler: async (ctx, args) => {
+    const user = await ctx.db.get(args.userId);
+    if (!user) return null;
+    return {
+      userId: user._id,
+      role: user.role as string,
+      businessId: (user as any).businessId as Id<"businesses"> | undefined,
+    };
+  },
+});
