@@ -648,7 +648,14 @@ export const createSettlement = internalMutation({
 });
 
 /**
- * Process a settlement (mark as processing).
+ * Process a settlement (mark as processing — payout lifecycle start).
+ *
+ * HARDENED with the payout-eligibility gate (Model B, see
+ * docs/payment-settlement-reconciliation.md §13): the settlement must be
+ * payout-eligible per the shared reconciliation evaluation before the
+ * lifecycle may advance. The gate re-uses payments/_reconcile.ts so this
+ * mutation enforces exactly the same financial interpretation as the
+ * reconciliation read model and the eligibility query — no duplicated rules.
  */
 export const processSettlement = mutation({
   args: { settlementId: v.id("settlements") },
@@ -662,9 +669,37 @@ export const processSettlement = mutation({
       throw new Error(`Settlement is ${settlement.status}, not pending`);
     }
     
+    // ── Payout-eligibility gate (read-only evaluation, no money moved) ──
+    const eligibility = await ctx.runQuery(
+      internal.payments.payoutEligibility.evaluateInternal,
+      { settlementId: args.settlementId }
+    );
+    if (!eligibility.eligible) {
+      let detail = "Settlement is not payout-eligible: " + eligibility.reason;
+      if (eligibility.anomalies.length > 0) {
+        detail = detail + " — anomalies: " + eligibility.anomalies.join("; ");
+      }
+      throw new Error(detail);
+    }
+    
     await ctx.db.patch(args.settlementId, {
       status: "processing",
       processedAt: Date.now(),
+    });
+    
+    // Audit: settlement moved into processing.
+    await ctx.runMutation(internal.audit.service.recordPaymentEvent, {
+      actorId: settlement.driverId,
+      actorRole: "system",
+      action: AUDIT_ACTIONS.SETTLEMENT_PROCESSED,
+      entityType: "settlement",
+      entityId: args.settlementId,
+      metadata: JSON.stringify({
+        status: "processing",
+        amount: settlement.driverEarnings,
+        eligibility: eligibility.reason,
+      }),
+      orderId: settlement.orderId,
     });
     
     return { success: true };
@@ -672,7 +707,22 @@ export const processSettlement = mutation({
 });
 
 /**
- * Complete a settlement (layer 3: actual driver payment).
+ * Complete a settlement (layer 3: driver wallet credit — NOT an external
+ * bank payout).
+ *
+ * WALLET INTERPRETATION (documented, unchanged architecture): crediting the
+ * driver's Lasha wallet moves the amount from "payable" to "paid into the
+ * driver's internal balance". It does NOT represent an external bank payout —
+ * no payout provider exists. Any future external payout layer must be built
+ * on top of this and reconcile against the transactions ledger.
+ *
+ * HARDENED: completion requires settlement:manage AND the payout-eligibility
+ * gate. The system can no longer mark a settlement completed while the
+ * customer payment is unpaid, financial reconciliation is anomalous, or any
+ * required settlement condition is missing. The gate is evaluated on the
+ * processing → completed transition, where settlement status "processing"
+ * is itself an accepted eligible state (the lifecycle that this mutation
+ * continues).
  *
  * Wallet policy (see docs/driver-earnings-settlement.md): the wallet is
  * ensured automatically, and idempotently, before crediting. The previous
@@ -693,6 +743,19 @@ export const completeSettlement = mutation({
 
     if (settlement.status !== "processing") {
       throw new Error(`Settlement is ${settlement.status}, not processing`);
+    }
+
+    // ── Payout-eligibility gate (read-only evaluation, no money moved) ──
+    const eligibility = await ctx.runQuery(
+      internal.payments.payoutEligibility.evaluateInternal,
+      { settlementId: args.settlementId }
+    );
+    if (!eligibility.eligible) {
+      let detail = "Settlement is not payout-eligible: " + eligibility.reason;
+      if (eligibility.anomalies.length > 0) {
+        detail = detail + " — anomalies: " + eligibility.anomalies.join("; ");
+      }
+      throw new Error(detail);
     }
 
     const now = Date.now();

@@ -353,3 +353,104 @@ indexes, no-write invariants, permission gating (driver/customer exclusion),
 settlement statuses, the full state matrix, all anomaly checks, revenue
 derivation, and reference hygiene. Run:
 `bunx tsx src/convex/testing/reconciliation.test.ts`.
+
+---
+
+## 13. Payout Eligibility Policy (implemented)
+
+> **Policy status: current implementation policy pending business sign-off.**
+> Model B was chosen because it is the only model consistent with the existing
+> architecture (settlement creation at DELIVERED is already wired and was not
+> changed). It is **not** a business-confirmed rule — §4's unresolved decision
+> still requires product/finance sign-off before it should be treated as final.
+
+### Current policy (Model B)
+
+A settlement is **payout-eligible** only when ALL of the following hold:
+
+1. **Delivery** exists and is in the `DELIVERED` terminal state.
+2. **Settlement** exists, is the unique settlement for its order, and its
+   identity matches the settlement being evaluated.
+3. **Settlement status** is `pending` (payable) or `processing` (payout
+   already in progress by an authorized operator — re-checking eligibility
+   must not flip an in-flight lifecycle to ineligible). `completed` →
+   already paid; `failed`/`disputed` → blocked.
+4. **Settlement amount** equals the stored quote's `driverEarnings`.
+5. **Customer payment** is verified: a `completed` `payment_transactions`
+   row whose amount equals `orders.price` (the same `customerPaid` rule the
+   reconciliation model uses).
+6. **Zero reconciliation anomalies** (amount mismatches, duplicate completed
+   payments, duplicate settlements, disputed states). `ANOMALY` always blocks.
+
+### Rejected conditions → reason codes
+
+`ELIGIBLE` · `DELIVERY_MISSING` · `DELIVERY_NOT_COMPLETED` · `NO_SETTLEMENT` ·
+`SETTLEMENT_NOT_PAYABLE` · `SETTLEMENT_ALREADY_PAID` ·
+`CUSTOMER_PAYMENT_PENDING` · `PAYMENT_FAILED` · `PAYMENT_AMOUNT_MISMATCH` ·
+`FINANCIAL_ANOMALY`. One reason per evaluation; first blocking check wins
+(delivery → settlement → payment → anomalies). Anomalies are reported, never
+auto-corrected, and no record is ever chosen arbitrarily.
+
+### Relationship to reconciliation (single source of truth)
+
+The financial interpretation was extracted into
+`src/convex/payments/_reconcile.ts` (`evaluateOrderFinancials`) — a plain
+module shared by:
+
+- the reconciliation read model (`payments/reconciliation.ts`),
+- the eligibility gate (`payments/payoutEligibility.ts`), and
+- the hardened settlement lifecycle (`pricing/service.ts`).
+
+There is no duplicated payment/settlement/anomaly logic anywhere; the helper
+imports nothing from function modules, so there are no circular dependencies.
+Both read models remain pure reads.
+
+### The eligibility operation
+
+`checkSettlementPayoutEligibility` (`payments/payoutEligibility.ts`):
+- **Query, read-only** — accepts `settlementId` only; resolves every financial
+  fact server-side; never moves money, never creates payout records, never
+  touches settlement status, wallets, or transactions.
+- **Authorization**: `settlement:view` (operations / company_admin /
+  super_admin). Drivers and customers cannot invoke it. A duplicate
+  `evaluateInternal` internal query serves the settlement lifecycle mutations
+  and is unreachable from React.
+- Returns: `eligible`, `reason`, `settlementId`, `orderId`, `deliveryId`,
+  `driverId`, `settlementAmount`, `customerPaymentAmount`,
+  `reconciliationState`, `anomalies`, timestamps.
+
+### Settlement completion hardening
+
+`processSettlement` and `completeSettlement` now invoke the eligibility gate
+(via `evaluateInternal`) before advancing the lifecycle. The system can no
+longer mark a settlement `completed` while the customer payment is unpaid,
+verification failed, amounts mismatch, or reconciliation is anomalous — the
+mutation throws with the reason code and anomaly diagnostics. Existing state
+gates (`pending` → `processing` → `completed`) and idempotency are preserved:
+a repeated completion attempt still throws before any wallet credit, and the
+gate classifies completed settlements as `SETTLEMENT_ALREADY_PAID`.
+
+### Wallet interpretation (documented, unchanged)
+
+Crediting the driver's Lasha wallet in `completeSettlement` moves the amount
+from *payable* to **paid into the driver's internal balance**. It does **NOT**
+represent an external bank payout — no payout provider exists. Any future
+external payout layer must be built on top of this boundary and reconcile
+against the transactions ledger.
+
+### Eligibility ≠ payout
+
+Payout eligibility is a **precondition**, not an event. An eligible settlement
+is still `pending`/`processing`; nothing has been paid, no wallet credited, no
+bank transfer initiated. Actual payout remains the (now gated, still manual)
+`processSettlement`/`completeSettlement` lifecycle until a payout provider is
+integrated.
+
+### Tests
+
+`src/convex/testing/payoutEligibility.test.ts` (20 assertions) covers the full
+reason matrix, Model B wiring, shared-helper reuse (no duplicated rules, no
+circular imports), read-only invariants, lifecycle hardening ordering
+(state gate → eligibility gate → credit), authorization exclusion, and the
+structured result shape. Run:
+`bunx tsx src/convex/testing/payoutEligibility.test.ts`.

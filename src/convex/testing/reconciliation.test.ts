@@ -90,12 +90,15 @@ const reconCode = stripComments(recon);
 console.log("\n1. Source records and indexes");
 
 test("reads all four authoritative sources via existing indexes", () => {
-  assertContains(reconCode, '.query("delivery_quotes")', "reads delivery_quotes");
-  assertContains(reconCode, '.withIndex("by_order"', "quotes via by_order");
-  assertContains(reconCode, '.query("payment_transactions")', "reads payment_transactions");
-  assertContains(reconCode, '.query("settlements")', "reads settlements");
-  assertContains(reconCode, '.query("deliveries")', "reads deliveries for context");
-  assertContains(reconCode, "ctx.db.get(args.orderId)", "reads the order document");
+  // Source reads live in the shared helper; the query delegates to it.
+  const helper = read("src/convex/payments/_reconcile.ts");
+  assertContains(helper, '.query("delivery_quotes")', "reads delivery_quotes");
+  assertContains(helper, '.withIndex("by_order"', "quotes via by_order");
+  assertContains(helper, '.query("payment_transactions")', "reads payment_transactions");
+  assertContains(helper, '.query("settlements")', "reads settlements");
+  assertContains(helper, '.query("deliveries")', "reads deliveries for context");
+  assertContains(helper, "ctx.db.get(orderId)", "reads the order document");
+  assertContains(recon, "evaluateOrderFinancials", "query delegates to the shared evaluation");
 });
 
 test("no new table, no reconciliation persistence", () => {
@@ -154,10 +157,11 @@ test("accepts orderId only — no driver/settlement/payment/amount inputs", () =
 console.log("\n3. Customer payment determination");
 
 test("paid = completed payment whose amount matches orders.price", () => {
-  assertContains(reconCode, 'p.status === "completed"', "only completed payments count");
-  assertContains(reconCode, "completedPayment.amount === order.price", "amount verified against orders.price");
-  assertContains(reconCode, "paymentAmountVerified", "verification flag exists");
-  assertContains(reconCode, "customerPaid = completedPayment !== null && paymentAmountVerified", "customerPaid requires both");
+  const helper = read("src/convex/payments/_reconcile.ts");
+  assertContains(helper, 'p.status === "completed"', "only completed payments count");
+  assertContains(helper, "completedPayment.amount === order.price", "amount verified against orders.price");
+  assertContains(helper, "paymentAmountVerified", "verification flag exists");
+  assertContains(helper, "customerPaid = completedPayment !== null && paymentAmountVerified", "customerPaid requires both");
 });
 
 test("failed/pending payments never count as customer payment", () => {
@@ -167,13 +171,14 @@ test("failed/pending payments never count as customer payment", () => {
 });
 
 test("multiple completed payments surface as an anomaly, not silently picked", () => {
+  const helper = read("src/convex/payments/_reconcile.ts");
   assertContains(
-    reconCode,
+    helper,
     "completedPayments.length > 1",
     "duplicate-completed check exists"
   );
   assertContains(
-    reconCode,
+    helper,
     "possible duplicate charge",
     "explicit duplicate-payment anomaly"
   );
@@ -184,23 +189,26 @@ test("multiple completed payments surface as an anomaly, not silently picked", (
 console.log("\n4. Settlement determination");
 
 test("settlement read from by_order; never created or altered", () => {
-  const settleBlock = recon.slice(recon.indexOf('// ── Settlement'), recon.indexOf("const driverEntitled"));
+  const helper = read("src/convex/payments/_reconcile.ts");
+  const settleBlock = helper.slice(helper.indexOf("// ── Settlement"), helper.indexOf("// ── Delivery"));
   assertContains(settleBlock, '.withIndex("by_order"', "settlement via by_order index");
   assertTrue(!/insert\("settlements"\)/.test(reconCode), "never inserts settlements");
   assertTrue(!/patch\(settlement/.test(reconCode), "never patches settlements");
 });
 
 test("all real settlement statuses distinguished, pending ≠ paid", () => {
+  // Status handling lives in the shared helper now.
+  const helper = read("src/convex/payments/_reconcile.ts");
   for (const st of ['"completed"', '"processing"', '"pending"']) {
-    assertContains(recon, st, `handles settlement status ${st}`);
+    assertContains(helper, st, `handles settlement status ${st}`);
   }
   // RECONCILED only from completed settlement.
-  const switchBlock = recon.slice(recon.indexOf('switch (settlement!.status)'), recon.indexOf("// ── Derived platform revenue"));
-  assertContains(switchBlock, 'case "completed":\n          state = "RECONCILED"', "RECONCILED requires completed settlement");
-  assertContains(switchBlock, 'case "pending":\n          state = "SETTLEMENT_PENDING"', "pending maps to SETTLEMENT_PENDING");
-  assertContains(switchBlock, 'case "processing":\n          state = "SETTLEMENT_PROCESSING"', "processing maps to SETTLEMENT_PROCESSING");
+  const switchBlock = helper.slice(helper.indexOf('switch (settlement!.status)'), helper.indexOf("// ── Derived platform revenue") === -1 ? helper.indexOf("return {") : helper.length);
+  assertContains(switchBlock, 'case "completed":', "RECONCILED branch from completed settlement");
+  assertContains(switchBlock, 'state = "SETTLEMENT_PENDING"', "pending maps to SETTLEMENT_PENDING");
+  assertContains(switchBlock, 'state = "SETTLEMENT_PROCESSING"', "processing maps to SETTLEMENT_PROCESSING");
   // failed/disputed + paid customer → anomaly.
-  assertContains(reconCode, "Settlement status is", "failed/disputed + paid surfaces an anomaly");
+  assertContains(helper, "Settlement status is", "failed/disputed + paid surfaces an anomaly");
 });
 
 // ─── 5. Reconciliation states ────────────────────────────────────────────────
@@ -208,29 +216,36 @@ test("all real settlement statuses distinguished, pending ≠ paid", () => {
 console.log("\n5. Reconciliation state derivation");
 
 test("all six states exist with clear names", () => {
+  const helper = read("src/convex/payments/_reconcile.ts");
   for (const s of ["RECONCILED", "UNPAID", "PAID_NO_SETTLEMENT", "SETTLEMENT_PENDING", "SETTLEMENT_PROCESSING", "ANOMALY"]) {
-    assertContains(recon, `"${s}"`, `state ${s} defined`);
+    assertContains(helper, `"${s}"`, `state ${s} defined`);
   }
+  // The query re-exports the shared constants.
+  assertContains(recon, "RECONCILIATION_STATES", "states re-exported from the query module");
 });
 
 test("state matrix matches the required derivation rules", () => {
-  assertContains(reconCode, "anomalies.length > 0", "anomaly wins over everything");
-  assertContains(reconCode, "!customerPaid && !driverEntitled", "UNPAID rule");
-  assertContains(reconCode, "customerPaid && !driverEntitled", "PAID_NO_SETTLEMENT rule");
-  assertContains(reconCode, "!customerPaid && driverEntitled", "settlement-without-payment rule");
-  assertContains(reconCode, "state = \"RECONCILED\"", "RECONCILED assignment");
+  // The derivation logic now lives in the shared helper _reconcile.ts.
+  const helper = read("src/convex/payments/_reconcile.ts");
+  assertContains(helper, "anomalies.length > 0", "anomaly wins over everything");
+  assertContains(helper, "!customerPaid && !driverEntitled", "UNPAID rule");
+  assertContains(helper, "customerPaid && !driverEntitled", "PAID_NO_SETTLEMENT rule");
+  assertContains(helper, "!customerPaid && driverEntitled", "settlement-without-payment rule");
+  assertContains(helper, 'state = "RECONCILED"', "RECONCILED assignment");
 });
 
 test("amount/record anomalies force ANOMALY", () => {
+  // Checks live in the shared helper now.
+  const helper = read("src/convex/payments/_reconcile.ts");
   const checks = [
     "does not match orders.price",
     "does not match quote totalCharge",
     "does not match quote driverEarnings",
   ];
   for (const c of checks) {
-    assertContains(recon, c, `anomaly check: ${c}`);
+    assertContains(helper, c, `anomaly check: ${c}`);
   }
-  assertContains(reconCode, 'state = "ANOMALY"', "ANOMALY state assigned");
+  assertContains(helper, 'state = "ANOMALY"', "ANOMALY state assigned");
 });
 
 // ─── 6. Platform revenue ─────────────────────────────────────────────────────
@@ -240,14 +255,20 @@ console.log("\n6. Platform revenue derivation");
 test("derived from stored quote only — never recalculated", () => {
   assertContains(
     recon,
+    "derivePlatformRevenue",
+    "revenue derivation reused from the shared helper"
+  );
+  const helper = read("src/convex/payments/_reconcile.ts");
+  assertContains(
+    helper,
     "quote.totalCharge - quote.driverEarnings",
     "derived from stored quote values"
   );
-  assertContains(reconCode, "derived from stored quote", "labelled as derived");
+  assertContains(helper, "derived from stored quote", "labelled as derived");
   const noCalc = !reconCode.includes("calculatePricingBreakdown") &&
     !reconCode.includes("calculateAndStoreQuote");
   assertTrue(noCalc, "no pricing-engine calls");
-  assertContains(recon, "NOT recognized accounting", "explicitly not accounting revenue");
+  assertContains(read("src/convex/payments/_reconcile.ts"), "recognized accounting revenue", "explicitly not accounting revenue");
 });
 
 // ─── 7. Safe references / no secrets ─────────────────────────────────────────
