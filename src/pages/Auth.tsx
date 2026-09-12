@@ -1,13 +1,21 @@
 import { useAuthActions } from "@convex-dev/auth/react";
 import { useState } from "react";
+import { useSearchParams } from "react-router";
 import { ArrowRight, ArrowLeft } from "lucide-react";
 
 interface AuthProps {
+  /** Fallback when no ?returnTo= is present. Post-auth role resolution then
+   *  happens at /post-auth (see main.tsx) so drivers land in the Driver App,
+   *  operations users in the Operations Centre, customers in the portal. */
   redirectAfterAuth?: string;
 }
 
-export default function AuthPage({ redirectAfterAuth = "/dashboard" }: AuthProps) {
+export default function AuthPage({ redirectAfterAuth = "/post-auth" }: AuthProps) {
   const { signIn } = useAuthActions();
+  const [searchParams] = useSearchParams();
+  // Preserve the exact deep-link the user was trying to reach (set by
+  // RequireAuth/RoleGate as ?returnTo=...).
+  const returnTo = searchParams.get("returnTo");
   const [email, setEmail] = useState("");
   const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
@@ -42,7 +50,7 @@ export default function AuthPage({ redirectAfterAuth = "/dashboard" }: AuthProps
     setError("");
     try {
       await signIn("email-otp", { email, code: otp });
-      window.location.href = redirectAfterAuth;
+      window.location.href = returnTo ?? redirectAfterAuth;
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Invalid code";
       setError(message);

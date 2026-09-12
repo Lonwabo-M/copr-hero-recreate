@@ -1,6 +1,7 @@
 import '@vly-ai/integrations';
 import { Toaster } from "@/components/ui/sonner";
-import { RequireAuth } from "@/components/RequireAuth";
+import { APP_AREAS, RoleGate } from "@/components/shells/RoleGate";
+import { homeRouteForRole } from "@/components/shells/roleAccess";
 import { VlyToolbar } from "../vly-toolbar-readonly.tsx";
 import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import { ConvexReactClient } from "convex/react";
@@ -26,6 +27,8 @@ import Downloads from "./pages/Downloads.tsx";
 import NotFound from "./pages/NotFound.tsx";
 import OperationsCentre from "./pages/OperationsCentre.tsx";
 import DriverActiveDelivery from "./pages/DriverActiveDelivery.tsx";
+import DriverHome from "./pages/DriverHome.tsx";
+import PostAuthRedirect from "./pages/PostAuthRedirect.tsx";
 
 /** Silent error boundary — if VlyToolbar crashes it renders nothing instead of
  *  crashing the whole app (e.g. hook errors in WebContainer environment). */
@@ -47,7 +50,7 @@ class ToolbarErrorBoundary extends React.Component<
 
 /** Hard guard so runtime errors never leave the preview as a blank page. */
 class RootErrorBoundary extends React.Component<
-  { children: React.ReactNode },
+  { children: React.ReactNode; hasError: boolean; message: string; stack: string },
   { hasError: boolean; message: string; stack: string }
 > {
   state = { hasError: false, message: "", stack: "" };
@@ -87,6 +90,9 @@ const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL as string);
 
 
 
+/** Role-aware post-auth entry: resolves the signed-in user's home route via
+ *  PostAuthRedirect (customer → /dashboard, driver → /driver, ops → /operations). */
+
 function RouteSyncer() {
   const location = useLocation();
   useEffect(() => {
@@ -111,6 +117,21 @@ function RouteSyncer() {
 }
 
 
+// ─── Route Architecture ──────────────────────────────────────────────────────
+// URL structure reflects the four role-specific application experiences:
+//
+//   Customer Portal    /dashboard /request-delivery /track-delivery ...
+//   Driver App         /driver /driver/active-delivery
+//   Operations Centre  /operations
+//
+// Every protected route is wrapped in RoleGate, which layers role-aware area
+// checks on top of the existing RequireAuth (authentication + returnTo). The
+// frontend is a convenience boundary only — Convex remains the authoritative
+// authorization layer for all data access.
+//
+// Backwards compatibility: the existing customer routes are unchanged. Legacy
+// aliases (e.g. /driver/active-delivery already existed) keep working.
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <RootErrorBoundary>
@@ -122,122 +143,140 @@ createRoot(document.getElementById("root")!).render(
           <RouteSyncer />
             <Routes>
               <Route path="/" element={<Landing />} />
-              <Route
-                path="/auth"
-                element={<AuthPage redirectAfterAuth="/dashboard" />}
-              />
+              <Route path="/auth" element={<AuthPage />} />
+              <Route path="/post-auth" element={<PostAuthRedirect />} />
+
+              {/* ─── Customer Portal ──────────────────────────────────── */}
               <Route
                 path="/dashboard"
                 element={
-                  <RequireAuth>
+                  <RoleGate area={APP_AREAS.CUSTOMER}>
                     <Dashboard />
-                  </RequireAuth>
+                  </RoleGate>
                 }
               />
               <Route
                 path="/request-delivery"
                 element={
-                  <RequireAuth>
+                  <RoleGate area={APP_AREAS.CUSTOMER}>
                     <RequestDelivery />
-                  </RequireAuth>
-                }
-              />
-              <Route
-                path="/wallet"
-                element={
-                  <RequireAuth>
-                    <Wallet />
-                  </RequireAuth>
-                }
-              />
-              <Route
-                path="/driver/active-delivery"
-                element={
-                  <RequireAuth>
-                    <DriverActiveDelivery />
-                  </RequireAuth>
+                  </RoleGate>
                 }
               />
               <Route
                 path="/track-delivery"
                 element={
-                  <RequireAuth>
+                  <RoleGate area={APP_AREAS.CUSTOMER}>
                     <TrackDelivery />
-                  </RequireAuth>
+                  </RoleGate>
                 }
               />
               <Route
-                path="/settings"
+                path="/wallet"
                 element={
-                  <RequireAuth>
-                    <Settings />
-                  </RequireAuth>
-                }
-              />
-              <Route
-                path="/past-deliveries"
-                element={
-                  <RequireAuth>
-                    <PastDeliveries />
-                  </RequireAuth>
-                }
-              />
-              <Route
-                path="/invoices"
-                element={
-                  <RequireAuth>
-                    <Invoices />
-                  </RequireAuth>
+                  <RoleGate area={APP_AREAS.CUSTOMER}>
+                    <Wallet />
+                  </RoleGate>
                 }
               />
               <Route
                 path="/make-payment"
                 element={
-                  <RequireAuth>
+                  <RoleGate area={APP_AREAS.CUSTOMER}>
                     <MakePayment />
-                  </RequireAuth>
+                  </RoleGate>
+                }
+              />
+              <Route
+                path="/past-deliveries"
+                element={
+                  <RoleGate area={APP_AREAS.CUSTOMER}>
+                    <PastDeliveries />
+                  </RoleGate>
+                }
+              />
+              <Route
+                path="/invoices"
+                element={
+                  <RoleGate area={APP_AREAS.CUSTOMER}>
+                    <Invoices />
+                  </RoleGate>
                 }
               />
               <Route
                 path="/notifications"
                 element={
-                  <RequireAuth>
+                  <RoleGate area={APP_AREAS.CUSTOMER}>
                     <Notifications />
-                  </RequireAuth>
+                  </RoleGate>
+                }
+              />
+              <Route
+                path="/settings"
+                element={
+                  <RoleGate area={APP_AREAS.CUSTOMER}>
+                    <Settings />
+                  </RoleGate>
                 }
               />
               <Route
                 path="/help"
                 element={
-                  <RequireAuth>
+                  <RoleGate area={APP_AREAS.CUSTOMER}>
                     <Help />
-                  </RequireAuth>
+                  </RoleGate>
                 }
               />
               <Route
                 path="/legal"
                 element={
-                  <RequireAuth>
+                  <RoleGate area={APP_AREAS.CUSTOMER}>
                     <Legal />
-                  </RequireAuth>
+                  </RoleGate>
                 }
               />
               <Route
                 path="/downloads"
                 element={
-                  <RequireAuth>
+                  <RoleGate area={APP_AREAS.CUSTOMER}>
                     <Downloads />
-                  </RequireAuth>
+                  </RoleGate>
+                }
+              />
+
+              {/* ─── Driver App ───────────────────────────────────────── */}
+              <Route
+                path="/driver"
+                element={
+                  <RoleGate area={APP_AREAS.DRIVER}>
+                    <DriverHome />
+                  </RoleGate>
                 }
               />
               <Route
-                path="/operations"
+                path="/driver/active-delivery"
                 element={
-                  <RequireAuth>
-                    <OperationsCentre />
-                  </RequireAuth>
+                  <RoleGate area={APP_AREAS.DRIVER}>
+                    <DriverActiveDelivery />
+                  </RoleGate>
                 }
               />
+
+              {/* ─── Operations Centre ────────────────────────────────── */}
+              <Route
+                path="/operations"
+                element={
+                  <RoleGate area={APP_AREAS.OPERATIONS}>
+                    <OperationsCentre />
+                  </RoleGate>
+                }
+              />
+
+              {/* ─── Admin ──────────────────────────────────────────────
+                   No admin pages exist yet. /admin is not registered as a
+                   route; admin-role users land in the Operations Centre via
+                   homeRouteForRole(). Documented in docs/frontend-architecture.md */}
+
               <Route path="*" element={<NotFound />} />
             </Routes>
         </BrowserRouter>

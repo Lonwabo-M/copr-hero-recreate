@@ -13,40 +13,57 @@ import {
   Download,
   Settings,
   LogOut,
+  type LucideIcon,
 } from "lucide-react";
+import type { NavItem } from "@/components/shells/navigation";
 
 interface SidebarProps {
   activeItem: string;
   onItemChange: (item: string) => void;
   isOpen: boolean;
+  /** Navigation entries for the current application area (role-scoped). */
+  items: NavItem[];
 }
 
-const sidebarItems = [
-  { icon: LayoutDashboard, label: "Activity Center" },
-  { icon: History, label: "Past Deliveries" },
-  { icon: Package, label: "Request Delivery" },
-  { icon: MapPin, label: "Track Delivery" },
-  { icon: Truck, label: "Active Delivery" },
-  { icon: FileText, label: "Invoices" },
-  { icon: Wallet, label: "Wallet" },
-  { icon: CreditCard, label: "Make Payment" },
-  { icon: Bell, label: "Notifications", hasNotif: true },
-  { icon: CircleHelp, label: "Help" },
-  { icon: Scale, label: "Legal" },
-  { icon: Download, label: "Downloads" },
-  { icon: Settings, label: "Settings" },
-];
+// ─── Icon registry ───────────────────────────────────────────────────────────
+// Preserves the original per-item icons without coupling navigation configs
+// (pure data) to lucide-react.
+const ICONS: Record<string, LucideIcon> = {
+  "Activity Center": LayoutDashboard,
+  "Past Deliveries": History,
+  "Request Delivery": Package,
+  "Track Delivery": MapPin,
+  "Active Delivery": Truck,
+  Invoices: FileText,
+  Wallet: Wallet,
+  "Make Payment": CreditCard,
+  Notifications: Bell,
+  Help: CircleHelp,
+  Legal: Scale,
+  Downloads: Download,
+  Settings: Settings,
+  "Log out": LogOut,
+  // Operations Centre entries
+  "Operations Centre": Truck,
+};
 
-const bottomItems = [
-  { icon: LogOut, label: "Log out" },
-];
+// ─── Sidebar (shared, area-scoped) ───────────────────────────────────────────
+// Renders the navigation entries handed to it by the surrounding AppShell —
+// which derives them from the shell's application area. No single global nav
+// list exists anymore; each application area only ever receives its own items.
+// Visual styling is unchanged (dash-sidebar classes from dashboard.css).
 
-export default function Sidebar({ activeItem, onItemChange, isOpen }: SidebarProps) {
+export default function Sidebar({
+  activeItem,
+  onItemChange,
+  isOpen,
+  items,
+}: SidebarProps) {
   return (
     <aside className={`dash-sidebar ${isOpen ? "open" : ""}`}>
       <div className="dash-sidebar-items">
-        {sidebarItems.map((item) => {
-          const Icon = item.icon;
+        {items.map((item) => {
+          const Icon = ICONS[item.label] ?? Package;
           const isActive = activeItem === item.label;
           return (
             <button
@@ -63,20 +80,13 @@ export default function Sidebar({ activeItem, onItemChange, isOpen }: SidebarPro
       </div>
 
       <div className="dash-sidebar-bottom">
-        {bottomItems.map((item) => {
-          const Icon = item.icon;
-          const isActive = activeItem === item.label;
-          return (
-            <button
-              key={item.label}
-              className={`dash-sidebar-item ${isActive ? "active" : ""}`}
-              onClick={() => onItemChange(item.label)}
-            >
-              <Icon size={20} strokeWidth={1.5} />
-              <span>{item.label}</span>
-            </button>
-          );
-        })}
+        <button
+          className="dash-sidebar-item"
+          onClick={() => onItemChange("Log out")}
+        >
+          <LogOut size={20} strokeWidth={1.5} />
+          <span>Log out</span>
+        </button>
       </div>
     </aside>
   );
