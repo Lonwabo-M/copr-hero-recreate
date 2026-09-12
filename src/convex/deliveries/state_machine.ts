@@ -1548,6 +1548,72 @@ export const getMyDeliveries = query({
   },
 });
 
+// ─── Operations: Active Deliveries ─────────────────────────────────────────────
+// Server-side, operations-scoped view of active (in-flight) deliveries.
+//
+// Authorization: operations / super_admin see all active deliveries.
+// company_admin/company-owned scope is NOT applied here — operations has
+// cross-company visibility by design (see ROLE_PERMISSIONS for OPERATIONS).
+// The query filters to operational statuses server-side so the live view only
+// loads in-flight work, not the entire delivery table.
+//
+// Statuses included (exact existing state-machine terminology):
+//   assigned, driver_accepted, en_route_to_pickup, at_pickup, picked_up,
+//   in_transit, at_dropoff
+// Excluded (terminal/completion states): delivered, failed, cancelled,
+//   reassignment_required ( surfaced separately in the exceptions view ),
+//   pending_dispatch ( surfaced in the dispatch view ), requested.
+
+export const getActiveDeliveries = query({
+  args: {
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const user = await getCurrentAuthUser(ctx);
+    if (!user) throw new Error("Authentication required");
+
+    // Operations and super_admin can see all active deliveries.
+    const allowedRoles = [ROLES.OPERATIONS, ROLES.SUPER_ADMIN];
+    if (!allowedRoles.includes(user.role as any)) {
+      throw new Error("Access denied: operations only");
+    }
+
+    const limit = Math.max(1, Math.min(args.limit ?? 200, 500));
+
+    const activeStatuses = [
+      DELIVERY_STATUS.ASSIGNED,
+      DELIVERY_STATUS.DRIVER_ACCEPTED,
+      DELIVERY_STATUS.EN_ROUTE_TO_PICKUP,
+      DELIVERY_STATUS.AT_PICKUP,
+      DELIVERY_STATUS.PICKED_UP,
+      DELIVERY_STATUS.IN_TRANSIT,
+      DELIVERY_STATUS.AT_DROPOFF,
+    ];
+
+    // Collect active deliveries, then order by most recent activity.
+    // We use the global query (operations sees all) and filter server-side.
+    const all = await ctx.db
+      .query("deliveries")
+      .order("desc")
+      .take(limit * 2);
+
+    const active = all.filter((d) =>
+      activeStatuses.includes(d.status as any),
+    );
+
+    // Sort by most recent delivery activity for a useful live view.
+    // Delivery-level timestamps only (lastLocationUpdate lives on users, not
+    // deliveries). The live map separately shows driver location freshness.
+    active.sort((a, b) => {
+      const aTime = a.startedAt ?? a.assignedAt ?? 0;
+      const bTime = b.startedAt ?? b.assignedAt ?? 0;
+      return bTime - aTime;
+    });
+
+    return active.slice(0, limit);
+  },
+});
+
 // ─── Driver Delivery History ─────────────────────────────────────────────────
 // Server-side, driver-scoped history for the Driver App's History page.
 //
