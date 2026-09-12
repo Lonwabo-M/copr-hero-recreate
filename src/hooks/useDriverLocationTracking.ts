@@ -27,6 +27,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 
 // ─── Configuration ───────────────────────────────────────────────────────────
 
@@ -129,7 +130,7 @@ export function statusForGpsError(code: number): TrackingStatus {
 
 interface UseDriverLocationTrackingArgs {
   /** Active delivery ID, or null when the driver has no active delivery. */
-  deliveryId: string | null;
+  deliveryId: Id<"deliveries"> | null;
   /** Whether tracking should run (delivery in a trackable/active state). */
   active: boolean;
 }

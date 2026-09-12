@@ -380,6 +380,68 @@ export const cleanupTrackingData = mutation({
 
 ---
 
+## Client-Side Continuous GPS (Driver App)
+
+The Driver Active Delivery workflow reports location continuously via the
+browser Geolocation API — no new backend, schema, or tracking service.
+All updates flow through the existing `tracking.mutations.updateDeliveryLocation`
+mutation, which remains the authoritative validator.
+
+### Hook: `useDriverLocationTracking`
+
+Location: `src/hooks/useDriverLocationTracking.ts`
+
+| Aspect | Behaviour |
+|--------|-----------|
+| Watcher | `navigator.geolocation.watchPosition()` (high accuracy) |
+| Start condition | Authenticated driver + delivery in a trackable state |
+| Stop conditions | Delivery completed/failed/rejected, no longer trackable, or page unmount (`clearWatch()`) |
+| Duplicate watchers | Prevented via a watcher-ID ref + single-effect lifecycle |
+| Send path | `updateDeliveryLocation({ deliveryId, location })` (existing mutation) |
+| Permission requests | Only while a trackable delivery is active; never on pages without one |
+
+### Throttling & Staleness Guards
+
+Browser fixes are NOT sent on every event:
+
+| Constant | Value | Purpose |
+|----------|-------|---------|
+| `SEND_INTERVAL_MS` | 15s | Minimum interval between Convex updates (above the backend's 10s `MIN_UPDATE_INTERVAL_MS`) |
+| `HEARTBEAT_INTERVAL_MS` | 45s | Stationary heartbeat, keeps the driver below the backend's 60s `MAX_STALENESS_MS` |
+| `MIN_DISTANCE_METERS` | 20m | Movements smaller than this are skipped until the heartbeat is due |
+
+First fix after a session start is always sent. The server re-validates
+every update (coordinates, timestamp, frequency, movement, assignment).
+
+### Driver-Facing Status UI
+
+The Active Delivery page shows a small status row (no map):
+
+| State | Copy | Dot |
+|--------|------|-----|
+| `idle` | Location tracking off | grey |
+| `starting` | Location tracking starting… | pulsing |
+| `waiting` | Location tracking active | green |
+| `sent` | Location update sent | green |
+| `denied` | Location permission denied | red |
+| `error` | GPS unavailable (+ reason) | red |
+| `unsupported` | Location not supported on this device | grey |
+
+Last successful update time is shown next to the status. GPS errors are
+non-fatal: they change only the tracking status, never delivery state, and
+the watcher stays live so subsequent fixes retry normally.
+
+### Permission Failure Behaviour
+
+| Scenario | Behaviour |
+|----------|-----------|
+| Permission denied | `denied` status; no repeated prompts; delivery state unaffected |
+| GPS unavailable / timeout | `error` status with reason; watcher stays live |
+| Browser without geolocation | `unsupported` status; no requests attempted |
+| Page without active delivery | No watcher and no permission request at all |
+
+---
+
 ## Performance Considerations
 
 ### Query Optimization
@@ -418,6 +480,12 @@ Convex handles this scale automatically through:
 Run validation tests:
 ```bash
 bun run src/convex/tracking/tracking.test.ts
+```
+
+Client-side tracking decision logic (throttling, heartbeat, movement
+filtering, GPS error mapping):
+```bash
+bunx tsx src/hooks/useDriverLocationTracking.test.ts
 ```
 
 ### Test Coverage

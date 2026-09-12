@@ -12,9 +12,11 @@
  *   (`deliveries.state_machine.*`). React never writes delivery status.
  * - Only the action valid for the delivery's current state is offered.
  * - Timeline comes from `tracking.queries.getDeliveryTracking` (route history).
- * - Location reporting uses the existing `tracking.mutations.updateDeliveryLocation`
- *   with the browser Geolocation API (one-shot "share position" button; no
- *   background GPS loop in this task).
+ * - Location reporting is continuous while the delivery is in a trackable
+ *   state (`useDriverLocationTracking`): `navigator.geolocation.watchPosition()`
+ *   with client-side throttling, sent through the existing
+ *   `tracking.mutations.updateDeliveryLocation` Convex mutation. The watcher is
+ *   cleared when the delivery leaves a trackable state or the page unmounts.
  * - Navigation links open Google Maps directions for pickup/dropoff.
  */
 
@@ -34,7 +36,6 @@ import {
   CheckCircle2,
   Circle,
   AlertTriangle,
-  Share2,
   ExternalLink,
   ShieldCheck,
   Camera,
@@ -48,6 +49,11 @@ import {
   DELIVERY_STATUS,
   VALID_TRANSITIONS,
 } from "@/convex/schema";
+import {
+  useDriverLocationTracking,
+  TRACKING_STATUS_COPY,
+  type TrackingState,
+} from "@/hooks/useDriverLocationTracking";
 import "@/styles/dashboard.css";
 import "@/styles/pages.css";
 import "@/styles/driver.css";
@@ -79,7 +85,30 @@ const STATUS_ACTION: Partial<Record<Status, { label: string; operation: string }
   [DELIVERY_STATUS.AT_DROPOFF]: { label: "Complete Delivery", operation: "completeDelivery" },
 };
 
-/** Human-readable copy for each active status. */
+/** Statuses in which continuous location tracking runs. Mirrors the
+ *  backend's trackable-status list in `tracking.mutations` — the server
+ *  remains authoritative and re-validates every update. */
+const TRACKABLE_STATUSES: ReadonlySet<Status> = new Set<Status>([
+  DELIVERY_STATUS.ASSIGNED,
+  DELIVERY_STATUS.DRIVER_ACCEPTED,
+  DELIVERY_STATUS.EN_ROUTE_TO_PICKUP,
+  DELIVERY_STATUS.AT_PICKUP,
+  DELIVERY_STATUS.PICKED_UP,
+  DELIVERY_STATUS.IN_TRANSIT,
+  DELIVERY_STATUS.AT_DROPOFF,
+]);
+
+/** Dot colour class for each tracking status. */
+const TRACKING_DOT_CLASS: Record<TrackingState, string> = {
+  idle: "off",
+  starting: "pending",
+  waiting: "on",
+  sent: "on",
+  denied: "error",
+  error: "error",
+  unsupported: "off",
+};
+
 const STATUS_COPY: Partial<Record<Status, string>> = {
   [DELIVERY_STATUS.ASSIGNED]: "A delivery has been assigned to you. Accept it to begin.",
   [DELIVERY_STATUS.DRIVER_ACCEPTED]: "Accepted. Start driving to the pickup location when ready.",
@@ -96,7 +125,6 @@ export default function DriverActiveDelivery() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionPending, setActionPending] = useState<string | null>(null);
-  const [locating, setLocating] = useState(false);
 
   // ─── Convex reactive data (session-derived; no client-supplied IDs) ────────
   const active = useQuery(api.tracking.queries.getMyCurrentDelivery, {});
@@ -109,7 +137,6 @@ export default function DriverActiveDelivery() {
     api.pod.service.getPODForDelivery,
     deliveryId ? { deliveryId } : "skip"
   );
-  const updateDeliveryLocation = useMutation(api.tracking.mutations.updateDeliveryLocation);
 
   // State-machine transition mutations (existing domain operations)
   const acceptAssignment = useMutation(api.deliveries.state_machine.acceptAssignment);
@@ -149,6 +176,16 @@ export default function DriverActiveDelivery() {
 
   const delivery = active?.delivery ?? null;
   const status = (delivery?.status ?? null) as Status | null;
+
+  // ─── Continuous GPS tracking (existing tracking backend) ─────────────────
+  // Starts only with a trackable delivery, stops on completion/failure/
+  // rejection/unmount. The hook owns the watcher lifecycle and throttling;
+  // the server re-validates every update authoritatively.
+  const trackingActive = status !== null && TRACKABLE_STATUSES.has(status);
+  const { status: trackingStatus } = useDriverLocationTracking({
+    deliveryId,
+    active: trackingActive,
+  });
   const action = status ? STATUS_ACTION[status] : undefined;
   const nextStatus = useMemo<Status | null>(() => {
     if (!status) return null;
@@ -206,40 +243,6 @@ export default function DriverActiveDelivery() {
       setActionPending(null);
     }
   }, [deliveryId, rejectAssignment]);
-
-  const handleShareLocation = useCallback(() => {
-    if (!deliveryId) return;
-    if (!("geolocation" in navigator)) {
-      setError("Location sharing is not supported on this device");
-      return;
-    }
-    setError(null);
-    setLocating(true);
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        try {
-          await updateDeliveryLocation({
-            deliveryId,
-            location: {
-              lat: pos.coords.latitude,
-              lng: pos.coords.longitude,
-              timestamp: Date.now(),
-              accuracy: pos.coords.accuracy ?? undefined,
-            },
-          });
-        } catch (err) {
-          setError(err instanceof Error ? err.message : "Failed to share location");
-        } finally {
-          setLocating(false);
-        }
-      },
-      () => {
-        setError("Could not get your location. Check location permissions.");
-        setLocating(false);
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
-    );
-  }, [deliveryId, updateDeliveryLocation]);
 
   // ─── POD submission ────────────────────────────────────────────────────
   // Flow (all server-validated, existing POD backend):
@@ -767,26 +770,29 @@ export default function DriverActiveDelivery() {
                   </div>
                 </div>
 
-                {/* Location sharing (existing tracking backend) */}
+                {/* Location tracking (existing tracking backend) */}
                 <div className="driver-action-card" style={{ padding: 16 }}>
-                  <div className="driver-action-row" style={{ alignItems: "center" }}>
-                    <button
-                      className="driver-secondary-btn"
-                      style={{ color: "var(--primary)", borderColor: "var(--border)" }}
-                      onClick={handleShareLocation}
-                      disabled={locating || actionPending !== null}
-                    >
-                      {locating ? (
-                        <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} />
-                      ) : (
-                        <Share2 size={16} />
+                  <div className="driver-tracking-status">
+                    <span className={`driver-tracking-dot ${TRACKING_DOT_CLASS[trackingStatus.state]}`} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div className="driver-tracking-label">
+                        {TRACKING_STATUS_COPY[trackingStatus.state]}
+                      </div>
+                      {trackingStatus.state === "error" && trackingStatus.message && (
+                        <div className="driver-tracking-meta">{trackingStatus.message}</div>
                       )}
-                      {locating ? "Getting location..." : "Share my location"}
-                    </button>
-                    <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>
-                      Sends one position update to operations via the tracking system.
-                    </span>
+                    </div>
+                    {trackingStatus.lastSentAt && (
+                      <span className="driver-tracking-meta">
+                        Last update {formatTime(trackingStatus.lastSentAt)}
+                      </span>
+                    )}
                   </div>
+                  <p className="driver-tracking-hint">
+                    {trackingActive
+                      ? "Your position is shared with operations while this delivery is active."
+                      : "Location sharing starts automatically when you have an active delivery."}
+                  </p>
                 </div>
 
                 {/* Timeline */}
