@@ -1730,8 +1730,88 @@ export const getMyDeliveryHistory = query({
         dropoffCity: dropoffAddress?.city ?? null,
         dropoffStreet: dropoffAddress?.street ?? null,
       });
-    }
-
-    return { items, nextCursor };
+    }    return { items, nextCursor };
   },
 });
+
+/**
+ * Operations-scoped historical deliveries.
+ *
+ * Authorization: operations / super_admin only. This is intentionally a
+ * separate query from the driver-scoped getMyDeliveryHistory so the Driver App
+ * history page remains driver-only and the Operations Centre history page remains
+ * operations-only. No client-supplied driver/courier/wallet identity is accepted.
+ *
+ * Scope: terminal (historical) statuses only — delivered, failed, cancelled —
+ * using existing state-machine terminology.
+ */
+export const getOperationalDeliveryHistory = query({
+  args: {
+    /** Existing state-machine statuses only. Omit for all historical outcomes. */
+    status: v.optional(deliveryStatusValidator),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const user = await getCurrentAuthUser(ctx);
+    if (!user) throw new Error("Authentication required");
+
+    if (user.role !== ROLES.OPERATIONS && user.role !== ROLES.SUPER_ADMIN) {
+      throw new Error("Access denied: operations only");
+    }
+
+    const limit = Math.min(Math.max(args.limit ?? 50, 1), 200);
+
+    const historicalStatuses = [
+      DELIVERY_STATUS.DELIVERED,
+      DELIVERY_STATUS.FAILED,
+      DELIVERY_STATUS.CANCELLED,
+    ];
+
+    // Operations sees all deliveries; server-side status filter when requested.
+    const rows = await ctx.db
+      .query("deliveries")
+      .order("desc")
+      .take(limit * 3);
+
+    let filtered = rows.filter((d) => historicalStatuses.includes(d.status as any));
+
+    if (args.status) {
+      filtered = filtered.filter((d) => d.status === args.status);
+    }
+
+    // Relevance ordering: completion/failure/cancellation time first.
+    const historicalTime = (d: Doc<"deliveries">) =>
+      d.completedAt ?? d.startedAt ?? d.assignedAt ?? 0;
+    filtered.sort((a, b) => historicalTime(b) - historicalTime(a));
+
+    const page = filtered.slice(0, limit);
+
+    // Enrich with existing order/address data (no financial internals exposed).
+    const items = [];
+    for (const d of page) {
+      const order = await ctx.db.get(d.orderId);
+      const pickupAddress = order ? await ctx.db.get(order.pickupAddressId) : null;
+      const dropoffAddress = order ? await ctx.db.get(order.dropoffAddressId) : null;
+
+      items.push({
+        _id: d._id,
+        trackingNumber: d.trackingNumber,
+        status: d.status,
+        completedAt: d.completedAt,
+        startedAt: d.startedAt,
+        assignedAt: d.assignedAt,
+        courierId: d.courierId ?? null,
+        orderPrice: order?.price ?? null,
+        packageSize: order?.packageSize ?? null,
+        pickupCity: pickupAddress?.city ?? null,
+        pickupStreet: pickupAddress?.street ?? null,
+        dropoffCity: dropoffAddress?.city ?? null,
+        dropoffStreet: dropoffAddress?.street ?? null,
+      });
+    }
+
+    return { items };
+  },
+});
+
+

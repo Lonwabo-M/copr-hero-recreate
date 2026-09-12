@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Doc, Id } from "@/convex/_generated/dataModel";
 import OperationsShell from "@/components/shells/OperationsShell";
+import { RoleGate, APP_AREAS } from "@/components/shells/RoleGate";
 import {
   Package,
   Truck,
@@ -19,6 +20,9 @@ import {
   Radio,
   Zap,
   ArrowRight,
+  Send,
+  Ban,
+  CheckSquare,
 } from "lucide-react";
 import { DELIVERY_STATUS, ROLES } from "@/convex/schema";
 import "@/styles/dashboard.css";
@@ -146,9 +150,64 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export default function OperationsCentre() {
+  return (
+    <RoleGate area={APP_AREAS.OPERATIONS}>
+      <OperationsCentreInner />
+    </RoleGate>
+  );
+}
+
+function OperationsCentreInner() {
   const [activeTab, setActiveTab] = useState<OpsTab>("live");
   const [selectedDeliveryId, setSelectedDeliveryId] = useState<string | null>(null);
   const [dispatchTargetId, setDispatchTargetId] = useState<string | null>(null);
+
+  // ── Operational action state (UI-only, Convex remains authoritative) ────────
+
+  const actionState = {
+    reassigningId: "" as string | null,
+    failDelivery: (deliveryId: string, reason: string) =>
+      failDelivery({ deliveryId: deliveryId as any, reason }).then(
+        () => undefined,
+        (err: any) => console.error("failDelivery rejected:", err?.message),
+      ),
+    cancelDelivery: (deliveryId: string, reason: string) =>
+      cancelDelivery({ deliveryId: deliveryId as any, reason }).then(
+        () => undefined,
+        (err: any) => console.error("cancelDelivery rejected:", err?.message),
+      ),
+    completeWithPOD: (deliveryId: string) =>
+      completeDeliveryWithPOD({
+        deliveryId: deliveryId as any,
+        recipientName: "Delivered by operations",
+      }).then(
+        () => undefined,
+        (err: any) => console.error("completeDeliveryWithPOD rejected:", err?.message),
+      ),
+  };
+
+  // ── Operational action handlers (existing backend mutations only) ──────────
+
+  async function handleReassign(deliveryId: string) {
+    actionState.reassigningId = deliveryId;
+    try {
+      await reassignDelivery({ deliveryId: deliveryId as any });
+    } finally {
+      actionState.reassigningId = null;
+    }
+  }
+
+  function handleFail(deliveryId: string, reason: string) {
+    actionState.failDelivery(deliveryId, reason);
+  }
+
+  function handleCancel(deliveryId: string, reason: string) {
+    actionState.cancelDelivery(deliveryId, reason);
+  }
+
+  function handleCompleteWithPOD(deliveryId: string) {
+    actionState.completeWithPOD(deliveryId);
+  }
 
   // ── Core reactive queries ──────────────────────────────────────────────────
 
@@ -172,6 +231,11 @@ export default function OperationsCentre() {
     dispatchTargetId ? { deliveryId: dispatchTargetId as any } : "skip",
   );
 
+  const operationalHistory = useQuery(
+    api.deliveries.state_machine.getOperationalDeliveryHistory,
+    { status: undefined },
+  );
+
   const dispatchDelivery = useMutation(
     api.deliveries.state_machine.dispatchDelivery,
   );
@@ -180,6 +244,16 @@ export default function OperationsCentre() {
   );
   const cancelDelivery = useMutation(
     api.deliveries.state_machine.cancelDelivery,
+  );
+  const failDelivery = useMutation(
+    api.deliveries.state_machine.failDelivery,
+  );
+  const completeDeliveryWithPOD = useMutation(
+    api.pod.service.completeDeliveryWithPOD,
+  );
+  const getPODForDelivery = useQuery(
+    api.pod.service.getPODForDelivery,
+    selectedDeliveryId ? { deliveryId: selectedDeliveryId as any } : "skip",
   );
 
   // ── Derived views ──────────────────────────────────────────────────────────
@@ -324,6 +398,7 @@ export default function OperationsCentre() {
               onDispatch={(id) => setDispatchTargetId(id)}
               dispatchOffers={dispatchOffers}
               dispatchDelivery={dispatchDelivery}
+              reassignDelivery={reassignDelivery}
             />
           )}
 
@@ -343,11 +418,18 @@ export default function OperationsCentre() {
           )}
 
           {activeTab === "exceptions" && (
-            <ExceptionsTab exceptions={exceptions} />
+            <ExceptionsTab
+              exceptions={exceptions}
+              reassigningId={actionState.reassigningId}
+              onReassign={handleReassign}
+              onCompleteWithPOD={handleCompleteWithPOD}
+              onFail={handleFail}
+              onCancel={handleCancel}
+            />
           )}
 
           {activeTab === "history" && (
-            <HistoryTab deliveries={activeList} drivers={drivers} />
+            <HistoryTab drivers={drivers} />
           )}
         </div>
       </main>
@@ -437,15 +519,18 @@ function DispatchTab({
   onDispatch,
   dispatchOffers,
   dispatchDelivery,
+  reassignDelivery,
 }: {
   deliveries: Doc<"deliveries">[];
   dispatchTargetId: string | null;
   onDispatch: (id: string) => void;
   dispatchOffers: any;
   dispatchDelivery: any;
+  reassignDelivery: any;
 }) {
   const [dispatchingId, setDispatchingId] = useState<string | null>(null);
   const [dispatchError, setDispatchError] = useState<string | null>(null);
+  const [dispatchReassigningId, setDispatchReassigningId] = useState<string | null>(null);
 
   const activePending = deliveries.filter(
     (d) => d.status === DELIVERY_STATUS.PENDING_DISPATCH,
@@ -460,6 +545,18 @@ function DispatchTab({
       setDispatchError(e instanceof Error ? e.message : "Dispatch failed");
     } finally {
       setDispatchingId(null);
+    }
+  };
+
+  const handleDispatchReassign = async (id: string) => {
+    setDispatchReassigningId(id);
+    setDispatchError(null);
+    try {
+      await reassignDelivery({ deliveryId: id as any });
+    } catch (e) {
+      setDispatchError(e instanceof Error ? e.message : "Reassign failed");
+    } finally {
+      setDispatchReassigningId(null);
     }
   };
 
@@ -524,8 +621,16 @@ function DispatchTab({
                     </button>
                   )}
                   {d.status === DELIVERY_STATUS.REASSIGNMENT_REQUIRED && (
-                    <button className="ops-btn ops-btn-sm" onClick={() => onDispatch(d._id)}>
-                      Reassign<ArrowRight size={14} />
+                    <button
+                      className="ops-btn ops-btn-sm"
+                      disabled={dispatchReassigningId === d._id}
+                      onClick={() => handleDispatchReassign(d._id)}
+                    >
+                      {dispatchReassigningId === d._id ? (
+                        <><RefreshCw size={14} className="animate-spin" />Reassigning…</>
+                      ) : (
+                        <><RefreshCw size={14} />Reassign<ArrowRight size={14} /></>
+                      )}
                     </button>
                   )}
                 </div>
@@ -725,7 +830,7 @@ function LiveTab({
             )}
           </div>
 
-          {selectedDelivery && tracking && (
+          {selectedDelivery && (
             <div className="ops-section" style={{ marginTop: 16 }}>
               <div className="ops-section-header">
                 <h2 className="ops-section-title">Delivery Detail — {selectedDelivery.trackingNumber}</h2>
@@ -748,7 +853,7 @@ function LiveTab({
                 <div className="ops-detail-row">
                   <span className="ops-detail-label">Assigned driver</span>
                   <span className="ops-detail-value">
-                    {tracking.driverLocation ? (
+                    {tracking?.driverLocation ? (
                       <>
                         {tracking.driverLocation.lat !== undefined ? (
                           <span className="ops-detail-value ops-small">
@@ -762,7 +867,7 @@ function LiveTab({
                         </span>
                       </>
                     ) : (
-                      "Not assigned"
+                      selectedDelivery.courierId ? "Assigned" : "Not assigned"
                     )}
                   </span>
                 </div>
@@ -795,7 +900,7 @@ function LiveTab({
                   </div>
                 )}
 
-                {tracking.driverLocation && (
+                {tracking?.driverLocation && (
                   <div className="ops-detail-section">
                     <div className="ops-detail-label" style={{ marginBottom: 8 }}><Radio size={13} />Driver location</div>
                     <div className="ops-detail-value ops-small">
@@ -804,17 +909,47 @@ function LiveTab({
                   </div>
                 )}
 
-                {tracking.routeHistory && tracking.routeHistory.length > 0 && (
+                {tracking?.routeHistory && tracking.routeHistory.length > 0 && (
                   <div className="ops-detail-section">
-                    <div className="ops-detail-label" style={{ marginBottom: 8 }}><Navigation size={13} />Recent locations (last {tracking.routeHistory.length})</div>
+                    <div className="ops-detail-label" style={{ marginBottom: 8 }}><Navigation size={13} />Tracking timeline (last {tracking.routeHistory.length})</div>
                     <div className="ops-route-history">
-                      {tracking.routeHistory.slice(-8).reverse().map((pt: any, i: number) => (
+                      {tracking.routeHistory.slice(-10).reverse().map((pt: any, i: number) => (
                         <div key={i} className="ops-route-history-point">
                           <span className="ops-small">{formatCoordinate(pt.lat)}, {formatCoordinate(pt.lng)}</span>
                           <span className="ops-small ops-muted">{formatDateTime(pt.timestamp)}</span>
+                          <span className="ops-small ops-muted">{typeof pt.type === "string" ? pt.type.replace(/_/g, " ") : "—"}</span>
                         </div>
                       ))}
                     </div>
+                  </div>
+                )}
+
+                {getPODForDelivery && (
+                  <div className="ops-detail-section">
+                    <div className="ops-detail-label" style={{ marginBottom: 8 }}><CheckSquare size={13} />Proof of delivery</div>
+                    {getPODForDelivery ? (
+                      getPODForDelivery === null ? (
+                        <div className="ops-detail-value ops-small ops-muted">No POD on record</div>
+                      ) : (
+                        <div className="ops-detail-value ops-small">
+                          <div>Outcome: {getPODForDelivery.outcome ?? "—"}</div>
+                          <div>Submitted: {formatDateTime(getPODForDelivery.deliveredAt)}</div>
+                          {getPODForDelivery.recipientName ? (
+                            <div className="ops-small ops-muted">Recipient: {getPODForDelivery.recipientName}</div>
+                          ) : null}
+                          {getPODForDelivery.failureReason ? (
+                            <div className="ops-small" style={{ color: "#C62828" }}>
+                              Failure reason: {getPODForDelivery.failureReason}
+                            </div>
+                          ) : null}
+                          {getPODForDelivery.files && getPODForDelivery.files.length > 0 && (
+                            <div className="ops-small ops-muted">{getPODForDelivery.files.length} evidence file(s)</div>
+                          )}
+                        </div>
+                      )
+                    ) : (
+                      <div className="ops-detail-value ops-small ops-muted">Loading POD…</div>
+                    )}
                   </div>
                 )}
               </div>
@@ -1059,7 +1194,21 @@ function DriversTab({
 
 // ─── Exceptions Tab ───────────────────────────────────────────────────────────
 
-function ExceptionsTab({ exceptions }: { exceptions: Array<{ kind: string; delivery: Doc<"deliveries">; driverLoc?: DriverLocationEntry; message: string }> }) {
+function ExceptionsTab({
+  exceptions,
+  reassigningId,
+  onReassign,
+  onCompleteWithPOD,
+  onFail,
+  onCancel,
+}: {
+  exceptions: Array<{ kind: string; delivery: Doc<"deliveries">; driverLoc?: DriverLocationEntry; message: string }>;
+  reassigningId: string | null;
+  onReassign: (id: string) => void;
+  onCompleteWithPOD: (id: string) => void;
+  onFail: (id: string, reason: string) => void;
+  onCancel: (id: string, reason: string) => void;
+}) {
   return (
     <div className="ops-exceptions">
       <div className="ops-section-header">
@@ -1108,7 +1257,55 @@ function ExceptionsTab({ exceptions }: { exceptions: Array<{ kind: string; deliv
 
               <div className="ops-exception-actions">
                 {e.kind === "reassignment_required" && (
-                  <button className="ops-btn ops-btn-sm">Reassign<ArrowRight size={14} /></button>
+                  <button
+                    className="ops-btn ops-btn-sm"
+                    disabled={reassigningId === e.delivery._id}
+                    onClick={() => onReassign(e.delivery._id)}
+                  >
+                    {reassigningId === e.delivery._id ? (
+                      <><RefreshCw size={14} className="animate-spin" />Reassigning…</>
+                    ) : (
+                      <><RefreshCw size={14} />Reassign<ArrowRight size={14} /></>
+                    )}
+                  </button>
+                )}
+                {e.delivery.status === DELIVERY_STATUS.AT_DROPOFF && (
+                  <button
+                    className="ops-btn ops-btn-sm"
+                    disabled={reassigningId === e.delivery._id}
+                    onClick={() => onCompleteWithPOD(e.delivery._id)}
+                  >
+                    <CheckSquare size={14} />Complete via POD
+                  </button>
+                )}
+                {(() => {
+                  const failable = [
+                    DELIVERY_STATUS.AT_PICKUP,
+                    DELIVERY_STATUS.PICKED_UP,
+                    DELIVERY_STATUS.IN_TRANSIT,
+                    DELIVERY_STATUS.AT_DROPOFF,
+                  ];
+                  return failable.includes(e.delivery.status as any) ? (
+                    <button
+                      className="ops-btn ops-btn-sm"
+                      onClick={() =>
+                        onFail(
+                          e.delivery._id,
+                          "Reported by operations: delivery compromised",
+                        )
+                      }
+                    >
+                      <Ban size={14} />Fail delivery
+                    </button>
+                  ) : null;
+                })()}
+                {e.delivery.status === DELIVERY_STATUS.ASSIGNED && (
+                  <button
+                    className="ops-btn ops-btn-sm"
+                    onClick={() => onCancel(e.delivery._id, "Cancelled by operations")}
+                  >
+                    <XCircle size={14} />Cancel
+                  </button>
                 )}
                 {e.kind === "stale_gps" && (
                   <button className="ops-btn ops-btn-sm" disabled>Investigate</button>
@@ -1131,22 +1328,23 @@ function ExceptionsTab({ exceptions }: { exceptions: Array<{ kind: string; deliv
 // ─── History Tab ──────────────────────────────────────────────────────────────
 
 function HistoryTab({
-  deliveries,
   drivers,
 }: {
-  deliveries: Doc<"deliveries">[];
   drivers: DriverLocationEntry[];
 }) {
-  const fullHistory = useQuery(
-    api.deliveries.state_machine.getMyDeliveries,
-    { limit: 100 },
-  );
+  const historyData = operationalHistory;
+  const historyList: Array<{
+    _id: Id<"deliveries">;
+    trackingNumber: string;
+    status: string;
+    startedAt?: number | null;
+    completedAt?: number | null;
+    courierId?: Id<"users"> | null;
+  }> = historyData?.items ?? [];
 
-  const historyList: Doc<"deliveries">[] = fullHistory ?? [];
-
-  const completed = historyList.filter((d) => d.status === DELIVERY_STATUS.DELIVERED);
-  const failed = historyList.filter((d) => d.status === DELIVERY_STATUS.FAILED);
-  const cancelled = historyList.filter((d) => d.status === DELIVERY_STATUS.CANCELLED);
+  const completedCount = historyList.filter((d) => d.status === DELIVERY_STATUS.DELIVERED).length;
+  const failedCount = historyList.filter((d) => d.status === DELIVERY_STATUS.FAILED).length;
+  const cancelledCount = historyList.filter((d) => d.status === DELIVERY_STATUS.CANCELLED).length;
 
   return (
     <div className="ops-history">
@@ -1158,9 +1356,9 @@ function HistoryTab({
       </div>
 
       <div className="ops-history-summary">
-        <div className="ops-history-summary-item"><CheckCircle size={16} style={{ color: "#0A7C42" }} /><span>{completed.length} delivered</span></div>
-        <div className="ops-history-summary-item"><XCircle size={16} style={{ color: "#C62828" }} /><span>{failed.length} failed</span></div>
-        <div className="ops-history-summary-item"><Clock size={16} style={{ color: "#666" }} /><span>{cancelled.length} cancelled</span></div>
+        <div className="ops-history-summary-item"><CheckCircle size={16} style={{ color: "#0A7C42" }} /><span>{completedCount} delivered</span></div>
+        <div className="ops-history-summary-item"><XCircle size={16} style={{ color: "#C62828" }} /><span>{failedCount} failed</span></div>
+        <div className="ops-history-summary-item"><Clock size={16} style={{ color: "#666" }} /><span>{cancelledCount} cancelled</span></div>
       </div>
 
       {historyList.length > 0 ? (
@@ -1168,7 +1366,7 @@ function HistoryTab({
           <thead>
             <tr>
               <th>Tracking #</th>
-              <th>Order</th>
+              <th>Delivery</th>
               <th>Status</th>
               <th>Started</th>
               <th>Completed</th>
@@ -1181,7 +1379,7 @@ function HistoryTab({
               return (
                 <tr key={d._id}>
                   <td style={{ fontWeight: 600 }}>{d.trackingNumber}</td>
-                  <td>{d.orderId.slice(-6).toUpperCase()}</td>
+                  <td>{d._id.slice(-6).toUpperCase()}</td>
                   <td><span className="status-badge" style={{ background: STATUS_COLORS[d.status] ?? "#666", color: "#fff" }}>{statusLabel(d.status)}</span></td>
                   <td>{d.startedAt ? formatDateTime(d.startedAt) : "—"}</td>
                   <td>{d.completedAt ? formatDateTime(d.completedAt) : "—"}</td>
