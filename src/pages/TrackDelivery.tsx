@@ -1,19 +1,12 @@
 import { useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import Sidebar from "@/components/dashboard/Sidebar";
-import { useDashboardNav } from "@/hooks/useDashboardNav";
+import CustomerShell from "@/components/shells/CustomerShell";
 import {
   Search,
   Copy,
   Check,
-  Phone,
-  MessageSquare,
   MapPin,
-  Calendar,
-  Truck,
-  Weight,
-  Ruler,
   CheckCircle2,
   Circle,
   Loader2,
@@ -58,9 +51,6 @@ function getTrackingSteps(status: string): TrackingStep[] {
 }
 
 export default function TrackDelivery() {
-  const { handleSidebarNavigation } = useDashboardNav();
-  const [activeSidebarItem, setActiveSidebarItem] = useState("Track Delivery");
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [trackingInput, setTrackingInput] = useState("");
   const [searchedTracking, setSearchedTracking] = useState("");
   const [copied, setCopied] = useState(false);
@@ -69,11 +59,6 @@ export default function TrackDelivery() {
     api.deliveries.state_machine.getDeliveryByTracking,
     searchedTracking ? { trackingNumber: searchedTracking } : "skip"
   );
-
-  const onSidebarNav = (item: string) => {
-    setActiveSidebarItem(item);
-    handleSidebarNavigation(item);
-  };
 
   const handleTrack = () => {
     const upper = trackingInput.toUpperCase().trim();
@@ -93,215 +78,170 @@ export default function TrackDelivery() {
   const steps = trackingResult ? getTrackingSteps(trackingResult.status) : [];
 
   return (
-    <div className="dashboard">
-      {/* Top Navigation */}
-      <header className="dash-topnav">
-        <div className="dash-topnav-logo">
-          <div className="lasha-logo-icon">
-            <span>L</span>
+    <CustomerShell activeItem="Track Delivery">
+      {/* Main content */}
+      <main className="track-main">
+        <div className="track-container">
+          {/* Page title */}
+          <div className="track-page-title">
+            <h1 className="track-title">Delivery Tracking</h1>
           </div>
-          <span className="dash-topnav-logo-text">Lasha</span>
-        </div>
 
-        <div className="dash-topnav-links">
-          <button className="dash-topnav-link active">
-            Home
-            <span className="dash-topnav-link-underline" />
-          </button>
-          <button className="dash-topnav-link">About Us</button>
-          <button className="dash-topnav-link">Services</button>
-          <button className="dash-topnav-link">Contact US</button>
-        </div>
+          {/* Search bar */}
+          <div className="track-search-bar">
+            <Search className="track-search-icon" size={18} />
+            <input
+              type="text"
+              className="track-search-input"
+              placeholder="Enter tracking number (e.g., LSH-...)"
+              value={trackingInput}
+              onChange={(e) => setTrackingInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleTrack()}
+            />
+            <button className="track-search-btn" onClick={handleTrack}>
+              Track
+            </button>
+          </div>
 
-        <div className="dash-topnav-right">
-          <button className="dash-mobile-toggle" onClick={() => setSidebarOpen(!sidebarOpen)}>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M3 12h18M3 6h18M3 18h18" />
-            </svg>
-          </button>
-          <button className="dash-topnav-profile">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
-              <circle cx="12" cy="7" r="4" />
-            </svg>
-          </button>
-        </div>
-      </header>
-
-      {/* App body */}
-      <div className="dash-app">
-        {/* Mobile overlay */}
-        {sidebarOpen && (
-          <div className="dash-mobile-overlay visible" onClick={() => setSidebarOpen(false)} />
-        )}
-
-        {/* Sidebar */}
-        <Sidebar activeItem={activeSidebarItem} onItemChange={onSidebarNav} isOpen={sidebarOpen} />
-
-        {/* Main content */}
-        <main className="track-main">
-          <div className="track-container">
-            {/* Page title */}
-            <div className="track-page-title">
-              <h1 className="track-title">Delivery Tracking</h1>
+          {searchedTracking && trackingResult === undefined && (
+            <div style={{ display: "flex", justifyContent: "center", padding: 60 }}>
+              <Loader2 size={24} className="animate-spin" style={{ color: "#999" }} />
             </div>
+          )}
 
-            {/* Search bar */}
-            <div className="track-search-bar">
-              <Search className="track-search-icon" size={18} />
-              <input
-                type="text"
-                className="track-search-input"
-                placeholder="Enter tracking number (e.g., LSH-...)"
-                value={trackingInput}
-                onChange={(e) => setTrackingInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleTrack()}
-              />
-              <button className="track-search-btn" onClick={handleTrack}>
-                Track
-              </button>
+          {searchedTracking && trackingResult === null && (
+            <div className="empty-state" style={{ padding: 60 }}>
+              <div className="empty-state-icon"><Package size={24} /></div>
+              <div className="empty-state-title">Delivery not found</div>
+              <div className="empty-state-desc">No delivery found with tracking number "{searchedTracking}". Please check and try again.</div>
             </div>
+          )}
 
-            {searchedTracking && trackingResult === undefined && (
-              <div style={{ display: "flex", justifyContent: "center", padding: 60 }}>
-                <Loader2 size={24} className="animate-spin" style={{ color: "#999" }} />
-              </div>
-            )}
-
-            {searchedTracking && trackingResult === null && (
-              <div className="empty-state" style={{ padding: 60 }}>
-                <div className="empty-state-icon"><Package size={24} /></div>
-                <div className="empty-state-title">Delivery not found</div>
-                <div className="empty-state-desc">No delivery found with tracking number "{searchedTracking}". Please check and try again.</div>
-              </div>
-            )}
-
-            {trackingResult && (
-              <>
-                {/* Tracking header card */}
-                <div className="track-header-card">
-                  <div className="track-header-content">
-                    <div>
-                      <p className="track-header-label">Tracking shipment</p>
-                      <div className="track-header-id-row">
-                        <h2 className="track-header-id">{trackingResult.trackingNumber}</h2>
-                        <button className="track-copy-btn" onClick={handleCopy} title="Copy tracking ID">
-                          {copied ? <Check size={16} /> : <Copy size={16} />}
-                        </button>
-                      </div>
-                    </div>
-                    <div className="track-status-badge">
-                      <span className="track-status-dot" />
-                      {trackingResult.status.replace(/_/g, " ")}
+          {trackingResult && (
+            <>
+              {/* Tracking header card */}
+              <div className="track-header-card">
+                <div className="track-header-content">
+                  <div>
+                    <p className="track-header-label">Tracking shipment</p>
+                    <div className="track-header-id-row">
+                      <h2 className="track-header-id">{trackingResult.trackingNumber}</h2>
+                      <button className="track-copy-btn" onClick={handleCopy} title="Copy tracking ID">
+                        {copied ? <Check size={16} /> : <Copy size={16} />}
+                      </button>
                     </div>
                   </div>
+                  <div className="track-status-badge">
+                    <span className="track-status-dot" />
+                    {trackingResult.status.replace(/_/g, " ")}
+                  </div>
+                </div>
 
-                  {/* Progress stepper */}
-                  <div className="track-stepper">
-                    {steps.map((step, i) => (
-                      <div key={step.label} className={`track-step ${step.status}`}>
-                        <div className="track-step-icon">
-                          {step.status === "completed" ? (
-                            <CheckCircle2 size={28} />
-                          ) : step.status === "active" ? (
-                            <div className="track-step-active">
-                              <Circle size={28} />
-                              <div className="track-step-pulse" />
-                            </div>
-                          ) : (
+                {/* Progress stepper */}
+                <div className="track-stepper">
+                  {steps.map((step, i) => (
+                    <div key={step.label} className={`track-step ${step.status}`}>
+                      <div className="track-step-icon">
+                        {step.status === "completed" ? (
+                          <CheckCircle2 size={28} />
+                        ) : step.status === "active" ? (
+                          <div className="track-step-active">
                             <Circle size={28} />
-                          )}
-                        </div>
-                        <p className="track-step-label">{step.label}</p>
-                        <p className="track-step-time">{step.time}</p>
-                        {i < steps.length - 1 && (
-                          <div
-                            className={`track-step-line ${
-                              step.status === "completed" ? "completed" : ""
-                            }`}
-                          />
+                            <div className="track-step-pulse" />
+                          </div>
+                        ) : (
+                          <Circle size={28} />
                         )}
                       </div>
-                    ))}
-                  </div>
+                      <p className="track-step-label">{step.label}</p>
+                      <p className="track-step-time">{step.time}</p>
+                      {i < steps.length - 1 && (
+                        <div
+                          className={`track-step-line ${
+                            step.status === "completed" ? "completed" : ""
+                          }`}
+                        />
+                      )}
+                    </div>
+                  ))}
                 </div>
+              </div>
 
-                {/* Content grid */}
-                <div className="track-content-grid">
-                  {/* Left column */}
-                  <div className="track-left-col">
-                    {/* Shipment route card */}
-                    <div className="track-route-card">
-                      <div className="track-route-header">
+              {/* Content grid */}
+              <div className="track-content-grid">
+                {/* Left column */}
+                <div className="track-left-col">
+                  {/* Shipment route card */}
+                  <div className="track-route-card">
+                    <div className="track-route-header">
+                      <div>
+                        <h3 className="track-route-title">Shipment route</h3>
+                        {trackingResult.estimatedArrival && (
+                          <p className="track-route-estimate">
+                            Estimated arrival: {new Date(trackingResult.estimatedArrival).toLocaleDateString("en-ZA")}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Route visualization */}
+                    <div className="track-route-visual">
+                      <div className="track-route-point">
+                        <div className="track-route-pin sender">
+                          <MapPin size={16} />
+                        </div>
                         <div>
-                          <h3 className="track-route-title">Shipment route</h3>
-                          {trackingResult.estimatedArrival && (
-                            <p className="track-route-estimate">
-                              Estimated arrival: {new Date(trackingResult.estimatedArrival).toLocaleDateString("en-ZA")}
-                            </p>
-                          )}
+                          <p className="track-route-point-label">Pickup</p>
+                        </div>
+                        <div className="track-route-dot-line">
+                          <span className="track-route-dot" />
+                          <span className="track-route-dash" />
+                          <span className="track-route-dot" />
+                        </div>
+                        <div>
+                          <p className="track-route-point-label">Dropoff</p>
+                        </div>
+                        <div className="track-route-pin receiver">
+                          <MapPin size={16} />
                         </div>
                       </div>
 
-                      {/* Route visualization */}
-                      <div className="track-route-visual">
-                        <div className="track-route-point">
-                          <div className="track-route-pin sender">
-                            <MapPin size={16} />
-                          </div>
-                          <div>
-                            <p className="track-route-point-label">Pickup</p>
-                          </div>
-                          <div className="track-route-dot-line">
-                            <span className="track-route-dot" />
-                            <span className="track-route-dash" />
-                            <span className="track-route-dot" />
-                          </div>
-                          <div>
-                            <p className="track-route-point-label">Dropoff</p>
-                          </div>
-                          <div className="track-route-pin receiver">
-                            <MapPin size={16} />
-                          </div>
+                      <div className="track-route-addresses">
+                        <div className="track-route-address">
+                          <p className="track-route-name">Pickup Location</p>
+                          <p className="track-route-street">Awaiting assignment</p>
                         </div>
-
-                        <div className="track-route-addresses">
-                          <div className="track-route-address">
-                            <p className="track-route-name">Pickup Location</p>
-                            <p className="track-route-street">Awaiting assignment</p>
-                          </div>
-                          <div className="track-route-address" style={{ textAlign: "right" }}>
-                            <p className="track-route-name">Dropoff Location</p>
-                            <p className="track-route-street">Awaiting assignment</p>
-                          </div>
+                        <div className="track-route-address" style={{ textAlign: "right" }}>
+                          <p className="track-route-name">Dropoff Location</p>
+                          <p className="track-route-street">Awaiting assignment</p>
                         </div>
                       </div>
                     </div>
                   </div>
-
-                  {/* Right column */}
-                  <div className="track-right-col">
-                    {/* Last updated */}
-                    {trackingResult.completedAt && (
-                      <div className="track-last-updated">
-                        <div className="track-updated-icon">
-                          <Check size={18} />
-                        </div>
-                        <div>
-                          <p className="track-updated-label">Completed</p>
-                          <p className="track-updated-time">
-                            {new Date(trackingResult.completedAt).toLocaleString("en-ZA")}
-                          </p>
-                        </div>
-                      </div>
-                    )}
-                  </div>
                 </div>
-              </>
-            )}
-          </div>
-        </main>
-      </div>
-    </div>
+
+                {/* Right column */}
+                <div className="track-right-col">
+                  {/* Last updated */}
+                  {trackingResult.completedAt && (
+                    <div className="track-last-updated">
+                      <div className="track-updated-icon">
+                        <Check size={18} />
+                      </div>
+                      <div>
+                        <p className="track-updated-label">Completed</p>
+                        <p className="track-updated-time">
+                          {new Date(trackingResult.completedAt).toLocaleString("en-ZA")}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      </main>
+    </CustomerShell>
   );
 }

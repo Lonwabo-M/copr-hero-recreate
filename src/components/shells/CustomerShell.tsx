@@ -9,9 +9,16 @@ import AppShell from "./AppShell";
 export default function CustomerShell(props: {
   children: React.ReactNode;
   activeItem: string;
+  /** Logo variant: Dashboard used the SVG logo, other pages the "L" mark. */
+  logo?: "img" | "icon";
 }) {
   return (
-    <AppShell area="customer" activeItem={props.activeItem} brandLabel="Lasha">
+    <AppShell
+      area="customer"
+      activeItem={props.activeItem}
+      logo={props.logo}
+      brandLabel="Lasha"
+    >
       {props.children}
     </AppShell>
   );

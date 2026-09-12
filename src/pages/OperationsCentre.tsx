@@ -1,8 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import Sidebar from "@/components/dashboard/Sidebar";
-import { useDashboardNav } from "@/hooks/useDashboardNav";
+import OperationsShell from "@/components/shells/OperationsShell";
 import {
   Package,
   Truck,
@@ -21,27 +20,11 @@ import "@/styles/operations.css";
 type OpsTab = "overview" | "dispatch" | "live" | "drivers" | "exceptions" | "history";
 
 export default function OperationsCentre() {
-  const { handleSidebarNavigation } = useDashboardNav();
-  const [activeSidebarItem, setActiveSidebarItem] = useState("Operations Centre");
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<OpsTab>("overview");
 
   // Convex queries
   const deliveries = useQuery(api.deliveries.state_machine.getMyDeliveries, {});
   const notifications = useQuery(api.notifications.service.getMyNotifications, { limit: 10 });
-
-  useEffect(() => {
-    const onResize = () => {
-      if (window.innerWidth > 1024) setSidebarOpen(false);
-    };
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, []);
-
-  const onSidebarNav = (item: string) => {
-    setActiveSidebarItem(item);
-    handleSidebarNavigation(item);
-  };
 
   // Calculate metrics from real data
   const activeDeliveries = deliveries?.filter(
@@ -72,63 +55,9 @@ export default function OperationsCentre() {
   ];
 
   return (
-    <div className="dashboard">
-      {/* Top Navigation */}
-      <header className="dash-topnav">
-        <div className="dash-topnav-logo">
-          <div className="lasha-logo-icon">
-            <span>L</span>
-          </div>
-          <span className="dash-topnav-logo-text">Lasha</span>
-        </div>
-
-        <div className="dash-topnav-links">
-          <button className="dash-topnav-link active">
-            Home
-            <span className="dash-topnav-link-underline" />
-          </button>
-          <button className="dash-topnav-link">About Us</button>
-          <button className="dash-topnav-link">Services</button>
-          <button className="dash-topnav-link">Contact US</button>
-        </div>
-
-        <div className="dash-topnav-right">
-          <button
-            className="dash-mobile-toggle"
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-          >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M3 12h18M3 6h18M3 18h18" />
-            </svg>
-          </button>
-          <button className="dash-topnav-profile">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
-              <circle cx="12" cy="7" r="4" />
-            </svg>
-          </button>
-        </div>
-      </header>
-
-      {/* App body */}
-      <div className="dash-app">
-        {/* Mobile overlay */}
-        {sidebarOpen && (
-          <div
-            className="dash-mobile-overlay visible"
-            onClick={() => setSidebarOpen(false)}
-          />
-        )}
-
-        {/* Sidebar */}
-        <Sidebar
-          activeItem={activeSidebarItem}
-          onItemChange={onSidebarNav}
-          isOpen={sidebarOpen}
-        />
-
-        {/* Main content */}
-        <main className="ops-main">
+    <OperationsShell activeItem="Operations Centre">
+      {/* Main content */}
+      <main className="ops-main">
           {/* Tabs */}
           <div className="ops-tabs">
             {tabs.map((tab) => (
@@ -170,9 +99,8 @@ export default function OperationsCentre() {
               <HistoryTab deliveries={deliveries} />
             )}
           </div>
-        </main>
-      </div>
-    </div>
+      </main>
+    </OperationsShell>
   );
 }
 

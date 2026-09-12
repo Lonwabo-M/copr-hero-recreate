@@ -1,8 +1,7 @@
 import { useState } from "react";
 import { useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import Sidebar from "@/components/dashboard/Sidebar";
-import { useDashboardNav } from "@/hooks/useDashboardNav";
+import CustomerShell from "@/components/shells/CustomerShell";
 import { useCreateOrderAndDelivery } from "@/hooks/use-lasha";
 import {
   Package,
@@ -20,9 +19,6 @@ import "@/styles/dashboard.css";
 import "@/styles/request-delivery.css";
 
 export default function RequestDelivery() {
-  const { handleSidebarNavigation } = useDashboardNav();
-  const [activeSidebarItem, setActiveSidebarItem] = useState("Request Delivery");
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [geocoding, setGeocoding] = useState(false);
   const [success, setSuccess] = useState<{ trackingNumber: string } | null>(null);
@@ -43,11 +39,6 @@ export default function RequestDelivery() {
   const [scheduleDate, setScheduleDate] = useState("");
   const [timeFrom, setTimeFrom] = useState("00:00");
   const [timeTo, setTimeTo] = useState("00:00");
-
-  const onSidebarNav = (item: string) => {
-    setActiveSidebarItem(item);
-    handleSidebarNavigation(item);
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -136,61 +127,10 @@ export default function RequestDelivery() {
   };
 
   return (
-    <div className="dashboard">
-      {/* Top Navigation */}
-      <header className="dash-topnav">
-        <div className="dash-topnav-logo">
-          <div className="lasha-logo-icon">
-            <span>L</span>
-          </div>
-          <span className="dash-topnav-logo-text">Lasha</span>
-        </div>
-
-        <div className="dash-topnav-links">
-          <button className="dash-topnav-link active">
-            Home
-            <span className="dash-topnav-link-underline" />
-          </button>
-          <button className="dash-topnav-link">About Us</button>
-          <button className="dash-topnav-link">Services</button>
-          <button className="dash-topnav-link">Contact US</button>
-        </div>
-
-        <div className="dash-topnav-right">
-          <button className="dash-mobile-toggle" onClick={() => setSidebarOpen(!sidebarOpen)}>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M3 12h18M3 6h18M3 18h18" />
-            </svg>
-          </button>
-          <button className="dash-topnav-profile">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
-              <circle cx="12" cy="7" r="4" />
-            </svg>
-          </button>
-        </div>
-      </header>
-
-      {/* App body */}
-      <div className="dash-app">
-        {/* Mobile overlay */}
-        {sidebarOpen && (
-          <div
-            className="dash-mobile-overlay visible"
-            onClick={() => setSidebarOpen(false)}
-          />
-        )}
-
-        {/* Sidebar */}
-        <Sidebar
-          activeItem={activeSidebarItem}
-          onItemChange={onSidebarNav}
-          isOpen={sidebarOpen}
-        />
-
-        {/* Main content */}
-        <main className="request-delivery-main">
-          <div className="request-delivery-container">
+    <CustomerShell activeItem="Request Delivery">
+      {/* Main content */}
+      <main className="request-delivery-main">
+        <div className="request-delivery-container">
             {/* Header */}
             <div className="request-delivery-header">
               <h1 className="request-delivery-title">New Parcel</h1>
@@ -477,7 +417,6 @@ export default function RequestDelivery() {
             </form>
           </div>
         </main>
-      </div>
-    </div>
+    </CustomerShell>
   );
 }

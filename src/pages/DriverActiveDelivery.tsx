@@ -23,8 +23,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import Sidebar from "@/components/dashboard/Sidebar";
-import { useDashboardNav } from "@/hooks/useDashboardNav";
+import DriverShell from "@/components/shells/DriverShell";
 import {
   Loader2,
   Package,
@@ -120,9 +119,6 @@ const STATUS_COPY: Partial<Record<Status, string>> = {
 };
 
 export default function DriverActiveDelivery() {
-  const { handleSidebarNavigation } = useDashboardNav();
-  const [activeSidebarItem, setActiveSidebarItem] = useState("Active Delivery");
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionPending, setActionPending] = useState<string | null>(null);
 
@@ -370,47 +366,10 @@ export default function DriverActiveDelivery() {
 
   const currentStepIndex = status ? PROGRESS_STEPS.findIndex((s) => s.status === status) : -1;
 
-  // ─── Sidebar/resize (matches other dashboard pages) ────────────────────────
-  useEffect(() => {
-    const onResize = () => { if (window.innerWidth > 1024) setSidebarOpen(false); };
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, []);
-
-  const onSidebarNav = (item: string) => {
-    setActiveSidebarItem(item);
-    handleSidebarNavigation(item);
-  };
-
   // ─── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="dashboard">
-      <header className="dash-topnav">
-        <div className="dash-topnav-logo">
-          <div className="lasha-logo-icon"><span>L</span></div>
-          <span className="dash-topnav-logo-text">Lasha</span>
-        </div>
-        <div className="dash-topnav-links">
-          <button className="dash-topnav-link active">Home<span className="dash-topnav-link-underline" /></button>
-          <button className="dash-topnav-link">About Us</button>
-          <button className="dash-topnav-link">Services</button>
-          <button className="dash-topnav-link">Contact US</button>
-        </div>
-        <div className="dash-topnav-right">
-          <button className="dash-mobile-toggle" onClick={() => setSidebarOpen(!sidebarOpen)}>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 12h18M3 6h18M3 18h18" /></svg>
-          </button>
-          <button className="dash-topnav-profile">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
-          </button>
-        </div>
-      </header>
-
-      <div className="dash-app">
-        {sidebarOpen && <div className="dash-mobile-overlay visible" onClick={() => setSidebarOpen(false)} />}
-        <Sidebar activeItem={activeSidebarItem} onItemChange={onSidebarNav} isOpen={sidebarOpen} />
-
+    <DriverShell activeItem="Active Delivery">
         <main className="driver-main dash-workspace">
           <div className="driver-container">
             <div className="driver-header">
@@ -816,7 +775,6 @@ export default function DriverActiveDelivery() {
             )}
           </div>
         </main>
-      </div>
-    </div>
+    </DriverShell>
   );
 }

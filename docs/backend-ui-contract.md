@@ -39,23 +39,33 @@
 
 ### 1.2 Route Map
 
-| Route | Page Component | Auth Required | Description |
-|-------|---------------|---------------|-------------|
-| `/` | `Landing.tsx` | No | Marketing landing page |
-| `/auth` | `Auth.tsx` | No | Email OTP sign-in |
-| `/dashboard` | `Dashboard.tsx` | Yes | Activity Center — order management |
-| `/request-delivery` | `RequestDelivery.tsx` | Yes | Create new delivery request |
-| `/track-delivery` | `TrackDelivery.tsx` | Yes | Track shipment by ID |
-| `/wallet` | `Wallet.tsx` | Yes | Wallet balance, transactions, top-up |
-| `/settings` | `Settings.tsx` | Yes | Profile, business, notifications, security |
-| `/past-deliveries` | `PastDeliveries.tsx` | Yes | Order history table |
-| `/invoices` | `Invoices.tsx` | Yes | Invoice management |
-| `/make-payment` | `MakePayment.tsx` | Yes | Payment processing |
-| `/notifications` | `Notifications.tsx` | Yes | Notification center |
-| `/help` | `Help.tsx` | Yes | Help center (static) |
-| `/legal` | `Legal.tsx` | Yes | Legal documents (static) |
-| `/downloads` | `Downloads.tsx` | Yes | Document downloads (static) |
-| `*` | `NotFound.tsx` | No | 404 page |
+Routes are grouped into role-specific application areas (see
+`docs/frontend-architecture.md`): Customer Portal, Driver App, Operations
+Centre. Each protected route is wrapped in `RoleGate`, which layers role-aware
+area checks on top of `RequireAuth`. Convex remains the authoritative
+authorization boundary.
+
+| Route | Area | Page Component | Auth Required | Description |
+|-------|------|---------------|---------------|-------------|
+| `/` | — | `Landing.tsx` | No | Marketing landing page |
+| `/auth` | — | `Auth.tsx` | No | Email OTP sign-in (honours `?returnTo=`) |
+| `/post-auth` | — | `PostAuthRedirect.tsx` | Yes | Role-aware post-auth redirect |
+| `/dashboard` | Customer | `Dashboard.tsx` | Yes | Activity Center — order management |
+| `/request-delivery` | Customer | `RequestDelivery.tsx` | Yes | Create new delivery request |
+| `/track-delivery` | Customer | `TrackDelivery.tsx` | Yes | Track shipment by ID |
+| `/wallet` | Customer | `Wallet.tsx` | Yes | Wallet balance, transactions, top-up |
+| `/settings` | Customer | `Settings.tsx` | Yes | Profile, business, notifications, security |
+| `/past-deliveries` | Customer | `PastDeliveries.tsx` | Yes | Order history table |
+| `/invoices` | Customer | `Invoices.tsx` | Yes | Invoice management |
+| `/make-payment` | Customer | `MakePayment.tsx` | Yes | Payment processing |
+| `/notifications` | Customer | `Notifications.tsx` | Yes | Notification center |
+| `/help` | Customer | `Help.tsx` | Yes | Help center (static) |
+| `/legal` | Customer | `Legal.tsx` | Yes | Legal documents (static) |
+| `/downloads` | Customer | `Downloads.tsx` | Yes | Document downloads (static) |
+| `/driver` | Driver | `DriverHome.tsx` | Yes + driver | Driver App home |
+| `/driver/active-delivery` | Driver | `DriverActiveDelivery.tsx` | Yes + driver | Active delivery workflow (incl. POD + GPS tracking) |
+| `/operations` | Operations | `OperationsCentre.tsx` | Yes + ops | Dispatch overview, live map, drivers, exceptions |
+| `*` | — | `NotFound.tsx` | No | 404 page |
 
 ### 1.3 Component Architecture
 
@@ -63,8 +73,16 @@
 src/
 ├── main.tsx                    # App bootstrap, ConvexAuthProvider, BrowserRouter
 ├── components/
-│   ├── RequireAuth.tsx         # Auth guard with dev bypass (?dev=true, ?guest=true)
-│   ├── LogoDropdown.tsx        # Brand dropdown
+│   ├── RequireAuth.tsx         # Auth guard (redirects to /auth?returnTo=...)
+│   ├── shells/                 # Role-specific application shells
+│   │   ├── navigation.ts       # Area-scoped navigation configs (4 areas)
+│   │   ├── roleAccess.ts       # Role→area mapping + access checks
+│   │   ├── RoleGate.tsx        # Role-aware route guard (on top of RequireAuth)
+│   │   ├── AppShell.tsx        # Shared Lasha chrome (topnav + area sidebar)
+│   │   ├── CustomerShell.tsx   # Customer Portal shell
+│   │   ├── DriverShell.tsx     # Driver App shell
+│   │   ├── OperationsShell.tsx # Operations Centre shell
+│   │   └── AdminShell.tsx      # Admin shell (no pages yet — reserved)
 │   ├── dashboard/              # Dashboard-specific components
 │   │   ├── TopNavigation.tsx   # Top nav bar
 │   │   ├── Sidebar.tsx         # Left sidebar navigation
