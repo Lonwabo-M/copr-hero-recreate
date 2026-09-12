@@ -293,7 +293,7 @@ The codebase **correctly follows the intended Vite + React + Convex architecture
 | Operations Centre | Overview tab with real data | Tabs beyond Overview are minimal; no dispatch actions, no map, no audit viewer |
 | Observability | Logging + metrics services defined | Not called by most Convex functions; no external monitoring |
 | Testing | 9 pure-logic test files | No integration tests, no React tests, no E2E tests |
-| UI/Backend Integration | Primary pages connected; Settings profile/business saving now works; Driver Active Delivery UI built on existing state machine; POD submission UI integrated at dropoff | MakePayment stub, no dispatch management UI |
+| UI/Backend Integration | Primary pages connected; Settings profile/business saving now works; Driver App complete (Offers, Active Delivery, History, Profile) inside a role-separated shell; POD submission UI integrated at dropoff | MakePayment stub, no dispatch management UI |
 
 ### What Is INCORRECT
 
@@ -320,7 +320,11 @@ The codebase **correctly follows the intended Vite + React + Convex architecture
 | SMS/Email notifications | Only in-app notifications; no external delivery channels |
 | Rate limiting | Not implemented |
 | Profile mutation | ~~Cannot save profile changes~~ **FIXED** — `users.updateMyProfile` + `users.businessProfile.updateMyBusiness` connected to Settings |
-| Driver GPS reporting UI | ~~No page for drivers to report GPS~~ **PARTIALLY BUILT** — one-shot "Share my location" button on Driver Active Delivery calls existing `tracking.mutations.updateDeliveryLocation` (browser Geolocation API). No background/continuous GPS loop, no offline queue |
+| Driver GPS reporting UI | ~~No page for drivers to report GPS~~ **BUILT** — continuous GPS via `useDriverLocationTracking` (`watchPosition` + client-side throttling) on Driver Active Delivery; see Area 7. Offline queue remains a gap |
+| Driver App shell & role separation | ~~Single shared nav mixed customer+driver entries~~ **BUILT** — role-specific shells (`CustomerShell`/`DriverShell`/`OperationsShell`/`AdminShell`) with area-scoped navigation configs, `RoleGate` guards on all protected routes, and role-aware post-auth routing (`/post-auth`). See `docs/frontend-architecture.md` |
+| Driver Offers / Accept-Reject UI | ~~No driver offers page~~ **BUILT** — `src/pages/DriverOffers.tsx` (`/driver/offers`): reactive `dispatch.engine.getMyDispatchOffers`, accept via `acceptAssignment` (handoff to Active Delivery), reject via `rejectAssignment` (no invented reason), live countdown, expiry/lock/empty/error states; backend concurrency/authorization untouched |
+| Driver Delivery History UI | ~~No driver history page~~ **BUILT** — `src/pages/DriverHistory.tsx` (`/driver/history`) + `src/pages/DriverDeliveryDetail.tsx` (`/driver/history/:deliveryId`): new driver-scoped `deliveries.state_machine.getMyDeliveryHistory` query (session-derived identity, server-side status/date filters, cursor pagination), detail reuses existing `getDelivery`/`getDeliveryTracking`/`getPODForDelivery` authorization |
+| Driver Profile UI | ~~No driver profile page~~ **BUILT** — `src/pages/DriverProfile.tsx` (`/driver/profile`): reads `users.currentUser` + `users.businessProfile.getMyBusiness`, edits name/phone via existing `users.updateMyProfile` (session-scoped, validated, audit-logged); role/verification/business association read-only; avatar display-only (no upload flow exists) |
 
 ### Critical Architectural Problems
 
@@ -331,14 +335,14 @@ None. The architecture is sound. The issue is that several subsystems were imple
 1. ~~**RequestDelivery uses random coordinates**~~ **FIXED** — Now uses `geocodeAddress` Convex action (Google Maps Geocoding API with Nominatim fallback). Both pickup and dropoff addresses are geocoded via server-side Convex action before order creation. Failed geocoding prevents submission with a clear user-facing error. Button shows "Resolving addresses..." during geocoding phase.
 2. ~~**Pricing not called from order creation**~~ **FIXED** — `createOrderAndDelivery` now calls `internal.pricing.service.calculateAndStoreQuote` to calculate price using active pricing rules, then stores the result on the order.
 3. **MakePayment is a no-op** — Users cannot actually add funds.
-4. **Settings is read-only** — Users cannot update their profile.
+4. ~~**Settings is read-only**~~ **FIXED** — Profile mutation exists and both Settings (Customer Portal) and Driver Profile (Driver App) persist through it.
 
 ### Remaining Dependencies
 
 - Payment provider (Paystack/Stripe) needs to be integrated via Convex action for MakePayment
 - ~~Geocoding service needs to be connected to RequestDelivery~~ **FIXED** — `geocodeAddress` Convex action added and connected to RequestDelivery
-- Profile mutation needs a Convex mutation and Settings page wiring
-- Driver-specific pages need to be built for active delivery management and POD submission
+- ~~Profile mutation needs a Convex mutation and Settings page wiring~~ **FIXED** — `users.updateMyProfile` + `users.businessProfile.updateMyBusiness` exist and are wired to Settings and Driver Profile
+- ~~Driver-specific pages need to be built for active delivery management and POD submission~~ **BUILT** — Driver App now includes Offers, Active Delivery (with continuous GPS + POD), Delivery History, and Profile inside `DriverShell`
 
 ### Recommended Next Step
 
