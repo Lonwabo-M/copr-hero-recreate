@@ -1516,3 +1516,125 @@ export const getMyDeliveries = query({
     return await q.order("desc").take(limit);
   },
 });
+
+// ─── Driver Delivery History ─────────────────────────────────────────────────
+// Server-side, driver-scoped history for the Driver App's History page.
+//
+// Authorization: the authenticated session IS the driver. The driverId is
+// never accepted from the client — the query resolves it via getCurrentAuthUser
+// and only returns deliveries where courierId === that identity. No React-side
+// filtering of a global list occurs.
+//
+// Scope: terminal (historical) deliveries only — delivered, failed, cancelled —
+// using existing state-machine terminology. Rejected *offers* live in
+// dispatch_offers (not deliveries) and are not part of a delivery-history
+// record (documented limitation).
+//
+// Pagination: cursor-based via by_courier_status index ordering; no unbounded
+// table scans on the client.
+
+export const getMyDeliveryHistory = query({
+  args: {
+    /** Existing state-machine statuses only. Omit for all historical outcomes. */
+    status: v.optional(deliveryStatusValidator),
+    /** Inclusive lower bound (epoch ms) on the delivery's completion/failure/cancellation time. */
+    from: v.optional(v.number()),
+    /** Exclusive upper bound (epoch ms). */
+    to: v.optional(v.number()),
+    /** Page size (default 20, max 100). */
+    limit: v.optional(v.number()),
+    /** Continuation cursor from the previous page (a delivery _id). */
+    cursor: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const user = await getCurrentAuthUser(ctx);
+    if (!user) throw new Error("Authentication required");
+
+    if (user.role !== ROLES.DRIVER) {
+      throw new Error("Only drivers have a delivery history");
+    }
+
+    const limit = Math.min(Math.max(args.limit ?? 20, 1), 100);
+
+    // Historical (terminal) statuses in existing state-machine terminology.
+    const historicalStatuses = [
+      DELIVERY_STATUS.DELIVERED,
+      DELIVERY_STATUS.FAILED,
+      DELIVERY_STATUS.CANCELLED,
+    ];
+
+    // Query this driver's deliveries. If a specific status is requested,
+    // use the composite index for a server-side filter; otherwise scan the
+    // driver's own deliveries (scoped by courierId — never a global list).
+    let rows;
+    if (args.status) {
+      rows = await ctx.db
+        .query("deliveries")
+        .withIndex("by_courier_status", (q) =>
+          q.eq("courierId", user.userId).eq("status", args.status!)
+        )
+        .order("desc")
+        .take(500);
+    } else {
+      const all = await ctx.db
+        .query("deliveries")
+        .withIndex("by_courier", (q) => q.eq("courierId", user.userId))
+        .order("desc")
+        .take(500);
+      rows = all.filter((d) => historicalStatuses.includes(d.status as any));
+    }
+
+    // Sort by most relevant historical timestamp (completion > started > assigned).
+    const historicalTime = (d: Doc<"deliveries">) =>
+      d.completedAt ?? d.startedAt ?? d.assignedAt ?? 0;
+    rows.sort((a, b) => historicalTime(b) - historicalTime(a));
+
+    // Server-side date-range filter on the historical timestamp.
+    if (args.from !== undefined) {
+      rows = rows.filter((d) => historicalTime(d) >= args.from!);
+    }
+    if (args.to !== undefined) {
+      rows = rows.filter((d) => historicalTime(d) < args.to!);
+    }
+
+    // Cursor pagination: resume after the row matching the cursor id.
+    if (args.cursor) {
+      const idx = rows.findIndex((d) => d._id === (args.cursor as any));
+      if (idx >= 0) rows = rows.slice(idx + 1);
+    }
+
+    const page = rows.slice(0, limit);
+    const nextCursor =
+      rows.length > limit && page.length > 0
+        ? (page[page.length - 1]._id as unknown as string)
+        : null;
+
+    // Enrich each row with fields that already exist in orders/addresses.
+    const items = [];
+    for (const d of page) {
+      const order = await ctx.db.get(d.orderId);
+      const pickupAddress = order ? await ctx.db.get(order.pickupAddressId) : null;
+      const dropoffAddress = order ? await ctx.db.get(order.dropoffAddressId) : null;
+
+      items.push({
+        _id: d._id,
+        trackingNumber: d.trackingNumber,
+        status: d.status,
+        completedAt: d.completedAt,
+        startedAt: d.startedAt,
+        assignedAt: d.assignedAt,
+        // From the linked order (existing data):
+        packageSize: order?.packageSize ?? null,
+        parcelType: order?.parcelType ?? null,
+        orderPrice: order?.price ?? null,
+        // From the linked addresses (existing data):
+        pickupCity: pickupAddress?.city ?? null,
+        pickupStreet: pickupAddress?.street ?? null,
+        dropoffCity: dropoffAddress?.city ?? null,
+        dropoffStreet: dropoffAddress?.street ?? null,
+      });
+    }
+
+    return { items, nextCursor };
+  },
+});

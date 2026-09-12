@@ -112,7 +112,7 @@ visibility to `SUPER_ADMIN || OPERATIONS`); no new permissions were invented.
 |------|--------|
 | — (public) | `/`, `/auth`, `/post-auth` |
 | Customer Portal | `/dashboard`, `/request-delivery`, `/track-delivery`, `/wallet`, `/make-payment`, `/past-deliveries`, `/invoices`, `/notifications`, `/settings`, `/help`, `/legal`, `/downloads` |
-| Driver App | `/driver`, `/driver/offers`, `/driver/active-delivery` |
+| Driver App | `/driver`, `/driver/offers`, `/driver/history`, `/driver/history/:deliveryId`, `/driver/active-delivery` |
 | Operations Centre | `/operations` |
 | Admin | *(none yet — `/admin` reserved)* |
 
@@ -136,9 +136,9 @@ Navigation configs are per-area pure data in `navigation.ts`:
 - `customerNavigation` — 12 entries: Activity Center, Past Deliveries,
   Request Delivery, Track Delivery, Invoices, Wallet, Make Payment,
   Notifications, Help, Legal, Downloads, Settings
-- `driverNavigation` — Delivery Offers and Active Delivery (the driver pages
-  that exist; Earnings/History/Profile/Safety are future work and are NOT
-  stubbed)
+- `driverNavigation` — Delivery Offers, Active Delivery, and Delivery History
+  (the driver pages that exist; Earnings/Profile/Safety are future work and are
+  NOT stubbed)
 - `operationsNavigation` — Operations Centre
 - `adminNavigation` — empty until admin pages exist
 
@@ -254,13 +254,74 @@ rejection-reason policy.
 
 Run: `bunx tsx src/pages/driverOffers.test.ts`
 
+## Driver Delivery History
+
+> Status: implemented. See `src/pages/DriverHistory.tsx`,
+> `src/pages/DriverDeliveryDetail.tsx` and
+> `deliveries.state_machine.getMyDeliveryHistory`.
+
+### Route & authorization
+
+- `/driver/history` — list (Driver App area, `RoleGate` guarded)
+- `/driver/history/:deliveryId` — detail
+
+The list is served by a new **driver-scoped** Convex query,
+`getMyDeliveryHistory` (in `src/convex/deliveries/state_machine.ts`):
+
+- **Identity is resolved server-side** via `getCurrentAuthUser` — the query
+  accepts no driver ID from the client and only returns deliveries where
+  `courierId ===` the authenticated driver. There is no React-side filtering of
+  a global list.
+- Non-drivers are refused (`"Only drivers have a delivery history"`).
+- Detail views reuse the existing driver-authorized queries:
+  `state_machine.getDelivery` (throws "Access denied: not your delivery" for a
+  URL-manipulated foreign delivery), `tracking.queries.getDeliveryTracking`,
+  and `pod.service.getPODForDelivery` (driver branch of `canAccessPOD`).
+
+### Scope, filters and pagination
+
+- **Historical statuses** — terminal states only, existing terminology:
+  `delivered`, `failed`, `cancelled`. Rejected *offers* live in
+  `dispatch_offers`, not `deliveries`, and are therefore not part of delivery
+  history (documented limitation, no fabricated records).
+- **Filters (server-side)** — status (via the `by_courier_status` index) and
+  date window (last 7/30/90 days) applied in Convex before paging.
+- **Pagination (server-side cursor)** — page size 20 (clamped 1–100);
+  `nextCursor` continuation + Previous/Next controls. No unbounded history in
+  the browser.
+- Displayed fields all exist in the backend: tracking number, route cities,
+  package size/type, order price, historical timestamps. **No earnings, fees,
+  distances or ratings are shown** (not part of the data model / this task).
+
+### Historical detail
+
+Shows final status, pickup/dropoff coordinates, timeline (assigned → accepted →
+started → completed, rejected for cancellations), route history from existing
+tracking events, and POD information. Customer/admin-only data is not rendered.
+
+### POD viewing
+
+Completed deliveries open their stored POD through the existing
+`getPODForDelivery` — the assigned driver retains read access via
+`canAccessPOD`; nothing about POD storage or submission changed. Deliveries
+without POD show an explicit empty state.
+
+### Tests
+
+`src/pages/driverHistory.test.ts` (18 assertions): session-derived identity,
+foreign-delivery refusal, role gate, historical-status vocabulary (terminal,
+no invented states), status/date filters, cursor pagination (resume, end,
+clamping), timestamp precedence, and the POD authorization branches.
+
+Run: `bunx tsx src/pages/driverHistory.test.ts`
+
 ## Remaining gaps (intentionally not built here)
 
 1. **Admin pages** — no user/pricing/business admin UI exists yet. `AdminShell`
    and the `admin` RoleGate area are ready; `/admin` is not registered as a
    route until real admin pages exist.
-2. **Driver App depth** — Delivery Offers and Active Delivery exist.
-   Earnings/Wallet, Delivery History, Driver Profile, and Safety/SOS need both
+2. **Driver App depth** — Delivery Offers, Active Delivery, and Delivery
+   History exist. Earnings/Wallet, Driver Profile, and Safety/SOS need both
    backend queries and pages before they get navigation entries.
 3. **Operations ↔ Admin distinction** — with the current RBAC there is
    meaningful overlap (both see all deliveries; `company_admin` ⊃ operations
