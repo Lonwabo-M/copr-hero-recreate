@@ -191,9 +191,22 @@ export const getQuoteForOrder = query({
     
     if (!quote) return null;
     
-    // Check access
+    // Check access.
+    // - Customers: only quotes on their own orders.
+    // - Drivers: only quotes for deliveries assigned to them (prevents a
+    //   driver from reading other orders' earnings/platform-fee breakdowns).
+    // - Operations/company_admin/super_admin: privileged financial roles.
     if (user.role === ROLES.CUSTOMER && quote.userId !== user.userId) {
       throw new Error("Access denied");
+    }
+    if (user.role === ROLES.DRIVER || user.role === ROLES.FLEET_MANAGER) {
+      const delivery = await ctx.db
+        .query("deliveries")
+        .withIndex("by_order", (q) => q.eq("orderId", args.orderId))
+        .unique();
+      if (!delivery || delivery.courierId !== user.userId) {
+        throw new Error("Access denied");
+      }
     }
     
     return quote;

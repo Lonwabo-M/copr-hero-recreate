@@ -1,0 +1,258 @@
+# Lasha — Payment ↔ Settlement Reconciliation Audit & Design
+
+> Status: **audit/design only** (2026-09-12). No reconciliation engine, Earnings
+> UI, payout automation, or refund workflow was implemented. One minimal
+> security correction was made (documented in §10). Every claim below was
+> verified against the repository code.
+
+---
+
+## 1. Current Financial Architecture
+
+Both flows are now live and authoritative:
+
+```
+CUSTOMER SIDE
+Order (createOrderAndDelivery)
+  → Quote (delivery_quotes: totalCharge / deliveryFee / platformFee / driverEarnings)
+  → orders.price = totalCharge
+  → Paystack (initiate → hosted checkout)
+  → payment_transactions (pending → completed | failed)
+
+DRIVER SIDE
+Order
+  → Delivery (state machine)
+  → POD gate
+  → DELIVERED (completeDelivery | completeDeliveryWithPOD)
+  → Settlement created (pending = payable)          [settlement-${deliveryId}]
+  → [dead code until invoked] processSettlement → completeSettlement
+      → wallet credited + transactions row (SET-{settlementId})
+```
+
+**Where reconciliation is missing today:** there is no financial event that
+relates `payment_transactions` to `settlements`. Nothing answers "is this order
+financially settled end-to-end?", nothing blocks a settlement payout on
+(un)paid customer payment, and nothing links a refund back to a settlement.
+The two flows meet only implicitly, through the shared `orderId`.
+
+---
+
+## 2. Financial Records Matrix
+
+| Record | Exists | Authoritative | Linked To | Current State | Notes |
+|---|---|---|---|---|---|
+| `delivery_quotes` | ✅ | ✅ (amounts locked at creation) | order (`by_order`) | written at creation, immutable in practice | `driverEarnings = deliveryFee − platformFee` |
+| `orders.price` | ✅ | ✅ (mirrors quote total) | quote (indirect) | set once at creation | the customer-charge source of truth |
+| `payment_transactions` | ✅ | ✅ (only from verified provider evidence) | order (`by_order`), user (`by_user`), provider ref (`by_provider`) | pending → completed/failed | idempotencyKey = Paystack reference; **no link to settlements** |
+| `settlements` | ✅ | ✅ (amounts copied from quote) | delivery (`by_delivery`), order, driver, quote (`quoteId`), idempotency | created at DELIVERED, starts `pending` | **no link to payment_transactions** |
+| `wallets` | ✅ (table) | balance only | user (`by_user`) | created lazily at first `completeSettlement` | balance is mutable state, not a ledger |
+| `transactions` | ✅ (table) | append-only rows, but ⚠️ see §7 | wallet (`by_wallet`), order (optional) | only written by `completeSettlement` | `reference: SET-{settlementId}` is the only settlement linkage |
+| Platform fee | ✅ (fields on quote/settlement) | ✅ | quote + settlement | stored, never "accounted" anywhere | no revenue record exists |
+| Payout | ❌ | — | — | absent | no bank destination, no payout record, no automation |
+
+---
+
+## 3. Reconciliation Model (proposed, not implemented)
+
+Relationships today (verified):
+
+- **payment_transactions ⇄ order** — direct FK (`orderId`).
+- **settlement ⇄ delivery** — direct FK (`deliveryId`), one-to-one enforced.
+- **settlement ⇄ order** — direct FK (`orderId`).
+- **payment_transactions ⇄ settlement** — **indirect only**, via shared
+  `orderId`. Absent as a first-class relationship.
+- **platform revenue** — calculated: `totalCharge − driverEarnings` (=
+  `platformFee` on the quote). No stored revenue record.
+
+**Recommended minimal model — derive, don't duplicate.** Both records already
+carry `orderId`; reconciliation can be computed per order:
+
+```
+For order O:
+  payment = latest payment_transactions where orderId = O
+  settle  = unique settlements where orderId = O        (by_order index)
+
+  customerPaid   = payment?.status === "completed" && payment.amount === O.price
+  driverEntitled = settle != null                        (settle.driverEarnings)
+  platformRevenue = O.price − settle.driverEarnings      (when settle exists)
+  settledPaid    = settle?.status === "completed"
+
+  RECONCILED ⇔ customerPaid ∧ (settle != null) ∧ settledPaid
+  (i.e. both facts verified; payable-to-paid cycle closed)
+```
+
+This answers all reconciliation questions with existing indexes — **no new
+table is required**. If durable per-order state is later needed (e.g. for
+payout batching at scale), the smallest addition would be optional fields on
+`settlements` (e.g. `reconciledPaymentId`, `releasedAt`) — not a new table.
+
+### The payout gate rule (proposed)
+
+`completeSettlement` (the actual driver payment) should be permitted only when
+`customerPaid` is true for its order — **Model B** below. The gate belongs at
+the payout boundary; settlement *creation* stays uncoupled from payment.
+
+---
+
+## 4. Settlement Eligibility
+
+Three models were considered:
+
+- **Model A** — payable immediately on DELIVERED, regardless of customer payment.
+- **Model B** — settlement created at DELIVERED, payout blocked until customer payment verified.
+- **Model C** — settlement created only after customer payment.
+
+**Current implemented behaviour = Model A**: `createSettlement` is wired to
+delivery completion only (see `completeDelivery` / `completeDeliveryWithPOD` in
+the state machine and POD service). Customer payment plays no role — that is
+the architecture this repo deliberately built (payment and settlement were
+explicitly separated in `docs/driver-earnings-settlement.md` §6).
+
+**Which model is intended:** the repository establishes *facts* (settlement on
+completion; payment via provider verification) but contains **no explicit
+business rule deciding payout timing relative to customer payment**. Choosing
+A/B/C as *policy* is therefore classified as an **unresolved business
+decision**. The audit's recommendation (not a decision): Model B is the only
+model consistent with the existing architecture without rewriting the
+settlement trigger — keep creation at DELIVERED (already implemented), add the
+customer-payment gate at the `completeSettlement` boundary (one check, one
+place, reversible by policy change).
+
+---
+
+## 5. Edge Cases (current behaviour + required future policy)
+
+| Edge case | Current behaviour (verified) | Required future policy |
+|---|---|---|
+| **Payment before delivery completes** | Possible — nothing blocks paying an order in any state; the money sits as a completed `payment_transactions` row | Accepted prepayment model is fine for prepaid logistics; document that a completed payment is a *customer* fact only |
+| **…then delivery fails** | Settlement is **not** created (explicit zero-compensation policy); payment stays `completed` | Needs policy: auto-refund? credit? currently money collected with no delivery — **unresolved** |
+| **…then delivery cancelled** | Same as failed: no settlement, payment untouched | Same unresolved policy |
+| **…delivery never starts** | Same as cancelled (no settlement path ever triggers) | Same unresolved policy |
+| **Delivery completes before payment** | Possible and expected — DELIVERED creates settlement `pending`; payment may still be unpaid | Model B gate at payout would make this state safe (settlement payable but not payable-*out*) |
+| **Payment fails after delivery** | Settlement remains `pending`/payable; payment `failed`. Driver entitlement and customer non-payment coexist | Under Model B, payout stays blocked — correct. Escalation (retry payment / cancel) needs ops tooling |
+| **Refund after successful payment** | Schema has a `refunded` literal; nothing enters it. No effect on settlement/wallet today | Requires full policy: payment → refunded; wallet claw-back if settlement already `completed`; settlement reversal handling. **Unresolved** |
+| **Partial payment** | **Unsupported** — Paystack is initialized for the full charge; `completePaymentTransaction` refuses any provider amount ≠ stored charge | Explicitly: partial payments are unsupported until a policy and amount-tracking model exist |
+| **Duplicate payment** | Safe (verified): one deterministic reference per order; second init returns `alreadyPaid`; amount-mismatch and provider-ID-mismatch guards; completion short-circuits `alreadyCompleted` | Two *different* references cannot both complete for one order because reference 1 completing makes the latest-payment check return `alreadyPaid` before a second checkout is created. Webhook replays are no-ops |
+| **Duplicate settlement** | Safe (verified): `settlement-${deliveryId}` deterministic key, `by_idempotency` + `by_delivery` double-check, completion gated by `processing` state | — |
+
+---
+
+## 6. Driver Earnings Readiness
+
+Classification: **PARTIAL.**
+
+The system can already answer *safely* (driver-scoped, `getDriverEarnings`):
+- earnings per delivery → `settlements.driverEarnings` (created, real)
+- payable → `pending + processing` settlements
+- actually paid → `completed` settlements
+
+Why not READY:
+1. **No payout flow has ever run** — `completed` settlements require
+   operations to manually call `processSettlement`/`completeSettlement`; no
+   business process exists to do that, so "paid" will be permanently zero in
+   practice.
+2. **Payout gate undefined** — without the Model B decision, "payable" may
+   include orders the customer never paid.
+3. **No reconciliation state** — cannot distinguish "settlement pending
+   because delivery done" from "settlement pending because customer hasn't
+   paid".
+
+The *data* exists; the *meaning* of the statuses is not yet fully defined.
+
+## 7. Payout Readiness
+
+Classification: **NOT READY.**
+
+Verified missing:
+- payable settlement records exist, but no eligibility rule (§4 unresolved)
+- **payout destination** — no bank account / recipient model anywhere
+- payout state, payout reference, payout records — absent entirely
+- payout failure handling — absent
+- payout reversal / claw-back — absent (critical: wallets are mutable balances)
+- no payout provider integration (Paystack Transfers or otherwise)
+- settlement lifecycle itself is manual dead code (`processSettlement` has no
+  caller)
+
+---
+
+## 8. Missing Components (verified only)
+
+1. Reconciliation *state* (derivable today; durable fields optional later)
+2. Customer-payment gate at the payout boundary (Model B) — pending business decision
+3. Refund / reversal policy + flow (payment, settlement, wallet claw-back)
+4. Payout destination model (bank accounts / recipients)
+5. Payout processing (provider Transfers integration, references, retries)
+6. Payout failure/reversal handling
+7. Automated settlement lifecycle (who calls `processSettlement`/`completeSettlement`, when)
+8. Platform revenue record (currently only calculable, never stored/derived)
+9. Payment-before-failed-delivery money policy (refund/credit)
+
+## 9. Recommended Implementation Sequence
+
+Smallest safe path from the current state:
+
+1. **Reconciliation read model** — a privileged query deriving per-order
+   `customerPaid / driverEntitled / reconciled` from existing indexes (§3).
+   Pure read; no risk; unblocks everything below.
+2. **Business decision: settle-eligibility model (A/B/C)** — required sign-off;
+   recommend Model B (gate at `completeSettlement`).
+3. **Payout gate** — implement the decision as a single check inside
+   `completeSettlement` (customer payment verified + amount match).
+4. **Driver Earnings query (real)** — extend `getDriverEarnings` to expose
+   payable vs paid with the gate semantics; safe driver scoping already exists.
+5. **Driver Earnings UI** — reads only the query from step 4.
+6. **Payout destination model** — driver bank/recipient records (privileged writes).
+7. **Payout processing** — provider Transfers integration with payout
+   references, idempotency, failure states.
+8. **Refund/reversal policy + implementation** — including wallet claw-back.
+9. **Payout reconciliation** — link payouts ↔ settlements ↔ payments.
+
+Nothing in this document implements steps 1–9; they are sequenced, not built.
+
+---
+
+## 10. Security Review
+
+Reviewed: payment overview (driver/operations branches return no data ✅),
+verification ownership (payer or super admin ✅), settlement management
+(`settlement:manage`; drivers lack it ✅), wallet reads (`by_user`, session ✅),
+provider references (server-side only; client receives only its own
+reference/URL ✅), webhook (signature-gated, `internalAction` ✅).
+
+**Vulnerability found and fixed (minimal change):**
+`pricing.service.getQuoteForOrder` allowed **any authenticated driver or fleet
+manager** to read the full quote breakdown (including `driverEarnings` and
+platform fee) for *any* order by supplying an `orderId` — cross-user financial
+exposure. Correction (smallest possible): drivers and fleet managers can now
+read a quote only when a delivery for that order is assigned to them
+(`by_order` lookup, `courierId` check). Customers and privileged roles were
+already handled. No other financial query exposed cross-user data.
+
+---
+
+## 11. Ledger Integrity (§7 of the audit spec)
+
+`wallets` + `transactions` are a **balance implementation with an
+append-only-ish transaction log**, not a true ledger:
+
+- **Good:** transaction rows are never updated or deleted (only inserted);
+  wallet lookups are session-scoped.
+- **Weaknesses (verified):**
+  1. **No settlement FK** — `transactions` links to `settlements` only via the
+     free-text `reference: "SET-{settlementId}"`; there is no
+     `settlementId`/`by_settlement` index or uniqueness guard.
+  2. **No dedup key** — a transaction's identity is its `_id`; a bug that
+     double-invokes a credit would create two rows (balance would double).
+     The current single-caller + state gate mitigates but doesn't structurally
+     prevent it.
+  3. **Balance is mutable truth** — `wallets.balance` is patched in place;
+     an audit cannot reconstruct balance from `transactions` alone being
+     guaranteed-consistent (sum(rows) is not enforced against balance).
+  4. **No direction completeness** — `type: credit|debit` exists, but nothing
+     records *why* beyond a description string.
+
+A future reconciliation event *can* be audited via `audit_events` (payment +
+settlement lifecycle events already recorded), but **not** structurally via
+`transactions`. Recommended (not implemented): add an optional
+`settlementId` field + `by_settlement` unique-able index on `transactions`, and
+treat sum-of-transactions as the source of truth with balance as a cache.
