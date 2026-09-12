@@ -256,3 +256,100 @@ settlement lifecycle events already recorded), but **not** structurally via
 `transactions`. Recommended (not implemented): add an optional
 `settlementId` field + `by_settlement` unique-able index on `transactions`, and
 treat sum-of-transactions as the source of truth with balance as a cache.
+
+---
+
+## 12. Reconciliation Read Model (implemented)
+
+**Status: implemented as a pure read model** —
+`src/convex/payments/reconciliation.ts` → `getOrderReconciliation`.
+Nothing is persisted; there is no reconciliation table.
+
+### What it is
+
+A **privileged, read-only** query that derives the current financial
+relationship for one order from the existing authoritative records:
+
+| Source | Used for | Index |
+|---|---|---|
+| `orders.price` | authoritative customer charge | `get` |
+| `delivery_quotes` (newest by `calculatedAt`) | pricing breakdown, consistency checks | `by_order` |
+| `payment_transactions` | server-verified customer payments | `by_order` |
+| `settlements` | driver entitlement + lifecycle | `by_order` |
+| `deliveries` | context (status, courier reference) | `by_order` |
+
+### Authorization
+
+Gated by the existing **`settlement:view`** permission (operations,
+company_admin, super_admin). Drivers and customers structurally cannot call it
+— their roles lack the permission. The query accepts **`orderId` only**; no
+driver/settlement/payment IDs or amounts are accepted as input.
+
+### Reconciliation states (derived, never persisted)
+
+| State | Meaning |
+|---|---|
+| `RECONCILED` | customer payment verified (completed + amount = `orders.price`) AND settlement exists AND settlement `completed` |
+| `UNPAID` | no completed payment, no settlement |
+| `PAID_NO_SETTLEMENT` | customer paid; no settlement (delivery not completed, or failed/cancelled per compensation policy) |
+| `SETTLEMENT_PENDING` | settlement `pending`/payable (with or without payment — both map here via the matrix) |
+| `SETTLEMENT_PROCESSING` | settlement marked `processing` by an authorized operator |
+| `ANOMALY` | records disagree (see below) — surfaced with diagnostics, never auto-corrected |
+
+State precedence: any anomaly → `ANOMALY`; otherwise the payment × settlement
+matrix; `RECONCILED` requires settlement `completed` specifically — `pending`
+is **never** reinterpreted as paid. A `failed`/`disputed` settlement on a paid
+order is an anomaly for operator attention.
+
+### Anomaly detection
+
+The query checks and reports (without modifying anything):
+
+1. completed payment `amount` vs `orders.price`
+2. `orders.price` vs quote `totalCharge`
+3. settlement `driverEarnings` vs quote `driverEarnings`
+4. multiple completed payments for one order (possible duplicate charge —
+   never silently collapsed)
+5. multiple settlements for one order (idempotency violation)
+6. order not found; multiple quotes (informational)
+
+### Customer payment determination
+
+`customerPaid` ⇔ exactly one completed `payment_transactions` row whose
+`amount` equals `orders.price`. Failed/pending attempts never count; attempts
+are never summed. Provider confirmation must already be server-verified (the
+payment layer guarantees this).
+
+### Platform revenue
+
+`platformRevenue = quote.totalCharge − quote.driverEarnings`, derived from the
+**stored quote only** — no pricing recalculation. The result is explicitly
+labelled *derived* revenue: it is **not** recognized accounting revenue and
+**not** a payout.
+
+### Explicit limits
+
+> **`RECONCILED` does NOT mean the platform has completed accounting, and it
+> does NOT mean a driver payout has occurred.** Settlement `completed` records
+> the wallet-credit event from the settlement lifecycle; the payout-eligibility
+> rule (Model A/B/C) remains an unresolved business decision (§4). This read
+> model moves no money, credits no wallet, completes no settlement, and
+> initiates no payout.
+
+### Response shape
+
+Structured object: `order` / `quote` / `customerPayment` / `settlement` /
+`reconciliation` (state, customerPaid, driverEntitled, platformRevenue,
+anomalies) / `delivery` / `actorRole` / `derivedAt`. Only safe stored
+references are exposed (payment idempotency key = Paystack reference,
+provider transaction ID, `SET-{settlementId}` wallet-transaction reference
+format). No secrets, no card data, no wallet state.
+
+### Tests
+
+`src/convex/testing/reconciliation.test.ts` (18 assertions) covers the source
+indexes, no-write invariants, permission gating (driver/customer exclusion),
+`orderId`-only args, paid/failed rules, duplicate-payment anomaly, all
+settlement statuses, the full state matrix, all anomaly checks, revenue
+derivation, and reference hygiene. Run:
+`bunx tsx src/convex/testing/reconciliation.test.ts`.
