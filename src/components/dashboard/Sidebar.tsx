@@ -42,6 +42,7 @@ const ICONS: Record<string, LucideIcon> = {
   Legal: Scale,
   Downloads: Download,
   Settings: Settings,
+  Profile: Settings,
   "Log out": LogOut,
   // Operations Centre entries
   "Operations Centre": Truck,

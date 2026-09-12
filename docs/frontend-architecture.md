@@ -112,7 +112,7 @@ visibility to `SUPER_ADMIN || OPERATIONS`); no new permissions were invented.
 |------|--------|
 | — (public) | `/`, `/auth`, `/post-auth` |
 | Customer Portal | `/dashboard`, `/request-delivery`, `/track-delivery`, `/wallet`, `/make-payment`, `/past-deliveries`, `/invoices`, `/notifications`, `/settings`, `/help`, `/legal`, `/downloads` |
-| Driver App | `/driver`, `/driver/offers`, `/driver/history`, `/driver/history/:deliveryId`, `/driver/active-delivery` |
+| Driver App | `/driver`, `/driver/offers`, `/driver/history`, `/driver/history/:deliveryId`, `/driver/profile`, `/driver/active-delivery` |
 | Operations Centre | `/operations` |
 | Admin | *(none yet — `/admin` reserved)* |
 
@@ -136,8 +136,8 @@ Navigation configs are per-area pure data in `navigation.ts`:
 - `customerNavigation` — 12 entries: Activity Center, Past Deliveries,
   Request Delivery, Track Delivery, Invoices, Wallet, Make Payment,
   Notifications, Help, Legal, Downloads, Settings
-- `driverNavigation` — Delivery Offers, Active Delivery, and Delivery History
-  (the driver pages that exist; Earnings/Profile/Safety are future work and are
+- `driverNavigation` — Delivery Offers, Active Delivery, Delivery History, and
+  Profile (the driver pages that exist; Earnings/Safety are future work and are
   NOT stubbed)
 - `operationsNavigation` — Operations Centre
 - `adminNavigation` — empty until admin pages exist
@@ -315,14 +315,75 @@ clamping), timestamp precedence, and the POD authorization branches.
 
 Run: `bunx tsx src/pages/driverHistory.test.ts`
 
+## Driver Profile
+
+> Status: implemented. See `src/pages/DriverProfile.tsx`. Built entirely on
+> existing backend operations — **zero backend changes**.
+
+### Route & data source
+
+- `/driver/profile` — Driver App area, `RoleGate` guarded.
+- Reads: `users.currentUser` (session-derived profile) and
+  `users.businessProfile.getMyBusiness` (session-derived company association).
+- Writes: `users.updateMyProfile` — the existing secure mutation whose
+  identity always comes from the auth session (no client user IDs) and whose
+  args structurally exclude privileged fields. Changes are audit-logged
+  (`user.updated` with before/after snapshots).
+
+### Editable vs read-only
+
+| Editable (backend whitelist `PROFILE_EDITABLE_FIELDS`) | Read-only |
+|---|---|
+| Name (validated, max 100 chars) | Email (managed by OTP sign-in) |
+| Phone (validated, max 20 chars; empty clears it) | Role, email verification state |
+| | Business association (`businessId` is protected) |
+| | Profile image, GPS fields, account creation date |
+
+Validation is mirrored client-side (from `users/profileValidation.ts`) for fast
+feedback; the backend remains authoritative and re-validates before patching.
+The Save button is disabled when the form is untouched; saving/success/error
+states are shown, and the profile re-renders reactively from Convex after a
+successful mutation.
+
+### Status / business / security sections
+
+- **Account status** — role, email-verification state, and member-since date
+  are displayed read-only. Operational/verification statuses cannot be changed
+  from this page (no such mutation exists).
+- **Company affiliation** — displayed read-only when the driver has a
+  `businessId`; a driver profile is not a business administration page.
+- **Account security** — sign-in is OTP-based (email verification code, no
+  password); the page states this accurately and shows no fake password
+  controls.
+- **Logout** lives in the DriverShell sidebar; the profile page does not
+  duplicate it.
+
+### Avatar
+
+The `users.image` field exists but is listed in `PROTECTED_USER_FIELDS` and **no
+image-upload mutation/flow exists in the backend**. The avatar is therefore
+display-only (image if present, otherwise an initial-letter fallback). Building
+a storage flow was explicitly out of scope — documented as a limitation.
+
+### Tests
+
+`src/pages/driverProfile.test.ts` (15 assertions): session-derived identity,
+editable whitelist exactly `{name, phone}`, protected-field coverage
+(role/businessId/email/verification/image/GPS), business reassignment
+prevention, validation rules (name/phone formats and limits), persistence
+semantics (trimming, phone clearing, empty-patch short-circuit), and audit
+logging shape.
+
+Run: `bunx tsx src/pages/driverProfile.test.ts`
+
 ## Remaining gaps (intentionally not built here)
 
 1. **Admin pages** — no user/pricing/business admin UI exists yet. `AdminShell`
    and the `admin` RoleGate area are ready; `/admin` is not registered as a
    route until real admin pages exist.
-2. **Driver App depth** — Delivery Offers, Active Delivery, and Delivery
-   History exist. Earnings/Wallet, Driver Profile, and Safety/SOS need both
-   backend queries and pages before they get navigation entries.
+2. **Driver App depth** — Delivery Offers, Active Delivery, Delivery History,
+   and Profile exist. Earnings/Wallet and Safety/SOS need both backend queries
+   and pages before they get navigation entries.
 3. **Operations ↔ Admin distinction** — with the current RBAC there is
    meaningful overlap (both see all deliveries; `company_admin` ⊃ operations
    permissions). The roles were kept as-is and the ambiguity is documented

@@ -660,6 +660,31 @@
   cursor: pointer;
 }
 
+/* ─── Driver profile ─────────────────────────────────────────────────── */
+
+.driver-profile-input {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--text-primary);
+  font-family: "Inter", sans-serif;
+  font-size: 14px;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.15s ease;
+}
+
+.driver-profile-input:focus {
+  border-color: var(--primary);
+}
+
+.driver-profile-input:disabled {
+  background: var(--surface);
+  color: var(--text-muted);
+}
+
 /* ─── Responsive ─────────────────────────────────────────────────────────── */
 
 @media (max-width: 720px) {
