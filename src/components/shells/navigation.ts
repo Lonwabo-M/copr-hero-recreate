@@ -37,9 +37,10 @@ export const customerNavigation: NavItem[] = [
 
 // ─── Driver App Navigation ───────────────────────────────────────────────────
 // Only pages that already exist. The Driver App structure can later support
-// Offers, Earnings, History, Profile, Safety/SOS — none exist yet, so they are
+// Earnings, History, Profile, Safety/SOS — none exist yet, so they are
 // NOT listed (no placeholder pages).
 export const driverNavigation: NavItem[] = [
+  { label: "Delivery Offers", route: "/driver/offers" },
   { label: "Active Delivery", route: "/driver/active-delivery" },
 ];
 

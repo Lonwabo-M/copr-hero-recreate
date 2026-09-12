@@ -28,6 +28,7 @@ import NotFound from "./pages/NotFound.tsx";
 import OperationsCentre from "./pages/OperationsCentre.tsx";
 import DriverActiveDelivery from "./pages/DriverActiveDelivery.tsx";
 import DriverHome from "./pages/DriverHome.tsx";
+import DriverOffers from "./pages/DriverOffers.tsx";
 import PostAuthRedirect from "./pages/PostAuthRedirect.tsx";
 
 /** Silent error boundary — if VlyToolbar crashes it renders nothing instead of
@@ -250,6 +251,14 @@ createRoot(document.getElementById("root")!).render(
                 element={
                   <RoleGate area={APP_AREAS.DRIVER}>
                     <DriverHome />
+                  </RoleGate>
+                }
+              />
+              <Route
+                path="/driver/offers"
+                element={
+                  <RoleGate area={APP_AREAS.DRIVER}>
+                    <DriverOffers />
                   </RoleGate>
                 }
               />
