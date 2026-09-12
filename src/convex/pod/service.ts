@@ -439,6 +439,20 @@ export const completeDeliveryWithPOD = mutation({
       metadata: JSON.stringify({ recipientName: args.recipientName, hasSignature: !!args.signatureFileId, photoCount: args.photoFileIds?.length ?? 0 }),
     });
 
+    // Create the driver settlement (POD validation → completion → settlement).
+    // Runs inside the same mutation transaction: a settlement failure fails
+    // the POD-completion (never an apparently-completed delivery with missing
+    // financial records), and the deterministic settlement-${deliveryId} key
+    // makes retries safe. The driver is the delivery's authoritative assigned
+    // courier — never a client-supplied ID.
+    if (delivery.courierId) {
+      await ctx.runMutation(internal.pricing.service.createSettlement, {
+        deliveryId: args.deliveryId,
+        orderId: delivery.orderId,
+        driverId: delivery.courierId,
+      });
+    }
+
     return { podId, deliveryId: args.deliveryId, alreadyExists: false };
   },
 });

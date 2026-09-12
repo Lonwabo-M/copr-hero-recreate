@@ -515,13 +515,30 @@ export const calculateAndStoreQuote = internalMutation({
 });
 
 /**
- * Create settlement when delivery is completed.
- * Called by the delivery state machine.
- */
-
-/**
- * Create settlement when delivery is completed.
- * Called by the delivery state machine.
+ * Create a settlement for a delivered delivery.
+ *
+ * Called internally by the delivery state machine when a delivery reaches the
+ * DELIVERED terminal state. This is layer 2 of the financial model:
+ *
+ *   1. Pricing calculation  (delivery_quotes — authoritative at creation)
+ *   2. Settlement/payable   (this function — creates the "driver is owed" record)
+ *   3. Payment to driver    (processSettlement/completeSettlement — NOT yet
+ *                            triggered anywhere; a settlement is NOT a payment)
+ *
+ * Compensation policy (see docs/driver-earnings-settlement.md):
+ *   - delivered: full settlement from the stored quote.
+ *   - failed / cancelled: NO settlement. There is no partial-compensation rule
+ *     in the repository, so zero is encoded explicitly by simply not calling
+ *     this function from those paths (failDelivery/cancelDelivery).
+ *
+ * Amount source: the already-stored delivery quote — pricing is NEVER
+ * recalculated here.
+ *
+ * Idempotency: the settlement identity is the deterministic key
+ * `settlement-${deliveryId}`, aligned with the by_idempotency index. Retries
+ * and repeated completion attempts resolve to the same settlement and return
+ * it without creating duplicates. The by_delivery index check is kept as a
+ * belt-and-braces guard (one delivery can only ever have one settlement).
  */
 export const createSettlement = internalMutation({
   args: {
@@ -531,31 +548,46 @@ export const createSettlement = internalMutation({
   },
   handler: async (ctx, args) => {
     const now = Date.now();
-    
-    // Idempotency check
-    const existing = await ctx.db
+
+    // Deterministic settlement identity for this delivery.
+    const idempotencyKey = `settlement-${args.deliveryId}`;
+
+    // Idempotency check #1: exact deterministic key (by_idempotency index).
+    const byKey = await ctx.db
+      .query("settlements")
+      .withIndex("by_idempotency", (q) => q.eq("idempotencyKey", idempotencyKey))
+      .first();
+
+    if (byKey) {
+      return { settlementId: byKey._id, alreadyExists: true };
+    }
+
+    // Idempotency check #2: one delivery can only ever have one settlement
+    // (legacy rows created before the deterministic key still resolve here).
+    const byDelivery = await ctx.db
       .query("settlements")
       .withIndex("by_delivery", (q) => q.eq("deliveryId", args.deliveryId))
       .first();
-    
-    if (existing) {
-      return { settlementId: existing._id, alreadyExists: true };
+
+    if (byDelivery) {
+      return { settlementId: byDelivery._id, alreadyExists: true };
     }
-    
-    // Get the quote
+
+    // Get the quote — the authoritative stored pricing result. Never
+    // recalculate pricing here (requirement: settlement locks onto the amount
+    // established at delivery creation).
     const quote = await ctx.db
       .query("delivery_quotes")
       .withIndex("by_order", (q) => q.eq("orderId", args.orderId))
       .order("desc")
       .first();
-    
+
     if (!quote) {
-      throw new Error("No pricing quote found for this order");
+      throw new Error(
+        `No pricing quote found for this order — cannot create a settlement without an authoritative pricing result`
+      );
     }
-    
-    // Create settlement
-    const idempotencyKey = `settlement-${args.deliveryId}-${now}`;
-    
+
     const settlementId = await ctx.db.insert("settlements", {
       driverId: args.driverId,
       deliveryId: args.deliveryId,
@@ -568,19 +600,36 @@ export const createSettlement = internalMutation({
       idempotencyKey,
       createdAt: now,
     });
-    
-    // Update driver's total earnings
+
+    // Update the driver profile's running total (settled+payable bookkeeping
+    // only — this is NOT a payment).
     const driverProfile = await ctx.db
       .query("driver_profiles")
       .withIndex("by_user", (q) => q.eq("userId", args.driverId))
       .first();
-    
+
     if (driverProfile) {
       await ctx.db.patch(driverProfile._id, {
         totalEarnings: driverProfile.totalEarnings + quote.driverEarnings,
       });
     }
-    
+
+    // Audit: settlement created (amount + parties, no secrets).
+    await ctx.runMutation(internal.audit.service.recordPricingEvent, {
+      actorId: args.driverId,
+      actorRole: "system",
+      action: AUDIT_ACTIONS.SETTLEMENT_CREATED,
+      entityType: "settlement",
+      entityId: settlementId,
+      after: JSON.stringify({
+        status: "pending",
+        driverEarnings: quote.driverEarnings,
+        platformFee: quote.platformFee,
+        deliveryFee: quote.deliveryFee,
+      }),
+      orderId: args.orderId,
+    });
+
     return { settlementId, alreadyExists: false };
   },
 });
@@ -610,50 +659,90 @@ export const processSettlement = mutation({
 });
 
 /**
- * Complete a settlement.
+ * Complete a settlement (layer 3: actual driver payment).
+ *
+ * Wallet policy (see docs/driver-earnings-settlement.md): the wallet is
+ * ensured automatically, and idempotently, before crediting. The previous
+ * silent `if (wallet)` skip is gone — a settlement can no longer appear
+ * financially complete while the driver's wallet is missing, and a wallet is
+ * never duplicated (one wallet per driver, via the by_user index).
+ *
+ * Authorization: settlement:manage only (drivers can never mark their own
+ * settlement as paid).
  */
 export const completeSettlement = mutation({
   args: { settlementId: v.id("settlements") },
   handler: async (ctx, args) => {
     await requirePermission(ctx, "settlement:manage");
-    
+
     const settlement = await ctx.db.get(args.settlementId);
     if (!settlement) throw new Error("Settlement not found");
-    
+
     if (settlement.status !== "processing") {
       throw new Error(`Settlement is ${settlement.status}, not processing`);
     }
-    
+
+    const now = Date.now();
+
     await ctx.db.patch(args.settlementId, {
       status: "completed",
-      completedAt: Date.now(),
+      completedAt: now,
     });
-    
-    // Credit driver's wallet
-    const wallet = await ctx.db
+
+    // Ensure the driver's wallet exists (idempotent — one per driver). Failing
+    // silently here would produce a completed settlement with no balance and
+    // no transaction record.
+    let wallet = await ctx.db
       .query("wallets")
       .withIndex("by_user", (q) => q.eq("userId", settlement.driverId))
       .first();
-    
-    if (wallet) {
-      await ctx.db.patch(wallet._id, {
-        balance: wallet.balance + settlement.driverEarnings,
-        updatedAt: Date.now(),
+
+    if (!wallet) {
+      const walletId = await ctx.db.insert("wallets", {
+        userId: settlement.driverId,
+        balance: 0,
+        currency: "ZAR",
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
       });
-      
-      // Create transaction record
-      await ctx.db.insert("transactions", {
-        walletId: wallet._id,
-        type: "credit",
-        amount: settlement.driverEarnings,
-        description: `Earnings from delivery`,
-        reference: `SET-${args.settlementId}`,
-        status: "completed",
-        orderId: settlement.orderId,
-        createdAt: Date.now(),
-      });
+      wallet = await ctx.db.get(walletId);
+      if (!wallet) throw new Error("Failed to create driver wallet");
     }
-    
+
+    // Credit the wallet.
+    await ctx.db.patch(wallet._id, {
+      balance: wallet.balance + settlement.driverEarnings,
+      updatedAt: now,
+    });
+
+    // Transaction record for the credit.
+    await ctx.db.insert("transactions", {
+      walletId: wallet._id,
+      type: "credit",
+      amount: settlement.driverEarnings,
+      description: `Earnings from delivery`,
+      reference: `SET-${args.settlementId}`,
+      status: "completed",
+      orderId: settlement.orderId,
+      createdAt: now,
+    });
+
+    // Audit: settlement paid.
+    await ctx.runMutation(internal.audit.service.recordPaymentEvent, {
+      actorId: settlement.driverId,
+      actorRole: "system",
+      action: AUDIT_ACTIONS.SETTLEMENT_COMPLETED,
+      entityType: "settlement",
+      entityId: args.settlementId,
+      metadata: JSON.stringify({
+        status: "completed",
+        amount: settlement.driverEarnings,
+        walletId: wallet._id,
+      }),
+      orderId: settlement.orderId,
+    });
+
     return { success: true };
   },
 });

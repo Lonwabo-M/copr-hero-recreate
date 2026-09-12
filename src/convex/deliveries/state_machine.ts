@@ -1101,6 +1101,23 @@ export const completeDelivery = mutation({
       toStatus: DELIVERY_STATUS.DELIVERED,
     });
 
+    // 10. Create the driver settlement (POD validation → completion →
+    // settlement). Runs inside the same mutation transaction: a settlement
+    // failure fails the completion (never an apparently-completed delivery
+    // with missing financial records), and the deterministic
+    // settlement-${deliveryId} key makes retries safe. The driver is the
+    // delivery's authoritative assigned courier — never a client-supplied ID.
+    if (delivery.courierId) {
+      await ctx.runMutation(
+        internal.pricing.service.createSettlement,
+        {
+          deliveryId: args.deliveryId,
+          orderId: delivery.orderId,
+          driverId: delivery.courierId,
+        }
+      );
+    }
+
     return { success: true };
   },
 });
@@ -1191,6 +1208,12 @@ export const cancelDelivery = mutation({
       toStatus: DELIVERY_STATUS.CANCELLED,
       metadata: JSON.stringify({ reason: args.reason }),
     });
+
+    // 10. Compensation policy (explicit): CANCELLED deliveries earn the
+    // driver NOTHING. Cancellations are only permitted before pickup, so no
+    // work has been performed. There is no partial-compensation rule in this
+    // repository, so zero is encoded deliberately — no settlement record is
+    // created here. See docs/driver-earnings-settlement.md.
 
     return { success: true };
   },
@@ -1283,6 +1306,14 @@ export const failDelivery = mutation({
       toStatus: DELIVERY_STATUS.FAILED,
       metadata: JSON.stringify({ reason: args.reason }),
     });
+
+    // 9. Compensation policy (explicit): FAILED deliveries earn the driver
+    // NOTHING. No partial-compensation business rule exists in this
+    // repository, so zero is encoded deliberately — no settlement record is
+    // created here. This is a documented, unresolved business policy: if the
+    // business later decides failed runs deserve partial pay, it belongs in a
+    // new policy decision, not in this code path silently. See
+    // docs/driver-earnings-settlement.md.
 
     return { success: true };
   },

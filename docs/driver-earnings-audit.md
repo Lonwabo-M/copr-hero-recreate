@@ -3,6 +3,10 @@
 > Status: audit only. No earnings UI, settlement engine, or financial code was
 > written in this task. Every claim below was verified against the repository
 > (2026-09-12).
+>
+> **UPDATE:** The settlement activation described in the audit's recommended
+> next step has since been implemented — see `docs/driver-earnings-settlement.md`.
+> Classification below reflects the state **before** that activation.
 
 ---
 
