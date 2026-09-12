@@ -31,6 +31,7 @@ import DriverHome from "./pages/DriverHome.tsx";
 import DriverOffers from "./pages/DriverOffers.tsx";
 import DriverHistory from "./pages/DriverHistory.tsx";
 import DriverDeliveryDetail from "./pages/DriverDeliveryDetail.tsx";
+import DriverEarnings from "./pages/DriverEarnings.tsx";
 import DriverProfile from "./pages/DriverProfile.tsx";
 import PostAuthRedirect from "./pages/PostAuthRedirect.tsx";
 
@@ -286,6 +287,14 @@ createRoot(document.getElementById("root")!).render(
                 element={
                   <RoleGate area={APP_AREAS.DRIVER}>
                     <DriverProfile />
+                  </RoleGate>
+                }
+              />
+              <Route
+                path="/driver/earnings"
+                element={
+                  <RoleGate area={APP_AREAS.DRIVER}>
+                    <DriverEarnings />
                   </RoleGate>
                 }
               />

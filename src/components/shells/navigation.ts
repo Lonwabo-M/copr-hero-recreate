@@ -43,6 +43,7 @@ export const driverNavigation: NavItem[] = [
   { label: "Delivery Offers", route: "/driver/offers" },
   { label: "Active Delivery", route: "/driver/active-delivery" },
   { label: "Delivery History", route: "/driver/history" },
+  { label: "Earnings", route: "/driver/earnings" },
   { label: "Profile", route: "/driver/profile" },
 ];
 

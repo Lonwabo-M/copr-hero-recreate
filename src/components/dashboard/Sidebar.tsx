@@ -13,6 +13,7 @@ import {
   Download,
   Settings,
   LogOut,
+  TrendingUp,
   type LucideIcon,
 } from "lucide-react";
 import type { NavItem } from "@/components/shells/navigation";
@@ -43,6 +44,7 @@ const ICONS: Record<string, LucideIcon> = {
   Downloads: Download,
   Settings: Settings,
   Profile: Settings,
+  Earnings: TrendingUp,
   "Log out": LogOut,
   // Operations Centre entries
   "Operations Centre": Truck,
