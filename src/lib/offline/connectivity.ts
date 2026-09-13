@@ -3,14 +3,21 @@
  *
  * Driver-facing connectivity state. Does NOT trust `navigator.onLine` alone:
  * a browser can report "online" while Convex is unreachable (captive portals,
- * Wi-Fi without internet). After the browser comes back online, the state
- * probes the Convex deployment's existing /health endpoint and only reports
- * ONLINE when Convex actually responds.
+ * Wi-Fi without internet).
+ *
+ * Convex reachability is observed from the ACTUAL Convex client connection
+ * (`useConvexConnectionState` → `isWebSocketConnected` / `connectionRetries`),
+ * bridged into this module by the Driver App shell via `reportConvexConnection`.
+ * This is the honest signal: it reflects whether Convex itself is reachable,
+ * not whether some server answered a fetch. (A previous implementation
+ * fetched a Convex /health http action from the app origin — but http actions
+ * live on the Convex deployment URL, so the SPA fallback answered the probe
+ * and the app claimed ONLINE while Convex was down. Removed.)
  *
  * States (documented in docs/offline-driver.md):
- *  - ONLINE         navigator online AND Convex reachable
- *  - OFFLINE        navigator offline (or probe failure while navigator online → still OFFLINE for the driver: the app cannot reach Convex)
- *  - RECONNECTING   browser came back online; Convex reachability being re-verified
+ *  - ONLINE         navigator online AND the Convex client's WebSocket is connected
+ *  - OFFLINE        navigator offline, or Convex connection lost (including connectionRetries > 0 while nominal-online)
+ *  - RECONNECTING   browser came back online; Convex connection not yet re-established
  *  - SYNCING        connected, and a sync cycle is replaying buffered operations
  *  - SYNC_COMPLETE  last sync cycle finished with nothing left to retry
  *  - SYNC_ERROR     last sync cycle finished with items still pending (recoverable failure)
@@ -52,26 +59,48 @@ let monitoringInitialized = false;
 
 const listeners: Set<ConnectivityListener> = new Set();
 
-// ─── Convex Reachability Probe ────────────────────────────────────────────────
+// ─── Convex Connection Bridge ─────────────────────────────────────────────────
+
+/** Last Convex connection observation reported by the React bridge. */
+let convexConnected: boolean | null = null;
 
 /**
- * Probe the existing Convex /health http action (no new backend).
- * Returns true only when Convex actually responds.
+ * Bridge the Convex client's real connection state into this module.
+ * Called by a small React observer hook that subscribes to
+ * `useConvexConnectionState()` in the Driver App. `connected` is the
+ * client's `isWebSocketConnected` observation; `hasEverConnected`/
+ * `connectionRetries` disambiguate the initial pre-connection window
+ * (treated as CONNECTING, not ONLINE — the driver must not be told the
+ * app is synced to Convex before the WebSocket has ever opened).
  */
-async function probeConvexConnectivity(): Promise<boolean> {
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
-    const response = await fetch("/health", {
-      method: "GET",
-      signal: controller.signal,
-      cache: "no-store",
-    });
-    clearTimeout(timeoutId);
-    return response.ok;
-  } catch {
-    return false;
+export function reportConvexConnection(connected: boolean, hasEverConnected: boolean): void {
+  convexConnected = connected;
+
+  // navigator offline always wins — the OS says there is no network.
+  if (!navigator.onLine) {
+    setState("OFFLINE");
+    return;
   }
+  if (isSyncing) return; // SYNCING implies connectivity; don't downgrade mid-cycle.
+
+  if (connected) {
+    setState("ONLINE");
+  } else {
+    setState(hasEverConnected ? "RECONNECTING" : "OFFLINE");
+  }
+}
+
+/**
+ * Derive the current state from browser + Convex connection observations.
+ * Used at initialization before the first bridge report arrives.
+ */
+function deriveStateFromBrowser(): ConnectivityState {
+  if (!navigator.onLine) return "OFFLINE";
+  if (convexConnected === true) return "ONLINE";
+  // Convex not yet observed: treat as OFFLINE until the client proves the
+  // connection. A brief OFFLINE indicator that resolves on connect is honest;
+  // a false ONLINE that hides a dead connection is not.
+  return "OFFLINE";
 }
 
 // ─── State Derivation ─────────────────────────────────────────────────────────
@@ -94,25 +123,10 @@ function notifyListeners(state: ConnectivityState): void {
   for (const listener of listeners) {
     try {
       listener(state);
-  } catch (error) {
+    } catch (error) {
       console.error("Connectivity listener error:", error);
     }
   }
-}
-
-/**
- * Verify actual Convex reachability after the browser reports online.
- * Only called from the `online` event (RECONNECTING verification) and the
- * periodic check while nominally online.
- */
-async function verifyOnline(): Promise<void> {
-  // While a sync is running, SYNCING wins (it implies connectivity).
-  if (isSyncing) return;
-
-  setState("RECONNECTING");
-  const reachable = await probeConvexConnectivity();
-  if (isSyncing) return; // A sync may have started during the probe.
-  setState(reachable ? "ONLINE" : "OFFLINE");
 }
 
 // ─── Public API ───────────────────────────────────────── States ──────────────
@@ -120,31 +134,36 @@ async function verifyOnline(): Promise<void> {
 /**
  * Initialize connectivity monitoring.
  * Call once when the driver app mounts. Idempotent.
+ *
+ * Convex reachability is NOT probed with HTTP here — it arrives via
+ * `reportConvexConnection` from the Convex client observer. The browser
+ * `online`/`offline` events alone only ever move the state between OFFLINE
+ * and the last Convex-observed reality; the Convex WebSocket state is the
+ * authority for "the app can actually reach Convex".
  */
 export function initConnectivityMonitoring(): void {
   if (monitoringInitialized) return;
   monitoringInitialized = true;
 
   window.addEventListener("online", () => {
-    setState("RECONNECTING");
-    void verifyOnline();
+    // Browser network returned. Convex reconnection is observed separately by
+    // the client bridge (reportConvexConnection) — re-derive optimistically.
+    setState(deriveStateFromBrowser());
   });
 
   window.addEventListener("offline", () => {
     setState("OFFLINE");
   });
 
-  // Periodic verification while nominally online (probe failure → OFFLINE).
+  // Belt-and-braces: if the browser silently drops its network without firing
+  // `offline` (observed on some mobile browsers), reconcile with reality.
   window.setInterval(() => {
     if (!navigator.onLine) {
       setState("OFFLINE");
-      return;
     }
-    if (isSyncing) return;
-    void verifyOnline();
   }, 30_000);
 
-  void verifyOnline();
+  setState(deriveStateFromBrowser());
 }
 
 /**
@@ -227,13 +246,21 @@ export function isOffline(): boolean {
 }
 
 /**
- * Force a connectivity verification (returns the resulting state).
+ * Force a connectivity re-derivation (returns the resulting state).
+ * The Convex client bridge keeps the underlying observation current; this
+ * simply re-applies it (e.g. before executing a connectivity-required
+ * mutation) so the guard reflects the latest known reality.
  */
-export async function checkConnectivity(): Promise<ConnectivityState> {
+export function checkConnectivity(): ConnectivityState {
   if (!navigator.onLine) {
     setState("OFFLINE");
     return currentState;
   }
-  await verifyOnline();
+  // Re-apply the latest Convex observation (reportConvexConnection is the
+  // source of Convex truth; deriveStateFromBrowser reapplies it).
+  const observed = deriveStateFromBrowser();
+  if (observed === "OFFLINE" && currentState !== "OFFLINE") {
+    setState("OFFLINE");
+  }
   return currentState;
 }

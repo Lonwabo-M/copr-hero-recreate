@@ -53,6 +53,16 @@ import {
   TRACKING_STATUS_COPY,
   type TrackingState,
 } from "@/hooks/useDriverLocationTracking";
+import {
+  useRequireOnline,
+  useConnectivity,
+  useOfflineGPSCount,
+  clearDeliveryOfflineBuffer,
+} from "@/hooks/use-offline";
+import {
+  WifiOff,
+  CloudUpload,
+} from "lucide-react";
 import "@/styles/dashboard.css";
 import "@/styles/pages.css";
 import "@/styles/driver.css";
@@ -174,6 +184,17 @@ export default function DriverActiveDelivery() {
   const delivery = active?.delivery ?? null;
   const status = (delivery?.status ?? null) as Status | null;
 
+  // ─── Offline resilience state ───────────────────────────────────────────
+  // Delivery state transitions, offer accept/reject and POD submission are
+  // concurrency-sensitive — they require live connectivity (the server must
+  // confirm current state). Only GPS is buffered offline. The page renders
+  // the last server-confirmed state read-only while offline and clearly
+  // labels local-only state ("pending local action") without ever claiming
+  // server-confirmed completion.
+  const { isOnline, offlineMessage } = useRequireOnline();
+  const { state: connectivityState, isOffline } = useConnectivity();
+  const buffered = useOfflineGPSCount(deliveryId);
+
   // ─── Continuous GPS tracking (existing tracking backend) ─────────────────
   // Starts only with a trackable delivery, stops on completion/failure/
   // rejection/unmount. The hook owns the watcher lifecycle and throttling;
@@ -216,6 +237,14 @@ export default function DriverActiveDelivery() {
     async (operation: string) => {
       if (!deliveryId) return;
       setError(null);
+      if (!isOnline) {
+        // State transitions are never queueable offline: a delayed replay
+        // could be invalid against the server's CURRENT state.
+        setError(
+          "You're offline. Delivery actions need a connection — your location is still being saved and will sync automatically."
+        );
+        return;
+      }
       setActionPending(operation);
       try {
         await mutations[operation]({ deliveryId });
@@ -225,12 +254,20 @@ export default function DriverActiveDelivery() {
         setActionPending(null);
       }
     },
-    [deliveryId, mutations]
+    [deliveryId, mutations, isOnline]
   );
 
   const handleReject = useCallback(async () => {
     if (!deliveryId) return;
     setError(null);
+    if (!isOnline) {
+      // Rejecting releases an assignment for re-dispatch — concurrency-
+      // sensitive, requires connectivity.
+      setError(
+        "You're offline. Rejecting needs a connection — your location is still being saved and will sync automatically."
+      );
+      return;
+    }
     setActionPending("rejectAssignment");
     try {
       await rejectAssignment({ deliveryId, reason: "Rejected by driver from active delivery view" });
@@ -239,7 +276,7 @@ export default function DriverActiveDelivery() {
     } finally {
       setActionPending(null);
     }
-  }, [deliveryId, rejectAssignment]);
+  }, [deliveryId, rejectAssignment, isOnline]);
 
   // ─── POD submission ────────────────────────────────────────────────────
   // Flow (all server-validated, existing POD backend):
@@ -289,6 +326,16 @@ export default function DriverActiveDelivery() {
 
     if (!podRecipient.trim()) {
       setError("Recipient name is required");
+      return;
+    }
+
+    // POD submission is never claimable offline: completion must be confirmed
+    // by Convex (upload → POD record → evidence → completeDelivery, all
+    // server-validated). This handler only ever runs with connectivity.
+    if (!isOnline) {
+      setError(
+        "You're offline. Proof-of-delivery submission needs a connection — your location is still being saved and will sync automatically."
+      );
       return;
     }
 
@@ -351,7 +398,28 @@ export default function DriverActiveDelivery() {
     } finally {
       setPodPhase(null);
     }
-  }, [deliveryId, podRecipient, podNotes, podFiles, generateUploadUrl, createPOD, addPODEvidence, completeDelivery]);
+  }, [deliveryId, podRecipient, podNotes, podFiles, generateUploadUrl, createPOD, addPODEvidence, completeDelivery, isOnline]);
+
+  // Recipient name + notes + selected files are safe to PREPARE offline
+  // (they already live in local component state); the submission button
+  // stays disabled offline and nothing is claimed as submitted until the
+  // server confirms each step. No offline file persistence is added — the
+  // existing flow uploads directly to Convex File Storage and a temporary
+  // disconnection at dropoff does not justify an offline evidence store.
+
+  // ─── Terminal-state buffer cleanup ─────────────────────────────────────
+  // When the delivery reaches a terminal state, discard any GPS still
+  // buffered for it — queued points for a finished delivery are irrelevant
+  // and must never be replayed against another delivery.
+  const isTerminal =
+    status === DELIVERY_STATUS.DELIVERED ||
+    status === DELIVERY_STATUS.FAILED ||
+    status === DELIVERY_STATUS.CANCELLED;
+  useEffect(() => {
+    if (isTerminal && deliveryId) {
+      void clearDeliveryOfflineBuffer(deliveryId);
+    }
+  }, [isTerminal, deliveryId]);
 
   // ─── Helpers ───────────────────────────────────────────────────────────
 
@@ -407,6 +475,27 @@ export default function DriverActiveDelivery() {
               <>
                 {error && <div className="driver-error" role="alert">{error}</div>}
 
+                {/* Offline notice: last known server state vs pending local
+                    action — never fabricate server-confirmed state offline. */}
+                {isOffline && (
+                  <div className="driver-safety-note" role="status">
+                    <WifiOff size={14} />
+                    <span>
+                      You're offline — showing the last known server state.
+                      Delivery actions need a connection; your location is being
+                      buffered and will sync automatically{buffered > 0 ? ` (${buffered} pending)` : ""}.
+                    </span>
+                  </div>
+                )}
+                {!isOffline && buffered > 0 && (
+                  <div className="driver-safety-note" role="status">
+                    <CloudUpload size={14} />
+                    <span>
+                      {buffered} buffered location{buffered === 1 ? "" : "s"} syncing…
+                    </span>
+                  </div>
+                )}
+
                 {/* Status banner */}
                 <div className="driver-status-banner">
                   <div>
@@ -445,7 +534,7 @@ export default function DriverActiveDelivery() {
                         <button
                           className="driver-primary-btn"
                           onClick={() => handleAction(action.operation)}
-                          disabled={actionPending !== null || podBusy}
+                          disabled={actionPending !== null || podBusy || !isOnline}
                         >
                           {actionPending === action.operation ? (
                             <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} />
@@ -458,7 +547,7 @@ export default function DriverActiveDelivery() {
                           <button
                             className="driver-secondary-btn"
                             onClick={handleReject}
-                            disabled={actionPending !== null}
+                            disabled={actionPending !== null || !isOnline}
                           >
                             Reject
                           </button>
@@ -588,7 +677,7 @@ export default function DriverActiveDelivery() {
                       <button
                         className="driver-primary-btn"
                         onClick={handlePodSubmit}
-                        disabled={podBusy}
+                        disabled={podBusy || !isOnline}
                       >
                         {podBusy ? (
                           <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} />

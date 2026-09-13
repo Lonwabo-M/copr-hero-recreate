@@ -122,9 +122,12 @@ export async function runSyncCycle(executor: ConvexExecutor): Promise<SyncProgre
     current: null,
   };
 
-  // Never sync while offline; respect bounded backoff after failures.
+  // Never sync while offline or while Convex reconnection has not been
+  // re-established (RECONNECTING): a cycle now could only fail and burn a
+  // backoff window, and the empty-queue path would falsely report
+  // SYNC_COMPLETE while the driver still cannot reach Convex.
   const connectivity = getConnectivityState();
-  if (connectivity === "OFFLINE") {
+  if (connectivity === "OFFLINE" || connectivity === "RECONNECTING") {
     return progress;
   }
   if (Date.now() < backoffUntil) {

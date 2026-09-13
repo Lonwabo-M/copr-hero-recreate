@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Menu } from "lucide-react";
 import { useAuthActions } from "@convex-dev/auth/react";
+import { clearAllOfflineData } from "@/lib/offline/db";
 import { useNavigate } from "react-router";
 import Sidebar from "@/components/dashboard/Sidebar";
 import {
@@ -61,6 +62,13 @@ export default function AppShell({
   };
 
   const handleLogout = () => {
+    // Offline resilience hygiene: queued operational data (buffered GPS,
+    // cached deliveries) is session-scoped and must never survive logout —
+    // it would leak one driver's location trail into another session on a
+    // shared device. Cleared BEFORE sign-out so it runs while still mounted.
+    void clearAllOfflineData().catch((err) =>
+      console.warn("[logout] offline data cleanup failed:", err)
+    );
     signOut();
   };
 

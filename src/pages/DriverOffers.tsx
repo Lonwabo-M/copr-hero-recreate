@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "convex/react";
 import { useNavigate } from "react-router";
 import { api } from "@/convex/_generated/api";
 import DriverShell from "@/components/shells/DriverShell";
+import { useRequireOnline } from "@/hooks/use-offline";
 import {
   Package,
   MapPin,
@@ -12,6 +13,7 @@ import {
   Loader2,
   Timer,
   Inbox,
+  WifiOff,
 } from "lucide-react";
 import "@/styles/driver.css";
 
@@ -68,6 +70,10 @@ export default function DriverOffers() {
   const offers = useQuery(api.dispatch.engine.getMyDispatchOffers, {});
   const acceptAssignment = useMutation(api.dispatch.engine.acceptAssignment);
   const rejectAssignment = useMutation(api.dispatch.engine.rejectAssignment);
+  // Offers are concurrency-sensitive (competing drivers, expiry, one-time
+  // accept) — NEVER queueable offline. The guard blocks execution and the
+  // disabled buttons explain why while the driver has no connection.
+  const { isOnline, offlineMessage } = useRequireOnline();
 
   // Pending accept/reject per offer — prevents duplicate submissions.
   const [pendingAction, setPendingAction] = useState<string | null>(null);
@@ -89,6 +95,10 @@ export default function DriverOffers() {
   const handleAccept = async (offer: OfferShape) => {
     if (pendingAction) return; // guard against duplicate submissions
     setError(null);
+    if (!isOnline) {
+      setError(offlineMessage);
+      return;
+    }
     setPendingAction(offer._id);
     try {
       const result = await acceptAssignment({ offerId: offer._id as any });
@@ -113,6 +123,10 @@ export default function DriverOffers() {
   const handleReject = async (offer: OfferShape) => {
     if (pendingAction) return;
     setError(null);
+    if (!isOnline) {
+      setError(offlineMessage);
+      return;
+    }
     setPendingAction(offer._id);
     try {
       await rejectAssignment({ offerId: offer._id as any });
@@ -144,6 +158,16 @@ export default function DriverOffers() {
           {error && (
             <div className="driver-error" role="alert">
               {error}
+            </div>
+          )}
+
+          {/* Offline notice: offers require connectivity (competing drivers,
+              expiry, one-time accept — the server must see current state). */}
+          {!isOnline && (
+            <div className="driver-safety-note" role="status">
+              <WifiOff size={14} />
+              You're offline. Accepting or rejecting offers needs a connection —
+              they'll be ready when you're back online.
             </div>
           )}
 
@@ -212,7 +236,7 @@ export default function DriverOffers() {
                     <button
                       className="driver-primary-btn"
                       onClick={() => handleAccept(o)}
-                      disabled={expired || locked || justAccepted}
+                      disabled={expired || locked || justAccepted || !isOnline}
                     >
                       {busy ? (
                         <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} />
@@ -224,7 +248,7 @@ export default function DriverOffers() {
                     <button
                       className="driver-secondary-btn"
                       onClick={() => handleReject(o)}
-                      disabled={expired || locked || justAccepted}
+                      disabled={expired || locked || justAccepted || !isOnline}
                     >
                       {busy ? (
                         <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} />

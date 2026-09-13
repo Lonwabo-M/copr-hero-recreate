@@ -51,19 +51,27 @@ Lasha implements offline-resilient synchronization for the driver/logistics work
 
 ## What Works Offline
 
+> **Safety correction (authoritative model — see `docs/offline-driver.md`):**
+> an earlier revision of this table listed offer accept/reject, delivery state
+> transitions, and POD as queueable. Those operations are concurrency-
+> sensitive or state-machine-authoritative; queueing them could replay an
+> invalid transition against the delivery's CURRENT server state. They are
+> **blocked offline** and never queued. The only queueable operation is
+> buffered GPS.
+
 | Operation | Offline Behavior | Sync Strategy |
 |-----------|-----------------|---------------|
 | View assigned delivery | ✅ Cached in IndexedDB | Refresh on reconnect |
-| Accept assignment | ✅ Queued with operation ID | Replay when online |
-| Reject assignment | ✅ Queued with operation ID | Replay when online |
-| Arrive at pickup | ✅ Queued with operation ID | Replay when online |
-| Pick up package | ✅ Queued with operation ID | Replay when online |
-| Start trip | ✅ Queued with operation ID | Replay when online |
-| Arrive at dropoff | ✅ Queued with operation ID | Replay when online |
-| Complete delivery | ✅ Queued with operation ID | Replay when online |
-| Cancel delivery | ✅ Queued with operation ID | Replay when online |
-| GPS location updates | ✅ Buffered in IndexedDB | Batch upload on reconnect |
-| Proof of delivery | ✅ Stored locally | Upload on reconnect |
+| GPS location updates | ✅ Buffered in IndexedDB | Replay oldest-first through `updateDeliveryLocation` on reconnect |
+| Accept assignment | ❌ Requires connectivity | Blocked in UI (concurrency-sensitive) |
+| Reject assignment | ❌ Requires connectivity | Blocked in UI |
+| Arrive at pickup | ❌ Requires connectivity | Blocked in UI |
+| Pick up package | ❌ Requires connectivity | Blocked in UI |
+| Start trip | ❌ Requires connectivity | Blocked in UI |
+| Arrive at dropoff | ❌ Requires connectivity | Blocked in UI |
+| Complete delivery | ❌ Requires connectivity | Blocked in UI (server must confirm) |
+| Cancel delivery | ❌ Requires connectivity | Blocked in UI |
+| Proof of delivery submission | ❌ Requires connectivity | Prepared locally, submitted online only |
 
 ## What Does NOT Work Offline
 
@@ -84,8 +92,8 @@ Lasha implements offline-resilient synchronization for the driver/logistics work
 
 | Store | Purpose | Max Size |
 |-------|---------|----------|
-| `pending_operations` | Queued operations awaiting sync | 1000 operations |
-| `gps_buffer` | Buffered GPS coordinates | 500 locations |
+| `pending_operations` | Queued operations awaiting sync (GPS only) | 100 per delivery / 300 global |
+| `gps_buffer` | Raw GPS diagnostics buffer | 100 locations |
 | `cached_deliveries` | Delivery data for offline viewing | 50 deliveries |
 | `metadata` | App state (last sync time, etc.) | Unlimited |
 
@@ -243,11 +251,11 @@ Client: Marks operation as failed, notifies user
 
 ### Design Principles
 
-1. **Bounded buffer** — Maximum 500 locations
+1. **Bounded buffer** — 100 points per delivery / 300 global (see `docs/offline-driver.md`)
 2. **Intelligent sampling** — Don't store every GPS point
-3. **Distance-based** — Skip if moved < 10 meters
-4. **Time-based** — Minimum 5 seconds between samples
-5. **Priority retention** — Keep most recent points
+3. **Distance-based** — Skip if moved < 20 meters
+4. **Time-based** — Minimum 15 seconds between samples
+5. **Age retention** — Points older than 5 minutes are pruned (server would reject them)
 
 ### Buffer Management
 

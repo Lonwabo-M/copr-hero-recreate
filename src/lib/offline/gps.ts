@@ -345,13 +345,14 @@ export async function syncBufferedLocationsForDelivery(
 
 /**
  * Classify a Convex error: authoritative rejection (point can be discarded)
- * vs transient failure (point should be retried).
+ * vs transient failure (point can never succeed — keep for retry).
+ * Exported for offline resilience tests.
  *
  * Authoritative = the server processed the request and applied its domain
  * validation. Transient = the request likely never reached validation
  * (network) or failed on infrastructure.
  */
-function isAuthoritativeRejection(message: string): boolean {
+export function isAuthoritativeRejection(message: string): boolean {
   const m = message.toLowerCase();
   return (
     m.includes("timestamp") ||

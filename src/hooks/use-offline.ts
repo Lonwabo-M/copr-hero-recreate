@@ -10,17 +10,19 @@
  *   sensitive and the server must confirm current state at execution time.
  *   The hooks below therefore expose a `requireOnline` guard instead of an
  *   offline mutation queue.
- * - Connectivity state reflects ACTUAL Convex reachability (health probe),
- *   not merely navigator.onLine.
+ * - Connectivity state reflects ACTUAL Convex reachability (the Convex
+ *   client's WebSocket connection state), not merely navigator.onLine.
  */
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { useConvex } from "convex/react";
+import { useConvex, useConvexConnectionState } from "convex/react";
 import {
   getConnectivityState,
   getConnectivityInfo,
   onConnectivityChange,
   checkConnectivity,
+  reportConvexConnection,
+  initConnectivityMonitoring,
   ConnectivityState,
   ConnectivityInfo,
 } from "@/lib/offline/connectivity";
@@ -35,15 +37,46 @@ import {
 } from "@/lib/offline/gps";
 import {
   onSyncProgress,
+  startSyncEngine,
   type SyncProgress,
 } from "@/lib/offline/sync";
-import { initConnectivityMonitoring } from "@/lib/offline/connectivity";
-
-// ─── Use Connectivity Hook ────────────────────────────────────────────────────
+// ─── Use Convex Connection Bridge ─────────────────────────────────────────────
 
 /**
- * Driver-facing connectivity state, refreshed by actual Convex probes.
+ * Observes the real Convex client connection and reports it into the offline
+ * connectivity module. Mount once in the Driver App (DriverShell) so every
+ * offline component sees Convex's actual WebSocket reachability, not just
+ * navigator.onLine.
  */
+export function useConvexConnectionBridge(): void {
+  const connection = useConvexConnectionState();
+  useEffect(() => {
+    reportConvexConnection(connection.isWebSocketConnected, connection.hasEverConnected);
+  }, [connection.isWebSocketConnected, connection.hasEverConnected]);
+}
+
+// ─── Use Sync Engine (app-lifecycle sync driver) ──────────────────────────────
+
+/**
+ * Starts the offline sync engine once per Driver App mount with the
+ * authenticated Convex executor. The engine retries buffered GPS on
+ * connectivity return, tab re-focus, and a periodic check, with bounded
+ * backoff after failures. Idempotent per mount.
+ */
+export function useSyncEngine(): void {
+  const convex = useConvex();
+  const executorRef = useRef(convex);
+  executorRef.current = convex;
+
+  useEffect(() => {
+    initConnectivityMonitoring();
+    const stop = startSyncEngine((mutation, args) =>
+      executorRef.current.mutation(mutation as never, args as never)
+    );
+    return stop;
+  }, []);
+}
+
 export function useConnectivity(): {
   state: ConnectivityState;
   isOnline: boolean;
@@ -101,8 +134,10 @@ export function useRequireOnline(): {
   const run = useCallback(
     async <T,>(operation: () => Promise<T>): Promise<T> => {
       // Re-verify at execution time — React state may be stale by a few ms
-      // and connectivity can change between render and tap.
-      const current = await checkConnectivity();
+      // and connectivity can change between render and tap. The check reads
+      // the Convex client's observed connection state (bridged via
+      // reportConvexConnection), not merely navigator.onLine.
+      const current = checkConnectivity();
       if (current === "OFFLINE" || current === "RECONNECTING") {
         throw new Error(offlineMessage);
       }
@@ -192,6 +227,40 @@ export function useOfflineGPS(deliveryId: string | null): {
   }, [deliveryId, refreshCount]);
 
   return { bufferedCount, progress, retrySync };
+}
+
+/**
+ * Read-only buffered count for one delivery (for pages that only display
+ * status, e.g. Active Delivery). Lighter than the full useOfflineGPS hook.
+ */
+export function useOfflineGPSCount(deliveryId: string | null): number {
+  const [count, setCount] = useState(0);
+  const { state } = useConnectivity();
+
+  useEffect(() => {
+    if (!deliveryId) {
+      setCount(0);
+      return;
+    }
+    let cancelled = false;
+    const refresh = () => {
+      getBufferedCountForDelivery(deliveryId)
+        .then((n) => {
+          if (!cancelled) setCount(n);
+        })
+        .catch(() => {
+          if (!cancelled) setCount(0);
+        });
+    };
+    void refresh();
+    const interval = setInterval(refresh, 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [deliveryId, state]);
+
+  return count;
 }
 
 /**

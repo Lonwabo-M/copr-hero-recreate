@@ -30,8 +30,9 @@ export default function DriverConnectivityIndicator() {
   const { state } = useConnectivity();
 
   // The driver's active delivery, when one exists (existing authorized query).
+  // `getMyCurrentDelivery` returns `delivery.id` (a plain string), not an _id.
   const current = useQuery(api.tracking.queries.getMyCurrentDelivery, {});
-  const deliveryId = (current?.delivery?._id ?? null) as string | null;
+  const deliveryId = (current?.delivery?.id ?? null) as string | null;
 
   const { bufferedCount, retrySync } = useOfflineGPS(deliveryId);
   const status = useDriverOfflineStatus(bufferedCount);
