@@ -251,10 +251,12 @@ function OperationsCentreInner() {
   const completeDeliveryWithPOD = useMutation(
     api.pod.service.completeDeliveryWithPOD,
   );
-  const getPODForDelivery = useQuery(
+  const podForDelivery = useQuery(
     api.pod.service.getPODForDelivery,
     selectedDeliveryId ? { deliveryId: selectedDeliveryId as any } : "skip",
   );
+
+  const selectedPOD = selectedDeliveryId ? podForDelivery : undefined;
 
   // ── Derived views ──────────────────────────────────────────────────────────
 
@@ -531,6 +533,9 @@ function DispatchTab({
   const [dispatchingId, setDispatchingId] = useState<string | null>(null);
   const [dispatchError, setDispatchError] = useState<string | null>(null);
   const [dispatchReassigningId, setDispatchReassigningId] = useState<string | null>(null);
+  const dispatchReassignState = dispatchReassigningId ? { id: dispatchReassigningId } : null;
+  const setDispatchReassignState = (id: string | null) =>
+    setDispatchReassigningId(id);
 
   const activePending = deliveries.filter(
     (d) => d.status === DELIVERY_STATUS.PENDING_DISPATCH,
@@ -922,34 +927,44 @@ function LiveTab({
                       ))}
                     </div>
                   </div>
-                )}
-
-                {getPODForDelivery && (
+                )}                  {selectedDelivery && (
                   <div className="ops-detail-section">
-                    <div className="ops-detail-label" style={{ marginBottom: 8 }}><CheckSquare size={13} />Proof of delivery</div>
-                    {getPODForDelivery ? (
-                      getPODForDelivery === null ? (
-                        <div className="ops-detail-value ops-small ops-muted">No POD on record</div>
-                      ) : (
-                        <div className="ops-detail-value ops-small">
-                          <div>Outcome: {getPODForDelivery.outcome ?? "—"}</div>
-                          <div>Submitted: {formatDateTime(getPODForDelivery.deliveredAt)}</div>
-                          {getPODForDelivery.recipientName ? (
-                            <div className="ops-small ops-muted">Recipient: {getPODForDelivery.recipientName}</div>
-                          ) : null}
-                          {getPODForDelivery.failureReason ? (
-                            <div className="ops-small" style={{ color: "#C62828" }}>
-                              Failure reason: {getPODForDelivery.failureReason}
-                            </div>
-                          ) : null}
-                          {getPODForDelivery.files && getPODForDelivery.files.length > 0 && (
-                            <div className="ops-small ops-muted">{getPODForDelivery.files.length} evidence file(s)</div>
+                    {(() => {
+                      const pod = selectedPOD;
+                      return (
+                        <>
+                          <div className="ops-detail-label" style={{ marginBottom: 8 }}><CheckSquare size={13} />Proof of delivery</div>
+                          {pod ? (
+                            pod === null ? (
+                              <div className="ops-detail-value ops-small ops-muted">No POD on record</div>
+                            ) : (
+                              <div className="ops-detail-value ops-small">
+                                <div>Outcome: {pod.outcome ?? "—"}</div>
+                                <div>Submitted: {formatDateTime(pod.deliveredAt)}</div>
+                                {pod.recipientName ? (
+                                  <div className="ops-small ops-muted">Recipient: {pod.recipientName}</div>
+                                ) : null}
+                                {pod.failureReason ? (
+                                  <div className="ops-small" style={{ color: "#C62828" }}>
+                                    Failure reason: {pod.failureReason}
+                                  </div>
+                                ) : null}
+                                {pod.files && pod.files.length > 0 && (
+                                  <div className="ops-small ops-muted">{pod.files.length} evidence file(s)</div>
+                                )}
+                                {pod.signatureUrl && (
+                                  <div className="ops-small">
+                                    Signature: <a href={pod.signatureUrl} target="_blank" rel="noopener noreferrer" className="ops-link">View</a>
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          ) : (
+                            <div className="ops-detail-value ops-small ops-muted">Loading POD…</div>
                           )}
-                        </div>
-                      )
-                    ) : (
-                      <div className="ops-detail-value ops-small ops-muted">Loading POD…</div>
-                    )}
+                        </>
+                      );
+                    })()}
                   </div>
                 )}
               </div>
@@ -1332,15 +1347,16 @@ function HistoryTab({
 }: {
   drivers: DriverLocationEntry[];
 }) {
-  const historyData = operationalHistory;
-  const historyList: Array<{
-    _id: Id<"deliveries">;
-    trackingNumber: string;
-    status: string;
-    startedAt?: number | null;
-    completedAt?: number | null;
-    courierId?: Id<"users"> | null;
-  }> = historyData?.items ?? [];
+    const historyList: Array<HistoryRow> = operationalHistory?.items ?? [];
+
+type HistoryRow = {
+  _id: Id<"deliveries">;
+  trackingNumber: string;
+  status: string;
+  startedAt?: number | null;
+  completedAt?: number | null;
+  courierId?: Id<"users"> | null;
+};
 
   const completedCount = historyList.filter((d) => d.status === DELIVERY_STATUS.DELIVERED).length;
   const failedCount = historyList.filter((d) => d.status === DELIVERY_STATUS.FAILED).length;
