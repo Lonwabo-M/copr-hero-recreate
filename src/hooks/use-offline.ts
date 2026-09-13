@@ -1,50 +1,53 @@
 /**
  * Lasha Offline React Hooks
  *
- * React hooks for integrating offline functionality into components.
- * Provides:
- * - Connectivity state
- * - Pending operation management
- * - Offline-aware mutations
- * - GPS tracking with offline support
+ * Offline resilience hooks for the Driver App.
+ *
+ * OFFLINE-SAFETY MODEL (docs/offline-driver.md):
+ * - GPS location fixes may be buffered offline (the only queueable operation).
+ * - Offer accept/reject, delivery state transitions, POD submission and any
+ *   financial action REQUIRE live connectivity — they are concurrency-
+ *   sensitive and the server must confirm current state at execution time.
+ *   The hooks below therefore expose a `requireOnline` guard instead of an
+ *   offline mutation queue.
+ * - Connectivity state reflects ACTUAL Convex reachability (health probe),
+ *   not merely navigator.onLine.
  */
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useConvex } from "convex/react";
 import {
   getConnectivityState,
   getConnectivityInfo,
   onConnectivityChange,
+  checkConnectivity,
   ConnectivityState,
   ConnectivityInfo,
 } from "@/lib/offline/connectivity";
 import {
-  queueOperation,
-  OperationType,
-  getOperationStats,
+  countPendingOperationsForDelivery,
 } from "@/lib/offline/operations";
 import {
-  triggerSync,
-  onSyncProgress,
-  SyncProgress,
-} from "@/lib/offline/sync";
-import {
-  startTracking,
-  stopTracking,
-  isTrackingActive,
-  getBufferCount,
   processLocation,
+  syncBufferedLocationsForDelivery,
+  getBufferedCountForDelivery,
+  discardBufferForDelivery,
 } from "@/lib/offline/gps";
+import {
+  onSyncProgress,
+  type SyncProgress,
+} from "@/lib/offline/sync";
+import { initConnectivityMonitoring } from "@/lib/offline/connectivity";
 
 // ─── Use Connectivity Hook ────────────────────────────────────────────────────
 
 /**
- * Hook to track connectivity state.
+ * Driver-facing connectivity state, refreshed by actual Convex probes.
  */
 export function useConnectivity(): {
   state: ConnectivityState;
   isOnline: boolean;
   isOffline: boolean;
-  isDegraded: boolean;
   isSyncing: boolean;
   info: ConnectivityInfo;
 } {
@@ -62,297 +65,215 @@ export function useConnectivity(): {
 
   return {
     state,
-    isOnline: state === "ONLINE",
-    isOffline: state === "OFFLINE",
-    isDegraded: state === "DEGRADED",
+    isOnline: state === "ONLINE" || state === "SYNCING" || state === "SYNC_COMPLETE",
+    isOffline: state === "OFFLINE" || state === "RECONNECTING",
     isSyncing: state === "SYNCING",
     info,
   };
 }
 
-// ─── Use Pending Operations Hook ──────────────────────────────────────────────
+// ─── Use Require Online (mutation guard) ─────────────────────────────────────
 
 /**
- * Hook to track pending operations count.
+ * Guard hook for connectivity-required operations (offer accept/reject,
+ * delivery state transitions, POD submission). `run` refuses to execute the
+ * mutation while offline and explains why, so the UI never needs its own
+ * network check and the server never receives an offline-replayed
+ * concurrency-sensitive mutation.
  */
-export function usePendingOperations(): {
-  count: number;
-  refresh: () => Promise<void>;
+export function useRequireOnline(): {
+  /** True when the app can currently reach Convex. */
+  isOnline: boolean;
+  state: ConnectivityState;
+  /** Explanation shown to the driver when blocked. */
+  offlineMessage: string;
+  /**
+   * Execute a connectivity-required operation. Rejects with the offline
+   * message when offline; otherwise runs the provided executor.
+   */
+  run: <T>(operation: () => Promise<T>) => Promise<T>;
 } {
-  const [count, setCount] = useState(0);
+  const { isOnline, state } = useConnectivity();
 
-  const refresh = useCallback(async () => {
-    const stats = await getOperationStats();
-    setCount(stats.pending);
+  const offlineMessage =
+    "You're offline. This action needs a connection — your location is still being saved and will sync when you're back online.";
+
+  const run = useCallback(
+    async <T,>(operation: () => Promise<T>): Promise<T> => {
+      // Re-verify at execution time — React state may be stale by a few ms
+      // and connectivity can change between render and tap.
+      const current = await checkConnectivity();
+      if (current === "OFFLINE" || current === "RECONNECTING") {
+        throw new Error(offlineMessage);
+      }
+      return operation();
+    },
+    [offlineMessage]
+  );
+
+  return { isOnline, state, offlineMessage, run };
+}
+
+// ─── Use Offline GPS (buffer + sync) ──────────────────────────────────────────
+
+/**
+ * Offline GPS buffering for one active delivery, layered on the driver
+ * tracking hook's fixes. Online → no-op (live path). Offline → bounded,
+ * delivery-bound buffer that syncs automatically when connectivity returns.
+ */
+export function useOfflineGPS(deliveryId: string | null): {
+  /** Number of points currently buffered for this delivery. */
+  bufferedCount: number;
+  /** Current sync progress, when a cycle is running or just finished. */
+  progress: SyncProgress | null;
+  /** Manually trigger a sync pass (e.g. a "Retry now" button). */
+  retrySync: () => Promise<void>;
+} {
+  const convex = useConvex();
+  const [bufferedCount, setBufferedCount] = useState(0);
+  const [progress, setProgress] = useState<SyncProgress | null>(null);
+  const { state } = useConnectivity();
+  const executorRef = useRef(convex);
+  executorRef.current = convex;
+
+  useEffect(() => {
+    initConnectivityMonitoring();
   }, []);
 
   useEffect(() => {
-    refresh();
-    const interval = setInterval(refresh, 5000);
-    return () => clearInterval(interval);
-  }, [refresh]);
-
-  return { count, refresh };
-}
-
-// ─── Use Offline Mutation Hook ────────────────────────────────────────────────
-
-/**
- * Hook for mutations that work offline.
- * Queues operations when offline, executes immediately when online.
- */
-export function useOfflineMutation(): {
-  execute: (
-    operationType: OperationType,
-    entityId: string,
-    payload: Record<string, any>,
-    onlineMutation?: () => Promise<void>
-  ) => Promise<{ queued: boolean; operationId?: string }>;
-  isExecuting: boolean;
-} {
-  const [isExecuting, setIsExecuting] = useState(false);
-  const { isOnline } = useConnectivity();
-
-  const execute = useCallback(
-    async (
-      operationType: OperationType,
-      entityId: string,
-      payload: Record<string, any>,
-      onlineMutation?: () => Promise<void>
-    ) => {
-      setIsExecuting(true);
-
-      try {
-        if (isOnline && onlineMutation) {
-          // Execute immediately when online
-          await onlineMutation();
-          return { queued: false };
-        } else {
-          // Queue for later when offline
-          const operationId = await queueOperation(
-            operationType,
-            entityId,
-            payload
-          );
-          return { queued: true, operationId };
-        }
-      } finally {
-        setIsExecuting(false);
-      }
-    },
-    [isOnline]
-  );
-
-  return { execute, isExecuting };
-}
-
-// ─── Use Sync Hook ────────────────────────────────────────────────────────────
-
-/**
- * Hook for manual sync triggering and progress tracking.
- */
-export function useSync(): {
-  triggerSync: () => Promise<SyncProgress>;
-  progress: SyncProgress | null;
-  isSyncing: boolean;
-} {
-  const [progress, setProgress] = useState<SyncProgress | null>(null);
-  const [isSyncing, setIsSyncing] = useState(false);
-
-  useEffect(() => {
-    const unsubscribe = onSyncProgress((newProgress) => {
-      setProgress(newProgress);
-      setIsSyncing(newProgress.current !== null);
-    });
-
+    const unsubscribe = onSyncProgress((p) => setProgress(p));
     return unsubscribe;
   }, []);
 
-  const trigger = useCallback(async () => {
-    setIsSyncing(true);
-    try {
-      const result = await triggerSync();
-      return result;
-    } finally {
-      setIsSyncing(false);
-    }
-  }, []);
-
-  return { triggerSync: trigger, progress, isSyncing };
-}
-
-// ─── Use GPS Tracking Hook ────────────────────────────────────────────────────
-
-/**
- * Hook for GPS tracking with offline support.
- */
-export function useGPSTracking(deliveryId?: string): {
-  isTracking: boolean;
-  bufferCount: number;
-  startTracking: () => void;
-  stopTracking: () => void;
-  lastLocation: { lat: number; lng: number; timestamp: number } | null;
-} {
-  const [isTracking, setIsTracking] = useState(false);
-  const [bufferCount, setBufferCount] = useState(0);
-  const [lastLocation, setLastLocation] = useState<{
-    lat: number;
-    lng: number;
-    timestamp: number;
-  } | null>(null);
-
-  const start = useCallback(() => {
-    if (isTrackingActive()) {
+  const refreshCount = useCallback(async () => {
+    if (!deliveryId) {
+      setBufferedCount(0);
       return;
     }
+    try {
+      setBufferedCount(await getBufferedCountForDelivery(deliveryId));
+    } catch {
+      // IndexedDB may be unavailable (private mode) — buffering degrades to
+      // no-op; never blocks the live tracking path.
+      setBufferedCount(0);
+    }
+  }, [deliveryId]);
 
-    startTracking(
-      (position) => {
-        const location = {
-          lat: position.coords.latitude,
-          lng: position.coords.longitude,
-          timestamp: position.timestamp,
-        };
-        setLastLocation(location);
-
-        // Update buffer count periodically
-        getBufferCount().then(setBufferCount);
-      },
-      (error) => {
-        console.error("GPS tracking error:", error);
-      }
-    );
-
-    setIsTracking(true);
-  }, []);
-
-  const stop = useCallback(() => {
-    stopTracking();
-    setIsTracking(false);
-  }, []);
-
-  // Cleanup on unmount
   useEffect(() => {
-    return () => {
-      if (isTrackingActive()) {
-        stopTracking();
-      }
-    };
-  }, []);
+    void refreshCount();
+    // Poll the small count while offline so the indicator stays accurate.
+    const interval = setInterval(() => void refreshCount(), 5000);
+    return () => clearInterval(interval);
+  }, [refreshCount, state]);
 
-  return {
-    isTracking,
-    bufferCount,
-    startTracking: start,
-    stopTracking: stop,
-    lastLocation,
-  };
+  // Auto-sync on connectivity return (the sync engine also does this; this
+  // local attempt makes the per-delivery count refresh deterministic).
+  const wasOffline = useRef(false);
+  useEffect(() => {
+    if (!deliveryId) return;
+    if (state === "OFFLINE" || state === "RECONNECTING") {
+      wasOffline.current = true;
+      return;
+    }
+    if (wasOffline.current && (state === "ONLINE" || state === "SYNCING")) {
+      wasOffline.current = false;
+      void syncBufferedLocationsForDelivery(deliveryId, (mutation, args) =>
+        executorRef.current.mutation(mutation as never, args as never)
+      ).then(() => refreshCount());
+    }
+  }, [state, deliveryId, refreshCount]);
+
+  const retrySync = useCallback(async () => {
+    if (!deliveryId) return;
+    await syncBufferedLocationsForDelivery(deliveryId, (mutation, args) =>
+      executorRef.current.mutation(mutation as never, args as never)
+    );
+    await refreshCount();
+  }, [deliveryId, refreshCount]);
+
+  return { bufferedCount, progress, retrySync };
 }
 
-// ─── Use Offline Status Hook ──────────────────────────────────────────────────
+/**
+ * Buffer one GPS fix for an active delivery while offline.
+ * Online → no-op. Exposed for the tracking hook integration.
+ */
+export function bufferLocationOffline(
+  deliveryId: string,
+  lat: number,
+  lng: number,
+  timestamp: number,
+  accuracy?: number
+): Promise<{ buffered: boolean; sampled: boolean }> {
+  return processLocation(deliveryId, lat, lng, timestamp, accuracy);
+}
 
 /**
- * Hook that provides a human-readable offline status message.
+ * Discard a delivery's buffered points (call on terminal delivery state).
  */
-export function useOfflineStatus(): {
-  message: string;
-  type: "info" | "warning" | "error" | "success";
-  showSyncButton: boolean;
-} {
+export function clearDeliveryOfflineBuffer(deliveryId: string): Promise<number> {
+  return discardBufferForDelivery(deliveryId);
+}
+
+// ─── Use Offline Driver Status (aggregate indicator state) ────────────────────
+
+export type DriverOfflineStatus = {
+  state: ConnectivityState;
+  isOffline: boolean;
+  isSyncing: boolean;
+  /** Human-facing status line for the indicator. */
+  label: string;
+  /** Detail line (buffer count, last error) for the indicator. */
+  detail?: string;
+  /** Whether the indicator should present an error/recoverable styling. */
+  isError: boolean;
+};
+
+/**
+ * Aggregate connectivity + buffer state into the driver indicator model.
+ */
+export function useDriverOfflineStatus(bufferedCount: number): DriverOfflineStatus {
   const { state, info } = useConnectivity();
 
-  if (state === "SYNCING") {
-    return {
-      message: "Syncing data...",
-      type: "info",
-      showSyncButton: false,
+  return useMemo(() => {
+    const base: DriverOfflineStatus = {
+      state,
+      isOffline: state === "OFFLINE" || state === "RECONNECTING",
+      isSyncing: state === "SYNCING",
+      label: "",
+      isError: state === "SYNC_ERROR",
     };
-  }
 
-  if (state === "OFFLINE") {
-    return {
-      message: info.pendingOperations > 0
-        ? `${info.pendingOperations} changes saved locally — waiting for connection`
-        : "You are offline",
-      type: "warning",
-      showSyncButton: false,
-    };
-  }
-
-  if (state === "DEGRADED") {
-    return {
-      message: "Connection unstable",
-      type: "warning",
-      showSyncButton: true,
-    };
-  }
-
-  // ONLINE
-  if (info.pendingOperations > 0) {
-    return {
-      message: `Syncing ${info.pendingOperations} pending changes...`,
-      type: "info",
-      showSyncButton: false,
-    };
-  }
-
-  return {
-    message: "Connected",
-    type: "success",
-    showSyncButton: false,
-  };
-}
-
-// ─── Use Offline-Aware Query Hook ─────────────────────────────────────────────
-
-/**
- * Hook that provides cached data when offline.
- * Falls back to cached data when Convex query returns undefined (loading) or null (error).
- */
-export function useOfflineQuery<T>(
-  queryResult: T | undefined | null,
-  cacheKey: string
-): {
-  data: T | null;
-  isFromCache: boolean;
-  isStale: boolean;
-} {
-  const [cachedData, setCachedData] = useState<T | null>(null);
-  const [isFromCache, setIsFromCache] = useState(false);
-
-  // Update cache when we have fresh data
-  useEffect(() => {
-    if (queryResult !== undefined && queryResult !== null) {
-      setCachedData(queryResult);
-      setIsFromCache(false);
-
-      // Store in localStorage for simple caching
-      try {
-        localStorage.setItem(`lasha-cache-${cacheKey}`, JSON.stringify(queryResult));
-      } catch {
-        // Ignore storage errors
-      }
-    }
-  }, [queryResult, cacheKey]);
-
-  // Load from cache when offline
-  useEffect(() => {
-    if (queryResult === undefined || queryResult === null) {
-      try {
-        const cached = localStorage.getItem(`lasha-cache-${cacheKey}`);
-        if (cached) {
-          setCachedData(JSON.parse(cached));
-          setIsFromCache(true);
+    switch (state) {
+      case "ONLINE":
+        base.label = "Online";
+        if (bufferedCount > 0) {
+          base.label = "Online — syncing pending";
+          base.detail = `${bufferedCount} location${bufferedCount === 1 ? "" : "s"} pending`;
         }
-      } catch {
-        // Ignore storage errors
-      }
+        break;
+      case "OFFLINE":
+        base.label = "Offline — location buffered";
+        base.detail =
+          bufferedCount > 0
+            ? `${bufferedCount} location${bufferedCount === 1 ? "" : "s"} saved on this device`
+            : "Actions need a connection";
+        break;
+      case "RECONNECTING":
+        base.label = "Reconnecting…";
+        break;
+      case "SYNCING":
+        base.label = "Syncing buffered locations…";
+        break;
+      case "SYNC_COMPLETE":
+        base.label = "Sync complete";
+        break;
+      case "SYNC_ERROR":
+        base.label = "Sync issue — will retry";
+        base.detail = info.lastSyncError ?? `${bufferedCount} location${bufferedCount === 1 ? "" : "s"} still pending`;
+        break;
     }
-  }, [queryResult, cacheKey]);
 
-  return {
-    data: queryResult ?? cachedData,
-    isFromCache,
-    isStale: isFromCache && queryResult === null,
-  };
+    return base;
+  }, [state, info.lastSyncError, bufferedCount]);
 }

@@ -1,49 +1,53 @@
 /**
  * Lasha Synchronization Engine
  *
- * Handles synchronization of pending operations with Convex.
- * Implements idempotent operations with conflict detection.
+ * Replays buffered offline operations through the app's AUTHENTICATED Convex
+ * client when connectivity returns. Convex remains authoritative: the server
+ * validates every replayed operation exactly as a live one.
  *
- * Sync protocol:
- * 1. Get pending operations from IndexedDB
- * 2. Mark as "syncing"
- * 3. Execute against Convex
- * 4. Handle response (SUCCESS, DUPLICATE, CONFLICT, INVALID, EXPIRED)
- * 5. Update status accordingly
- * 6. Retry failed operations with exponential backoff
+ * OFFLINE-SAFETY MODEL (docs/offline-driver.md):
+ * The only queueable operation is buffered GPS (`updateLocation`). Offer
+ * accept/reject, delivery state transitions, and POD submission are
+ * concurrency-sensitive and are never queued — the sync engine refuses them
+ * defensively even if a malformed record appears in IndexedDB.
+ *
+ * Sync protocol per buffered GPS point:
+ *   1. ordered replay (oldest first) through updateDeliveryLocation
+ *   2. accepted  → remove from queue
+ *   3. authoritatively rejected (stale/invalid/terminal) → remove (accepted
+ *      decision, retrying can never succeed)
+ *   4. transient failure → retain, retry with bounded backoff
+ *
+ * Retry behaviour: an interval-driven engine with per-delivery sync locking
+ * (no overlapping cycles), bounded backoff after failures, and sync
+ * triggered by (a) connectivity transitions, (b) the periodic check, and
+ * (c) app visibility changes (tab re-focus).
  */
 
+import { getOperationsForSync, discardOperation, type StoredOperation } from "./operations";
 import {
-  getOperationsForSync,
-  markOperationSyncing,
-  markOperationSynced,
-  markOperationFailed,
-  hasExceededMaxRetries,
-  isOperationExpired,
-  StoredOperation,
-} from "./operations";
+  syncBufferedLocationsForDelivery,
+  discardStaleBufferedLocations,
+  type ConvexExecutor,
+  type GpsSyncResult,
+} from "./gps";
 import {
-  setSyncingState,
+  beginSyncCycle,
+  endSyncCycle,
   updatePendingOperationCount,
   getConnectivityState,
+  onConnectivityChange,
 } from "./connectivity";
-import { Id } from "@/convex/_generated/dataModel";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type SyncResult =
-  | { status: "SUCCESS"; operationId: string }
-  | { status: "DUPLICATE"; operationId: string }
-  | { status: "CONFLICT"; operationId: string; reason: string }
-  | { status: "INVALID"; operationId: string; reason: string }
-  | { status: "EXPIRED"; operationId: string }
-  | { status: "ERROR"; operationId: string; error: string };
-
 export interface SyncProgress {
   total: number;
-  completed: number;
-  failed: number;
+  synced: number;
+  discarded: number;
+  retrying: number;
   current: string | null;
+  lastError?: string;
 }
 
 export type SyncProgressListener = (progress: SyncProgress) => void;
@@ -51,315 +55,205 @@ export type SyncProgressListener = (progress: SyncProgress) => void;
 // ─── Configuration ────────────────────────────────────────────────────────────
 
 const SYNC_CONFIG = {
-  /** Maximum concurrent sync operations */
-  maxConcurrent: 3,
+  /** Delay before the next attempt after a failed cycle (ms). */
+  baseRetryDelay: 30_000,
 
-  /** Base delay for exponential backoff (ms) */
-  baseRetryDelay: 1000,
+  /** Maximum backoff delay (ms) — no tight retry loops. */
+  maxRetryDelay: 5 * 60_000,
 
-  /** Maximum retry delay (ms) */
-  maxRetryDelay: 30000,
-
-  /** Maximum retry count before marking as failed */
-  maxRetries: 5,
-
-  /** Operation expiry time (24 hours) */
-  operationExpiryMs: 24 * 60 * 60 * 1000,
-
-  /** Sync interval when online (ms) */
-  syncIntervalMs: 10000,
-
-  /** Sync interval when degraded (ms) */
-  degradedSyncIntervalMs: 30000,
-};
+  /** Periodic sync check while the driver app is open (ms). */
+  syncIntervalMs: 30_000,
+} as const;
 
 // ─── Sync State ───────────────────────────────────────────────────────────────
 
-let isSyncRunning = false;
-let syncInterval: ReturnType<typeof setInterval> | null = null;
+let syncTimer: ReturnType<typeof setInterval> | null = null;
+let backoffUntil = 0;
+let consecutiveFailures = 0;
 const progressListeners: Set<SyncProgressListener> = new Set();
+/** One sync attempt per delivery at a time (no overlapping cycles). */
+const inFlightDeliveries = new Set<string>();
 
-// ─── Convex API References ────────────────────────────────────────────────────
+// ─── Progress Notification ────────────────────────────────────────────────────
 
-/**
- * Execute an operation against Convex.
- * This maps operation types to the appropriate Convex mutations.
- */
-async function executeOperation(operation: StoredOperation): Promise<SyncResult> {
-  const { operationType, entityId, payload, operationId } = operation;
-
-  try {
-    // Dynamic import to avoid circular dependencies
-    const { api } = await import("@/convex/_generated/api");
-    const { convexClient } = await import("@/lib/convex");
-
-    // Cast entityId to proper Convex Id type
-    const deliveryId = entityId as unknown as Id<"deliveries">;
-
-    switch (operationType) {
-      case "acceptAssignment":
-        await convexClient.mutation(api.deliveries.state_machine.acceptAssignment, {
-          deliveryId,
-        });
-        return { status: "SUCCESS", operationId };
-
-      case "updateDeliveryStatus":
-        await convexClient.mutation(api.tracking.mutations.updateDeliveryStatusWithLocation, {
-          deliveryId,
-          status: payload.status,
-          location: payload.location,
-        });
-        return { status: "SUCCESS", operationId };
-
-      case "arriveAtPickup":
-        await convexClient.mutation(api.deliveries.state_machine.arriveAtPickup, {
-          deliveryId,
-        });
-        return { status: "SUCCESS", operationId };
-
-      case "pickupDelivery":
-        await convexClient.mutation(api.deliveries.state_machine.pickupPackage, {
-          deliveryId,
-        });
-        return { status: "SUCCESS", operationId };
-
-      case "startTrip":
-        await convexClient.mutation(api.deliveries.state_machine.startTrip, {
-          deliveryId,
-        });
-        return { status: "SUCCESS", operationId };
-
-      case "arriveAtDropoff":
-        await convexClient.mutation(api.deliveries.state_machine.arriveAtDropoff, {
-          deliveryId,
-        });
-        return { status: "SUCCESS", operationId };
-
-      case "completeDelivery":
-        await convexClient.mutation(api.deliveries.state_machine.completeDelivery, {
-          deliveryId,
-        });
-        return { status: "SUCCESS", operationId };
-
-      case "cancelDelivery":
-        await convexClient.mutation(api.deliveries.state_machine.cancelDelivery, {
-          deliveryId,
-          reason: payload.reason,
-        });
-        return { status: "SUCCESS", operationId };
-
-      case "updateLocation":
-        await convexClient.mutation(api.tracking.mutations.updateDeliveryLocation, {
-          deliveryId,
-          location: {
-            lat: payload.lat,
-            lng: payload.lng,
-            timestamp: payload.timestamp,
-            accuracy: payload.accuracy,
-            speed: payload.speed,
-            heading: payload.heading,
-          },
-        });
-        return { status: "SUCCESS", operationId };
-
-      default:
-        return {
-          status: "INVALID",
-          operationId,
-          reason: `Unknown operation type: ${operationType}`,
-        };
-    }
-  } catch (error: any) {
-    // Parse Convex error to determine the result type
-    const errorMessage = error?.message || String(error);
-
-    // Check for duplicate operation
-    if (errorMessage.includes("duplicate") || errorMessage.includes("already")) {
-      return { status: "DUPLICATE", operationId };
-    }
-
-    // Check for conflict (delivery state changed)
-    if (errorMessage.includes("conflict") || errorMessage.includes("state")) {
-      return { status: "CONFLICT", operationId, reason: errorMessage };
-    }
-
-    // Check for invalid operation
-    if (errorMessage.includes("invalid") || errorMessage.includes("not found")) {
-      return { status: "INVALID", operationId, reason: errorMessage };
-    }
-
-    // Check for expired operation
-    if (errorMessage.includes("expired")) {
-      return { status: "EXPIRED", operationId };
-    }
-
-    // Generic error
-    return { status: "ERROR", operationId, error: errorMessage };
-  }
-}
-
-// ─── Sync Engine ──────────────────────────────────────────────────────────────
-
-/**
- * Process a single operation with retry logic.
- */
-async function processOperation(operation: StoredOperation): Promise<SyncResult> {
-  // Check if operation is expired
-  if (isOperationExpired(operation, SYNC_CONFIG.operationExpiryMs)) {
-    await markOperationFailed(operation.operationId, "Operation expired");
-    return { status: "EXPIRED", operationId: operation.operationId };
-  }
-
-  // Check if max retries exceeded
-  if (hasExceededMaxRetries(operation, SYNC_CONFIG.maxRetries)) {
-    await markOperationFailed(operation.operationId, "Max retries exceeded");
-    return {
-      status: "ERROR",
-      operationId: operation.operationId,
-      error: "Max retries exceeded",
-    };
-  }
-
-  // Mark as syncing
-  await markOperationSyncing(operation.operationId);
-
-  // Execute the operation
-  const result = await executeOperation(operation);
-
-  // Handle result
-  switch (result.status) {
-    case "SUCCESS":
-    case "DUPLICATE":
-      await markOperationSynced(operation.operationId);
-      break;
-
-    case "CONFLICT":
-    case "INVALID":
-    case "EXPIRED":
-      // These are terminal failures - don't retry
-      await markOperationFailed(
-        operation.operationId,
-        result.status === "CONFLICT" ? result.reason :
-        result.status === "INVALID" ? result.reason :
-        "Operation expired"
-      );
-      break;
-
-    case "ERROR":
-      // Will be retried on next sync cycle
-      await markOperationFailed(operation.operationId, result.error);
-      break;
-  }
-
-  return result;
-}
-
-/**
- * Run a sync cycle.
- * Processes all pending operations sequentially.
- */
-async function runSyncCycle(): Promise<SyncProgress> {
-  if (isSyncRunning) {
-    return { total: 0, completed: 0, failed: 0, current: null };
-  }
-
-  // Check connectivity
-  const connectivity = getConnectivityState();
-  if (connectivity === "OFFLINE") {
-    return { total: 0, completed: 0, failed: 0, current: null };
-  }
-
-  isSyncRunning = true;
-  setSyncingState(true);
-
-  const operations = await getOperationsForSync();
-  updatePendingOperationCount(operations.length);
-
-  const progress: SyncProgress = {
-    total: operations.length,
-    completed: 0,
-    failed: 0,
-    current: null,
-  };
-
-  try {
-    for (const operation of operations) {
-      progress.current = operation.operationType;
-      notifyProgress(progress);
-
-      const result = await processOperation(operation);
-
-      if (result.status === "SUCCESS" || result.status === "DUPLICATE") {
-        progress.completed++;
-      } else {
-        progress.failed++;
-      }
-
-      updatePendingOperationCount(progress.total - progress.completed - progress.failed);
-    }
-  } finally {
-    isSyncRunning = false;
-    setSyncingState(false);
-    progress.current = null;
-    notifyProgress(progress);
-  }
-
-  return progress;
-}
-
-/**
- * Notify progress listeners.
- */
 function notifyProgress(progress: SyncProgress): void {
   for (const listener of progressListeners) {
     try {
       listener(progress);
     } catch (error) {
-      console.error("Sync progress listener error:", error);
+      console.error("[offline-sync] progress listener error:", error);
     }
   }
 }
 
-// ─── Public API ───────────────────────────────────────────────────────────────
+// ─── Defensive Refusal of Unsafe Operation Types ──────────────────────────────
 
 /**
- * Start the sync engine.
- * Begins periodic synchronization when online.
+ * The sync engine only ever replays buffered GPS. Any other operation type
+ * found in the queue is malformed (impossible via the public queue API) and
+ * is refused + removed rather than executed.
  */
-export function startSyncEngine(): void {
-  if (syncInterval) {
-    return; // Already running
+async function purgeUnsafeOperations(operations: StoredOperation[]): Promise<number> {
+  let purged = 0;
+  for (const op of operations) {
+    if (op.operationType !== "updateLocation") {
+      console.warn(
+        `[offline-sync] refusing unsafe offline operation "${op.operationType}" (${op.operationId}) — delivery mutations require live connectivity`
+      );
+      await discardOperation(op.operationId);
+      purged++;
+    }
+  }
+  return purged;
+}
+
+// ─── Sync Cycle ───────────────────────────────────────────────────────────────
+
+/**
+ * Run one sync pass across all deliveries that have buffered points.
+ * `executor` is the authenticated Convex client's mutation function.
+ */
+export async function runSyncCycle(executor: ConvexExecutor): Promise<SyncProgress> {
+  const progress: SyncProgress = {
+    total: 0,
+    synced: 0,
+    discarded: 0,
+    retrying: 0,
+    current: null,
+  };
+
+  // Never sync while offline; respect bounded backoff after failures.
+  const connectivity = getConnectivityState();
+  if (connectivity === "OFFLINE") {
+    return progress;
+  }
+  if (Date.now() < backoffUntil) {
+    return progress;
   }
 
-  // Initial sync attempt
-  runSyncCycle();
+  // Retention first: drop points the server's timestamp validation would
+  // reject anyway (bounded storage, no pointless replays).
+  await discardStaleBufferedLocations();
 
-  // Set up periodic sync
-  syncInterval = setInterval(() => {
-    const connectivity = getConnectivityState();
-    const interval = connectivity === "DEGRADED"
-      ? SYNC_CONFIG.degradedSyncIntervalMs
-      : SYNC_CONFIG.syncIntervalMs;
+  const operations = await getOperationsForSync();
+  await purgeUnsafeOperations(operations);
 
-    runSyncCycle();
-  }, SYNC_CONFIG.syncIntervalMs);
+  // Group by delivery — each delivery's points replay in order, isolated.
+  const byDelivery = new Map<string, StoredOperation[]>();
+  for (const op of operations) {
+    const list = byDelivery.get(op.entityId) ?? [];
+    list.push(op);
+    byDelivery.set(op.entityId, list);
+  }
+
+  progress.total = operations.length;
+
+  if (operations.length === 0) {
+    updatePendingOperationCount(0);
+    consecutiveFailures = 0;
+    backoffUntil = 0;
+    // Nothing left to replay — surface an explicit all-clear to the UI.
+    endSyncCycle({ failed: false });
+    return progress;
+  }
+
+  beginSyncCycle();
+  let cycleHadFailure = false;
+
+  try {
+    for (const [deliveryId] of byDelivery) {
+      // Cross-delivery isolation + no overlapping cycles per delivery.
+      if (inFlightDeliveries.has(deliveryId)) {
+        continue;
+      }
+      inFlightDeliveries.add(deliveryId);
+      progress.current = deliveryId;
+      notifyProgress(progress);
+
+      let result: GpsSyncResult;
+      try {
+        result = await syncBufferedLocationsForDelivery(deliveryId, executor);
+      } finally {
+        inFlightDeliveries.delete(deliveryId);
+      }
+
+      progress.synced += result.synced;
+      progress.discarded += result.discarded;
+      progress.retrying += result.retrying;
+      if (result.lastError) {
+        progress.lastError = result.lastError;
+        cycleHadFailure = cycleHadFailure || result.retrying > 0;
+      }
+    }
+  } finally {
+    updatePendingOperationCount(progress.retrying);
+    endSyncCycle({ failed: cycleHadFailure, error: progress.lastError });
+    progress.current = null;
+    notifyProgress(progress);
+  }
+
+  // Bounded exponential backoff only after real failures.
+  if (cycleHadFailure) {
+    consecutiveFailures++;
+    const delay = Math.min(
+      SYNC_CONFIG.baseRetryDelay * Math.pow(2, consecutiveFailures - 1),
+      SYNC_CONFIG.maxRetryDelay
+    );
+    backoffUntil = Date.now() + delay;
+  } else {
+    consecutiveFailures = 0;
+    backoffUntil = 0;
+  }
+
+  return progress;
+}
+
+// ─── Engine Lifecycle ─────────────────────────────────────────────────────────
+
+/**
+ * Start the sync engine with the authenticated Convex executor.
+ * Idempotent: repeated calls (e.g. remounts) do not create duplicate timers
+ * or listeners.
+ */
+export function startSyncEngine(executor: ConvexExecutor): () => void {
+  let timer: ReturnType<typeof setInterval> | null = null;
+
+  const attempt = () => {
+    void runSyncCycle(executor).catch((error) => {
+      console.error("[offline-sync] sync cycle error:", error);
+    });
+  };
+
+  const handleConnectivity = (state: string) => {
+    if (state === "ONLINE") {
+      attempt(); // Sync immediately on reconnect.
+    }
+  };
+
+  const handleVisibility = () => {
+    if (document.visibilityState === "visible") {
+      attempt(); // Tab re-focus — cheap opportunistic retry.
+    }
+  };
+
+  attempt();
+  timer = setInterval(attempt, SYNC_CONFIG.syncIntervalMs);
+  const unsubscribeConnectivity = onConnectivityChange(handleConnectivity);
+  document.addEventListener("visibilitychange", handleVisibility);
+
+  return () => {
+    if (timer) clearInterval(timer);
+    unsubscribeConnectivity();
+    document.removeEventListener("visibilitychange", handleVisibility);
+  };
 }
 
 /**
- * Stop the sync engine.
+ * Trigger an immediate sync pass (manual retry).
  */
-export function stopSyncEngine(): void {
-  if (syncInterval) {
-    clearInterval(syncInterval);
-    syncInterval = null;
-  }
-}
-
-/**
- * Trigger an immediate sync cycle.
- */
-export async function triggerSync(): Promise<SyncProgress> {
-  return runSyncCycle();
+export async function triggerSync(executor: ConvexExecutor): Promise<SyncProgress> {
+  backoffUntil = 0; // Manual retry overrides backoff.
+  return runSyncCycle(executor);
 }
 
 /**
@@ -370,18 +264,5 @@ export function onSyncProgress(listener: SyncProgressListener): () => void {
   progressListeners.add(listener);
   return () => {
     progressListeners.delete(listener);
-  };
-}
-
-/**
- * Get current sync status.
- */
-export function getSyncStatus(): {
-  isRunning: boolean;
-  pendingCount: number;
-} {
-  return {
-    isRunning: isSyncRunning,
-    pendingCount: 0, // Would need to query IndexedDB
   };
 }

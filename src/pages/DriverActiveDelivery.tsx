@@ -103,6 +103,7 @@ const TRACKING_DOT_CLASS: Record<TrackingState, string> = {
   starting: "pending",
   waiting: "on",
   sent: "on",
+  buffered: "pending",
   denied: "error",
   error: "error",
   unsupported: "off",

@@ -28,6 +28,8 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { getConnectivityState } from "@/lib/offline/connectivity";
+import { bufferLocationOffline } from "@/hooks/use-offline";
 
 // ─── Configuration ───────────────────────────────────────────────────────────
 
@@ -49,6 +51,7 @@ export type TrackingState =
   | "starting" // watcher requested, waiting for first GPS fix
   | "waiting" // receiving fixes, throttling until next send
   | "sent" // last update delivered to Convex successfully
+  | "buffered" // offline: last fix saved locally, pending sync
   | "denied" // location permission denied
   | "error" // GPS unavailable / timeout / update rejected
   | "unsupported"; // browser has no geolocation API
@@ -66,6 +69,7 @@ export const TRACKING_STATUS_COPY: Record<TrackingState, string> = {
   starting: "Location tracking starting…",
   waiting: "Location tracking active",
   sent: "Location update sent",
+  buffered: "Offline — location saved, will sync",
   denied: "Location permission denied",
   error: "GPS unavailable",
   unsupported: "Location not supported on this device",
@@ -160,6 +164,28 @@ export function useDriverLocationTracking({ deliveryId, active }: UseDriverLocat
   sendUpdateRef.current = useCallback(
     async (lat: number, lng: number, accuracy?: number) => {
       if (!deliveryId) return;
+
+      // Offline resilience: buffer the fix locally (bounded, delivery-bound
+      // IndexedDB queue) instead of failing. The buffered point replays
+      // through this same Convex mutation when connectivity returns — the
+      // server re-validates everything authoritatively at replay time.
+      if (getConnectivityState() === "OFFLINE" || getConnectivityState() === "RECONNECTING") {
+        try {
+          await bufferLocationOffline(deliveryId, lat, lng, Date.now(), accuracy);
+          setStatus({ state: "buffered" });
+        } catch (err) {
+          // Storage unavailable (e.g. private mode): degrade to the live-path
+          // error state; never touch delivery state here.
+          console.warn("[driver-tracking] offline buffering unavailable:", err);
+          setStatus((prev) => ({
+            state: "error",
+            message: "Offline and unable to save location locally",
+            lastSentAt: prev.lastSentAt,
+          }));
+        }
+        return;
+      }
+
       try {
         await updateDeliveryLocation({
           deliveryId,

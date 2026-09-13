@@ -1,19 +1,30 @@
 /**
  * Lasha Connectivity Detection
  *
- * Monitors network connectivity and provides connectivity state.
- * Uses navigator.onLine plus active probing for more accurate detection.
+ * Driver-facing connectivity state. Does NOT trust `navigator.onLine` alone:
+ * a browser can report "online" while Convex is unreachable (captive portals,
+ * Wi-Fi without internet). After the browser comes back online, the state
+ * probes the Convex deployment's existing /health endpoint and only reports
+ * ONLINE when Convex actually responds.
  *
- * States:
- * - ONLINE: Connected and can reach Convex
- * - DEGRADED: Connected but with poor quality (high latency)
- * - OFFLINE: No network connection
- * - SYNCING: Currently synchronizing pending operations
+ * States (documented in docs/offline-driver.md):
+ *  - ONLINE         navigator online AND Convex reachable
+ *  - OFFLINE        navigator offline (or probe failure while navigator online → still OFFLINE for the driver: the app cannot reach Convex)
+ *  - RECONNECTING   browser came back online; Convex reachability being re-verified
+ *  - SYNCING        connected, and a sync cycle is replaying buffered operations
+ *  - SYNC_COMPLETE  last sync cycle finished with nothing left to retry
+ *  - SYNC_ERROR     last sync cycle finished with items still pending (recoverable failure)
  */
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type ConnectivityState = "ONLINE" | "DEGRADED" | "OFFLINE" | "SYNCING";
+export type ConnectivityState =
+  | "ONLINE"
+  | "OFFLINE"
+  | "RECONNECTING"
+  | "SYNCING"
+  | "SYNC_COMPLETE"
+  | "SYNC_ERROR";
 
 export interface ConnectivityInfo {
   state: ConnectivityState;
@@ -22,6 +33,8 @@ export interface ConnectivityInfo {
   lastSync: number | null;
   pendingOperations: number;
   isSyncing: boolean;
+  /** Error from the last failed sync cycle, if any (recoverable). */
+  lastSyncError?: string;
 }
 
 export type ConnectivityListener = (state: ConnectivityState) => void;
@@ -34,34 +47,26 @@ let lastOffline: number | null = null;
 let lastSync: number | null = null;
 let pendingOperationCount: number = 0;
 let isSyncing: boolean = false;
+let lastSyncError: string | undefined = undefined;
+let monitoringInitialized = false;
 
 const listeners: Set<ConnectivityListener> = new Set();
 
-// ─── Connectivity Detection ───────────────────────────────────────────────────
+// ─── Convex Reachability Probe ────────────────────────────────────────────────
 
 /**
- * Check if the browser reports being online.
- */
-function isBrowserOnline(): boolean {
-  return navigator.onLine;
-}
-
-/**
- * Active probe to check if Convex is reachable.
- * Uses a lightweight HEAD request to the Convex deployment.
+ * Probe the existing Convex /health http action (no new backend).
+ * Returns true only when Convex actually responds.
  */
 async function probeConvexConnectivity(): Promise<boolean> {
   try {
-    // Use a simple fetch with timeout to check connectivity
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 5000);
-
-    const response = await fetch("/api/health", {
-      method: "HEAD",
+    const response = await fetch("/health", {
+      method: "GET",
       signal: controller.signal,
       cache: "no-store",
     });
-
     clearTimeout(timeoutId);
     return response.ok;
   } catch {
@@ -69,84 +74,77 @@ async function probeConvexConnectivity(): Promise<boolean> {
   }
 }
 
-/**
- * Determine the connectivity state based on browser state and probing.
- */
-async function determineConnectivityState(): Promise<ConnectivityState> {
-  if (!isBrowserOnline()) {
-    return "OFFLINE";
+// ─── State Derivation ─────────────────────────────────────────────────────────
+
+function setState(next: ConnectivityState): void {
+  if (next === currentState) return;
+  const now = Date.now();
+
+  if (next === "ONLINE" || next === "SYNCING" || next === "SYNC_COMPLETE") {
+    lastOnline = now;
+  } else if (next === "OFFLINE") {
+    lastOffline = now;
   }
 
-  if (isSyncing) {
-    return "SYNCING";
-  }
-
-  // Browser says online, but let's verify with a probe
-  const isReachable = await probeConvexConnectivity();
-
-  if (!isReachable) {
-    return "DEGRADED";
-  }
-
-  return "ONLINE";
+  currentState = next;
+  notifyListeners(currentState);
 }
 
-/**
- * Update the connectivity state and notify listeners.
- */
-async function updateConnectivityState(): Promise<void> {
-  const newState = await determineConnectivityState();
-
-  if (newState !== currentState) {
-    const now = Date.now();
-
-    if (newState === "ONLINE" || newState === "SYNCING") {
-      lastOnline = now;
-    } else if (newState === "OFFLINE") {
-      lastOffline = now;
-    }
-
-    currentState = newState;
-    notifyListeners(newState);
-  }
-}
-
-/**
- * Notify all listeners of a state change.
- */
 function notifyListeners(state: ConnectivityState): void {
   for (const listener of listeners) {
     try {
       listener(state);
-    } catch (error) {
+  } catch (error) {
       console.error("Connectivity listener error:", error);
     }
   }
 }
 
-// ─── Public API ───────────────────────────────────────────────────────────────
+/**
+ * Verify actual Convex reachability after the browser reports online.
+ * Only called from the `online` event (RECONNECTING verification) and the
+ * periodic check while nominally online.
+ */
+async function verifyOnline(): Promise<void> {
+  // While a sync is running, SYNCING wins (it implies connectivity).
+  if (isSyncing) return;
+
+  setState("RECONNECTING");
+  const reachable = await probeConvexConnectivity();
+  if (isSyncing) return; // A sync may have started during the probe.
+  setState(reachable ? "ONLINE" : "OFFLINE");
+}
+
+// ─── Public API ───────────────────────────────────────── States ──────────────
 
 /**
  * Initialize connectivity monitoring.
- * Call this once when the app starts.
+ * Call once when the driver app mounts. Idempotent.
  */
 export function initConnectivityMonitoring(): void {
-  // Listen for browser online/offline events
+  if (monitoringInitialized) return;
+  monitoringInitialized = true;
+
   window.addEventListener("online", () => {
-    updateConnectivityState();
+    setState("RECONNECTING");
+    void verifyOnline();
   });
 
   window.addEventListener("offline", () => {
-    updateConnectivityState();
+    setState("OFFLINE");
   });
 
-  // Initial state check
-  updateConnectivityState();
+  // Periodic verification while nominally online (probe failure → OFFLINE).
+  window.setInterval(() => {
+    if (!navigator.onLine) {
+      setState("OFFLINE");
+      return;
+    }
+    if (isSyncing) return;
+    void verifyOnline();
+  }, 30_000);
 
-  // Periodic connectivity check (every 30 seconds)
-  setInterval(() => {
-    updateConnectivityState();
-  }, 30000);
+  void verifyOnline();
 }
 
 /**
@@ -167,6 +165,7 @@ export function getConnectivityInfo(): ConnectivityInfo {
     lastSync,
     pendingOperations: pendingOperationCount,
     isSyncing,
+    lastSyncError,
   };
 }
 
@@ -189,41 +188,52 @@ export function updatePendingOperationCount(count: number): void {
 }
 
 /**
- * Set the syncing state.
+ * Called by the sync engine at the START of a cycle.
  */
-export function setSyncingState(syncing: boolean): void {
-  isSyncing = syncing;
-  if (syncing) {
-    lastSync = Date.now();
-  }
-  updateConnectivityState();
+export function beginSyncCycle(): void {
+  isSyncing = true;
+  setState("SYNCING");
 }
 
 /**
- * Force a connectivity check.
+ * Called by the sync engine at the END of a cycle with the outcome.
  */
-export async function checkConnectivity(): Promise<ConnectivityState> {
-  await updateConnectivityState();
-  return currentState;
+export function endSyncCycle(outcome: { failed: boolean; error?: string }): void {
+  isSyncing = false;
+  lastSync = Date.now();
+  lastSyncError = outcome.error;
+  setState(
+    outcome.failed
+      ? "SYNC_ERROR"
+      : pendingOperationCount === 0
+        ? "SYNC_COMPLETE"
+        : "SYNC_ERROR"
+  );
 }
 
 /**
- * Check if the app is currently online (simple boolean).
+ * Check if the app is currently online (boolean convenience).
+ * Note: ONLINE / SYNCING / SYNC_COMPLETE all imply Convex reachability.
  */
 export function isOnline(): boolean {
   return currentState === "ONLINE" || currentState === "SYNCING";
 }
 
 /**
- * Check if the app is offline.
+ * Check if the app is offline for the driver's purposes (cannot reach Convex).
  */
 export function isOffline(): boolean {
-  return currentState === "OFFLINE";
+  return currentState === "OFFLINE" || currentState === "RECONNECTING";
 }
 
 /**
- * Check if the app is in degraded state.
+ * Force a connectivity verification (returns the resulting state).
  */
-export function isDegraded(): boolean {
-  return currentState === "DEGRADED";
+export async function checkConnectivity(): Promise<ConnectivityState> {
+  if (!navigator.onLine) {
+    setState("OFFLINE");
+    return currentState;
+  }
+  await verifyOnline();
+  return currentState;
 }

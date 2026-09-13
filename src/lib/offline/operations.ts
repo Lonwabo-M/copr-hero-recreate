@@ -4,23 +4,30 @@
  * Manages offline operations with idempotent operation IDs.
  * Each operation is uniquely identified and can be safely retried.
  *
- * Operation format:
- * {
- *   operationId: string (UUID),
- *   operationType: string (e.g., "acceptAssignment"),
- *   entityId: string (e.g., delivery ID),
- *   payload: Record<string, any>,
- *   clientCreatedAt: number (timestamp),
- *   status: "pending" | "syncing" | "synced" | "failed" | "expired",
- *   retryCount: number,
- * }
+ * OFFLINE-SAFETY MODEL (see docs/offline-driver.md):
+ * Only connectivity-insensitive operations may be queued offline. Today that
+ * is exactly ONE operation type: buffered GPS location updates. Every other
+ * driver mutation (offer accept/reject, delivery state transitions, POD
+ * submission, financial actions) is concurrency-sensitive or
+ * state-machine-authoritative and REQUIRES live connectivity — the server
+ * must confirm current state at execution time, and a delayed replay could
+ * produce an invalid transition. Queueing those offline would be unsafe.
+ *
+ * The former OperationType union (acceptAssignment, rejectAssignment,
+ * updateDeliveryStatus, arriveAtPickup, pickupDelivery, startTrip,
+ * arriveAtDropoff, completeDelivery, cancelDelivery, captureProofOfDelivery)
+ * is deliberately removed: none of those operations is safe to queue offline.
  */
 
 import {
   addOperation,
   getPendingOperations,
   getSyncingOperations,
+  getPendingOperationsForEntity,
   updateOperationStatus,
+  deleteOperation,
+  deleteOperationsForEntity,
+  countPendingOperationsForEntity,
   StoredOperation as _StoredOperation,
 } from "./db";
 
@@ -29,24 +36,37 @@ export type StoredOperation = _StoredOperation;
 
 // ─── Operation Types ──────────────────────────────────────────────────────────
 
-export type OperationType =
-  | "acceptAssignment"
-  | "rejectAssignment"
-  | "updateDeliveryStatus"
-  | "arriveAtPickup"
-  | "pickupDelivery"
-  | "startTrip"
-  | "arriveAtDropoff"
-  | "completeDelivery"
-  | "cancelDelivery"
-  | "updateLocation"
-  | "captureProofOfDelivery";
+/**
+ * Operation types that may be queued while offline.
+ * GPS location updates are safe because:
+ *  - the server validates every point against the delivery's CURRENT state
+ *    (assignment, trackable status, coordinates, timestamp age, frequency,
+ *    movement) and rejects stale/irrelevant points authoritatively;
+ *  - replaying an old point can never advance delivery state;
+ *  - duplicates are harmless (server-side down-sampling by timestamp; the
+ *    client also de-duplicates by generated location ID before send).
+ */
+export type OperationType = "updateLocation";
+
+/**
+ * The offline payload contract for buffered GPS points. Every entry is bound
+ * to its delivery at enqueue time (entityId) — a queued point for Delivery A
+ * is never replayed against Delivery B.
+ */
+export interface OfflineLocationPayload {
+  lat: number;
+  lng: number;
+  timestamp: number;
+  accuracy?: number;
+  speed?: number;
+  heading?: number;
+}
 
 export interface PendingOperation {
   operationId: string;
   operationType: OperationType;
   entityId: string;
-  payload: Record<string, any>;
+  payload: OfflineLocationPayload;
   clientCreatedAt: number;
 }
 
@@ -66,13 +86,21 @@ function generateOperationId(): string {
 // ─── Queue Operations ─────────────────────────────────────────────────────────
 
 /**
- * Add a new operation to the pending queue.
+ * Add a new GPS location update to the pending queue.
+ * `entityId` is the delivery the point belongs to — fixed at enqueue time.
  */
 export async function queueOperation(
   operationType: OperationType,
   entityId: string,
-  payload: Record<string, any>
+  payload: OfflineLocationPayload
 ): Promise<string> {
+  if (operationType !== "updateLocation") {
+    // Compile-time-enforced whitelist; guard for future contributors.
+    throw new Error(
+      `Operation "${operationType}" is not safe to queue offline. Only GPS location updates may be buffered.`
+    );
+  }
+
   const operationId = generateOperationId();
 
   const operation: StoredOperation = {
@@ -97,10 +125,20 @@ export async function getOperationsForSync(): Promise<StoredOperation[]> {
   const pending = await getPendingOperations();
   const syncing = await getSyncingOperations();
 
-  // Combine and sort by creation time (oldest first)
+  // Combine and sort by creation time (oldest first) — preserves GPS ordering.
   return [...pending, ...syncing].sort(
     (a, b) => a.clientCreatedAt - b.clientCreatedAt
   );
+}
+
+/**
+ * Get pending operations for one entity (delivery-scoped).
+ */
+export async function getOperationsForEntity(
+  entityId: string
+): Promise<StoredOperation[]> {
+  const all = await getPendingOperationsForEntity(entityId);
+  return all.sort((a, b) => a.clientCreatedAt - b.clientCreatedAt);
 }
 
 /**
@@ -118,108 +156,54 @@ export async function markOperationSynced(operationId: string): Promise<void> {
 }
 
 /**
- * Mark an operation as failed.
+ * Mark an operation as failed with a reason.
  */
-export async function markOperationFailed(operationId: string, error: string): Promise<void> {
+export async function markOperationFailed(
+  operationId: string,
+  error: string
+): Promise<void> {
   await updateOperationStatus(operationId, "failed", error);
 }
 
 /**
- * Get operation count by status.
+ * Remove an operation from the queue permanently.
+ * Called after successful sync (GPS points are ephemeral) or after the server
+ * authoritatively rejects a point as stale/invalid (accepted-and-discarded).
+ */
+export async function discardOperation(operationId: string): Promise<void> {
+  await deleteOperation(operationId);
+}
+
+/**
+ * Remove all queued operations for one delivery.
+ * Called when the delivery becomes terminal or the session ends.
+ */
+export async function discardOperationsForEntity(
+  entityId: string
+): Promise<number> {
+  return deleteOperationsForEntity(entityId);
+}
+
+/**
+ * Count pending operations for one delivery (UI: "buffering N locations").
+ */
+export async function countPendingOperationsForDelivery(
+  entityId: string
+): Promise<number> {
+  return countPendingOperationsForEntity(entityId);
+}
+
+/**
+ * Get aggregate stats across the queue.
  */
 export async function getOperationStats(): Promise<{
   pending: number;
-  syncing: number;
-  synced: number;
   failed: number;
 }> {
   const pending = await getPendingOperations();
-  const syncing = await getSyncingOperations();
-
+  const all = await getOperationsForSync();
   return {
     pending: pending.length,
-    syncing: syncing.length,
-    synced: 0, // Would need additional query
-    failed: 0, // Would need additional query
+    failed: all.filter((o) => o.status === "failed").length,
   };
-}
-
-// ─── Operation Validation ─────────────────────────────────────────────────────
-
-/**
- * Check if an operation type is valid for offline queuing.
- */
-export function isValidOperationType(type: string): type is OperationType {
-  const validTypes: OperationType[] = [
-    "acceptAssignment",
-    "rejectAssignment",
-    "updateDeliveryStatus",
-    "arriveAtPickup",
-    "pickupDelivery",
-    "startTrip",
-    "arriveAtDropoff",
-    "completeDelivery",
-    "cancelDelivery",
-    "updateLocation",
-    "captureProofOfDelivery",
-  ];
-  return validTypes.includes(type as OperationType);
-}
-
-/**
- * Check if an operation has exceeded max retries.
- */
-export function hasExceededMaxRetries(operation: StoredOperation, maxRetries: number = 5): boolean {
-  return operation.retryCount >= maxRetries;
-}
-
-/**
- * Check if an operation is expired (older than max age).
- */
-export function isOperationExpired(operation: StoredOperation, maxAgeMs: number = 24 * 60 * 60 * 1000): boolean {
-  return Date.now() - operation.clientCreatedAt > maxAgeMs;
-}
-
-// ─── Operation Payload Builders ───────────────────────────────────────────────
-
-/**
- * Build payload for acceptAssignment operation.
- */
-export function buildAcceptAssignmentPayload(offerId: string): Record<string, any> {
-  return { offerId };
-}
-
-/**
- * Build payload for updateDeliveryStatus operation.
- */
-export function buildUpdateStatusPayload(
-  status: string,
-  location?: { lat: number; lng: number }
-): Record<string, any> {
-  return { status, location };
-}
-
-/**
- * Build payload for updateLocation operation.
- */
-export function buildLocationPayload(
-  lat: number,
-  lng: number,
-  timestamp: number,
-  accuracy?: number,
-  speed?: number,
-  heading?: number
-): Record<string, any> {
-  return { lat, lng, timestamp, accuracy, speed, heading };
-}
-
-/**
- * Build payload for captureProofOfDelivery operation.
- */
-export function buildProofOfDeliveryPayload(
-  photos: string[], // Base64 encoded
-  signature?: string, // Base64 encoded
-  notes?: string
-): Record<string, any> {
-  return { photos, signature, notes };
 }

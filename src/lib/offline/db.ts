@@ -231,7 +231,109 @@ export async function cleanupSyncedOperations(maxAgeMs: number): Promise<number>
   });
 }
 
-// ─── GPS Buffer Operations ────────────────────────────────────────────────────
+/**
+ * Get all pending operations for one entity (delivery-scoped retrieval).
+ * Used for cross-delivery isolation: the GPS sync only ever replays entries
+ * bound to the active delivery.
+ */
+export async function getPendingOperationsForEntity(entityId: string): Promise<StoredOperation[]> {
+  const db = await getDatabase();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORES.OPERATIONS, "readonly");
+    const store = tx.objectStore(STORES.OPERATIONS);
+    const index = store.index("by_entity");
+    const request = index.getAll(entityId);
+
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(new Error(`Failed to get operations for entity: ${request.error}`));
+  });
+}
+
+/**
+ * Permanently remove an operation from the queue (after successful sync or
+ * authoritative rejection — GPS points are ephemeral and must not accumulate).
+ */
+export async function deleteOperation(operationId: string): Promise<void> {
+  const db = await getDatabase();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORES.OPERATIONS, "readwrite");
+    const store = tx.objectStore(STORES.OPERATIONS);
+    const request = store.delete(operationId);
+
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(new Error(`Failed to delete operation: ${request.error}`));
+  });
+}
+
+/**
+ * Remove ALL queued operations for one entity (delivery).
+ * Called when a delivery reaches a terminal state — its buffered GPS is no
+ * longer relevant and must never be replayed against another delivery.
+ */
+export async function deleteOperationsForEntity(entityId: string): Promise<number> {
+  const db = await getDatabase();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORES.OPERATIONS, "readwrite");
+    const store = tx.objectStore(STORES.OPERATIONS);
+    const index = store.index("by_entity");
+    const request = index.openCursor(entityId);
+    let removed = 0;
+
+    request.onsuccess = (event) => {
+      const cursor = (event.target as IDBRequest).result;
+      if (cursor) {
+        cursor.delete();
+        removed++;
+        cursor.continue();
+      } else {
+        resolve(removed);
+      }
+    };
+
+    request.onerror = () => reject(new Error(`Failed to delete operations for entity: ${request.error}`));
+  });
+}
+
+/**
+ * Count pending operations for one entity.
+ */
+export async function countPendingOperationsForEntity(entityId: string): Promise<number> {
+  const db = await getDatabase();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORES.OPERATIONS, "readonly");
+    const store = tx.objectStore(STORES.OPERATIONS);
+    const index = store.index("by_entity");
+    const request = index.count(entityId);
+
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(new Error(`Failed to count operations: ${request.error}`));
+  });
+}
+
+/**
+ * Clear ALL local offline data (operations, GPS buffer, cached deliveries,
+ * metadata). Called on logout / session change so queued operational data is
+ * never carried across authenticated sessions.
+ */
+export async function clearAllOfflineData(): Promise<void> {
+  const db = await getDatabase();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(
+      [STORES.OPERATIONS, STORES.LOCATIONS, STORES.DELIVERIES, STORES.METADATA],
+      "readwrite"
+    );
+    tx.objectStore(STORES.OPERATIONS).clear();
+    tx.objectStore(STORES.LOCATIONS).clear();
+    tx.objectStore(STORES.DELIVERIES).clear();
+    tx.objectStore(STORES.METADATA).clear();
+
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(new Error(`Failed to clear offline data: ${tx.error}`));
+    tx.onabort = () => reject(new Error(`Offline data clear aborted: ${tx.error}`));
+  });
+}
+
+// ─── GPS Buffer Operations ────────────────────────────────────────────────
 
 /**
  * Add a location to the GPS buffer.
