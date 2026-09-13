@@ -298,10 +298,18 @@ export const storeCriticalEvent = internalMutation({
     timestamp: v.number(),
   },
   handler: async (ctx, args) => {
-    // Write to audit_events for persistent storage
-    // This creates a bridge between the logging and audit systems
+    // Write to audit_events for persistent storage.
+    // This creates a bridge between the logging and audit systems.
+    //
+    // Actor attribution: these events are SYSTEM-generated (a backend log
+    // sink, not a user action), so they are recorded with actorRole "system"
+    // and NO actorId — the audit schema deliberately allows omitting actorId
+    // for system events. This replaces the former unsafe fallback that picked
+    // the first user in the database, which falsely attributed system errors
+    // to an arbitrary real user. If the calling context knows which user was
+    // involved, that ID is preserved in metadata for traceability — it is
+    // never used as the actor.
     await ctx.db.insert("audit_events", {
-      actorId: (await ctx.db.query("users").first())?._id ?? "system" as any,
       actorRole: "system",
       category: "system",
       action: `system.log.${args.level}`,
@@ -314,6 +322,8 @@ export const storeCriticalEvent = internalMutation({
         operation: args.operation,
         errorName: args.errorName,
         errorMessage: args.errorMessage,
+        ...(args.userId ? { involvedUserId: args.userId } : {}),
+        ...(args.userRole ? { involvedUserRole: args.userRole } : {}),
         ...JSON.parse(args.metadata ?? "{}"),
       }),
       timestamp: args.timestamp,

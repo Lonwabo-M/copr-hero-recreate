@@ -118,9 +118,11 @@ test("logging bridge 'unknown' type is NOT queryable", () => {
 test("schema audit_events entityType field unchanged (creation side untouched)", () => {
   const block = schema.slice(
     schema.indexOf("audit_events: defineTable({"),
-    schema.indexOf("audit_events: defineTable({") + 900,
+    schema.indexOf("audit_events: defineTable({") + 1400,
   );
   assertContains(block, "entityType: v.string()", "creation-side schema is unchanged");
+  // actorId is now optional (system attribution) — but still user-id typed
+  assertContains(block, "actorId: v.optional(v.id(\"users\"))", "actorId optional for system events");
 });
 
 // ─── 2. Resource resolution and reuse of existing rules ───────────────────────

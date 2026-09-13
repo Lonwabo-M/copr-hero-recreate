@@ -830,8 +830,13 @@ const schema = defineSchema(
     // Immutable audit trail for all important system actions.
     // Records who did what, when, to which entity, and what changed.
     audit_events: defineTable({
-      // Actor information
-      actorId: v.id("users"),
+      // Actor information.
+      // actorId is the authenticated human user who performed the action.
+      // It is OPTIONAL: explicitly system-generated events (actorRole:
+      // "system", e.g. the logging bridge) omit actorId entirely so a system
+      // event can never be mistaken for — or misattributed to — a real user.
+      // Never fall back to an arbitrary user to satisfy this field.
+      actorId: v.optional(v.id("users")),
       actorRole: v.string(),
       actorEmail: v.optional(v.string()),
       

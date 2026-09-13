@@ -152,6 +152,73 @@ unknown types are rejected at the argument level.
 
 ---
 
+## 2c. Audit Actor Attribution
+
+**Status: resolved.** Audit events must be trustworthy representations of
+actual actions: a human event names the human who performed it, a system event
+is unmistakably system-generated, and missing actor context is never fabricated
+into a real user's identity.
+
+### Previous defect
+
+`logging/service.storeCriticalEvent` wrote:
+
+```ts
+actorId: (await ctx.db.query("users").first())?._id ?? "system" as any
+```
+
+Every persisted system log event was attributed to **whichever user row sorted
+first** — a real user who performed nothing. The `?? "system"` branch existed
+only for an empty users table and was itself a type-unsafe cast
+(`as any`). This was the only unsafe actor source in the repository; all other
+audit writers pass a session-resolved or internal server-resolved actor.
+
+### Final actor model
+
+`audit_events.actorId` is now **optional**
+(`v.optional(v.id("users"))`) — the smallest schema-compatible change that
+makes the two attribution classes structurally distinct:
+
+| Class | actorId | actorRole | Meaning |
+| --- | --- | --- | --- |
+| **User-attributed** | real authenticated user's ID | actual role (customer, driver, operations, …) | A person performed the action. Identity always comes from the Convex session (`requireAuth` / `getCurrentAuthUser`) or from a server-resolved internal operation — never from client claims. |
+| **System-attributed** | **omitted** | `"system"` | A trusted backend process performed the action. With no `actorId`, a system event cannot collide with — or be mistaken for — a human actor. |
+| **Missing context** | **omitted** | `"system"` | Not silently mapped to any real user. User context, when known, is preserved in `metadata.involvedUserId` / `metadata.involvedUserRole` for traceability only — never used as the actor. |
+
+No new service user, no placeholder user row, and no new identity architecture
+was introduced. A user-attributed operation that cannot establish an
+authenticated actor fails closed (its auth helpers throw) rather than writing
+a fabricated actor.
+
+### Affected path
+
+Only `logging/service.storeCriticalEvent` (the logging→audit bridge) was
+changed. It is an `internalMutation`, is inherently system-generated
+(`category: "system"`, `action: system.log.<level>`), and had **zero callers**
+in the repository at the time of the fix. All other `db.insert("audit_events")`
+writers (state machine, users, pod, pricing, payments — all `internalMutation`
+with server-resolved actors) were audited and left unchanged.
+
+### Historical records
+
+Existing audit rows that were written by the old fallback may contain a
+misattributed real user's ID in `actorId` (with `actorRole: "system"`). These
+are **not** rewritten — audit history is immutable. Detection heuristic for
+investigating legacy rows: `actorRole === "system"` with a non-null `actorId`
+indicates a legacy bridge event whose `actorId` is not trustworthy. New bridge
+events never have `actorId`.
+
+### Integrity tests
+
+`src/convex/audit/actor_attribution.test.ts` (13 tests): fallback removal
+(including a repo-wide first-user sweep), explicit system attribution with no
+`actorId`, involved-user metadata traceability, preserved human attribution
+(state machine, payments, generic recorder), schema field/index integrity,
+no audit-record mutation (historical immutability), and unchanged
+resource-level authorization.
+
+---
+
 ## 3. Operational mutation authorization matrix (as verified this session)
 
 | Operation | Roles | Resource scoping |
