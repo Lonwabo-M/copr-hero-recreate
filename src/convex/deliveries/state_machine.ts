@@ -1348,11 +1348,28 @@ export const requestReassignment = mutation({
       throw new Error("Access denied: not authorized to request reassignment");
     }
 
-    // 2. Get delivery
+    // 2. Get delivery and its order (the order is the authoritative
+    // company-owner record for the delivery)
     const delivery = await ctx.db.get(args.deliveryId);
     if (!delivery) throw new Error("Delivery not found");
 
-    // 3. Validate current state
+    const order = await ctx.db.get(delivery.orderId);
+    if (!order) throw new Error("Order not found");
+
+    // 3. Check company ownership (if company admin) — same authoritative rule
+    // as dispatchDelivery/reassignDelivery: the actor's company is resolved
+    // server-side from the session user (never from client args), and the
+    // delivery's company is resolved from the order record. Fails closed:
+    // a company admin with no company association, or an order whose company
+    // ownership cannot be established, is denied.
+    if (userRole === ROLES.COMPANY_ADMIN) {
+      const actorBusinessId = (currentUser as Doc<"users">).businessId;
+      if (!actorBusinessId || order.businessId !== actorBusinessId) {
+        throw new Error("Access denied: delivery belongs to another company");
+      }
+    }
+
+    // 4. Validate current state
     const reassignableStates = [
       DELIVERY_STATUS.ASSIGNED,
       DELIVERY_STATUS.DRIVER_ACCEPTED,
@@ -1365,12 +1382,12 @@ export const requestReassignment = mutation({
       );
     }
 
-    // 4. Validate driver ownership (if driver)
+    // 5. Validate driver ownership (if driver)
     if (userRole === ROLES.DRIVER && delivery.courierId !== user) {
       throw new Error("Access denied: this delivery is not assigned to you");
     }
 
-    // 5. Perform transition
+    // 6. Perform transition
     const now = Date.now();
     await ctx.db.patch(args.deliveryId, {
       status: DELIVERY_STATUS.REASSIGNMENT_REQUIRED,
@@ -1380,7 +1397,7 @@ export const requestReassignment = mutation({
       vehicleId: undefined,
     });
 
-    // 6. Record event
+    // 7. Record event
     await recordDeliveryEvent(
       ctx,
       args.deliveryId,
@@ -1391,7 +1408,7 @@ export const requestReassignment = mutation({
       JSON.stringify({ reason: args.reason })
     );
 
-    // 7. Record audit event
+    // 8. Record audit event
     await ctx.runMutation(internal.audit.service.recordDeliveryTransition, {
       actorId: user,
       actorRole: userRole,

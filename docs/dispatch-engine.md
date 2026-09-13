@@ -322,6 +322,33 @@ When a driver rejects or an offer expires:
 5. Send new offers to next batch of candidates
 ```
 
+### Reassignment Authorization
+
+`reassignDelivery` (and the state-machine `requestReassignment`) enforce the
+same company-ownership rule as `dispatchDelivery`:
+
+| Role | Authority |
+| --- | --- |
+| `SUPER_ADMIN` | May reassign any delivery. |
+| `OPERATIONS` | May reassign any delivery. |
+| `COMPANY_ADMIN` | May reassign only deliveries whose order belongs to their own company (`orders.businessId === users.businessId`). |
+| Other roles | Denied (drivers may request reassignment of their **own** assigned delivery via the state machine, courier-scoped). |
+
+Enforcement details:
+
+- Identity, role, and company are resolved **server-side** from the Convex
+  session (`getCurrentAuthUser`). No client-supplied company/business/user/driver
+  ID is accepted as an authorization source.
+- The delivery's company is resolved from `deliveries.orderId → orders.businessId`.
+- The check **fails closed**: a company admin with no company association, or a
+  delivery whose company ownership cannot be established, is denied.
+- The ownership check runs **before any write** (offer cancellation, delivery
+  patch, offer creation), so an unauthorized attempt fails atomically — no
+  state change and no misleading successful audit record.
+
+**Frontend visibility is not the authorization boundary**: React → Convex
+mutation → server-side authentication → RBAC → company ownership → reassignment.
+
 ---
 
 ## Configuration

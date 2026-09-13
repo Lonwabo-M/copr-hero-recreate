@@ -333,11 +333,27 @@ export const reassignDelivery = mutation({
       throw new Error("Access denied: not authorized to reassign deliveries");
     }
 
-    // 2. Get delivery
+    // 2. Get delivery and its order (the order is the authoritative
+    // company-owner record for the delivery)
     const delivery = await ctx.db.get(args.deliveryId);
     if (!delivery) throw new Error("Delivery not found");
 
-    // 3. Validate delivery is in reassignable state
+    const order = await ctx.db.get(delivery.orderId);
+    if (!order) throw new Error("Order not found");
+
+    // 3. Check company ownership (if company admin) — same authoritative rule
+    // as dispatchDelivery: the actor's company is resolved server-side from
+    // the session user (never from client args), and the delivery's company
+    // is resolved from the order record. Fails closed: a company admin with
+    // no company association, or an order whose company ownership cannot be
+    // established, is denied.
+    if (user.role === ROLES.COMPANY_ADMIN) {
+      if (!user.businessId || order.businessId !== user.businessId) {
+        throw new Error("Access denied: delivery belongs to another company");
+      }
+    }
+
+    // 4. Validate delivery is in reassignable state
     const reassignableStatuses = [
       DELIVERY_STATUS.PENDING_DISPATCH,
       DELIVERY_STATUS.ASSIGNED,
@@ -351,13 +367,13 @@ export const reassignDelivery = mutation({
       );
     }
 
-    // 4. Cancel existing offers
+    // 5. Cancel existing offers
     await cancelOffersForDeliveryInternal(ctx, {
       deliveryId: args.deliveryId,
       reason: args.reason ?? "Reassignment requested",
     });
 
-    // 5. Update delivery status to pending_dispatch
+    // 6. Update delivery status to pending_dispatch
     if (delivery.status !== DELIVERY_STATUS.PENDING_DISPATCH) {
       await ctx.db.patch(args.deliveryId, {
         status: DELIVERY_STATUS.PENDING_DISPATCH,
@@ -368,13 +384,13 @@ export const reassignDelivery = mutation({
       });
     }
 
-    // 6. Re-dispatch (inline the logic)
+    // 7. Re-dispatch (inline the logic). The order was already resolved for
+    // the ownership check and does not change during reassignment.
     const deliveryAgain = await ctx.db.get(args.deliveryId);
-    const order = deliveryAgain ? await ctx.db.get(deliveryAgain.orderId) : null;
     const pickupAddress = order ? await ctx.db.get(order.pickupAddressId) : null;
     const dropoffAddress = order ? await ctx.db.get(order.dropoffAddressId) : null;
 
-    if (!deliveryAgain || !order || !pickupAddress || !dropoffAddress) {
+    if (!deliveryAgain || !pickupAddress || !dropoffAddress) {
       return { success: false, message: "Delivery data incomplete", offersSent: 0 };
     }
 

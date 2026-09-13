@@ -109,6 +109,37 @@ Notes:
 
 ## 4. Authorization
 
+**Reassignment authorization (hardened):**
+
+`dispatch/engine.reassignDelivery` and `deliveries/state_machine.requestReassignment`
+are company-ownership scoped for `COMPANY_ADMIN`, using the **same authoritative
+rule as `dispatchDelivery`**:
+
+- The actor's identity, role, and company come **only** from the Convex session
+  (`getCurrentAuthUser` → users table `businessId`). No client-supplied
+  company/business/user/driver ID is ever accepted as an authorization source.
+- The delivery's company is resolved from the authoritative record chain
+  `deliveries.orderId → orders.businessId`. Ownership is never inferred from
+  drivers, couriers, locations, or customer names.
+- **`SUPER_ADMIN`** — may reassign any delivery (existing super-admin authority).
+- **`OPERATIONS`** — may reassign any delivery (existing operations authority).
+- **`COMPANY_ADMIN`** — may reassign only deliveries whose order belongs to
+  their own company (`order.businessId === user.businessId`). A company admin
+  with no company association, or a delivery whose company ownership cannot be
+  established, is denied — the check **fails closed**.
+- **Other roles** (drivers, customers, fleet manager, …) — denied; drivers
+  remain limited to requesting reassignment of their own assigned delivery via
+  the state machine (`requestReassignment`, courier-scoped).
+- The ownership check runs **before any write** (offer cancellation, delivery
+  patch, offer creation), so an unauthorized attempt fails atomically: no
+  partial assignment change, no state change, and no misleading successful
+  audit record. Existing audit behaviour is preserved for successful
+  reassignments.
+
+**Frontend visibility is not the authorization boundary.** The React UI only
+hides actions the current role cannot perform; the Convex mutation re-checks
+authentication, role, and company ownership server-side on every call.
+
 Frontend and backend layers:
 
 1. **Route**: `RoleGate area={APP_AREAS.OPERATIONS}` blocks unauthorized roles
@@ -169,9 +200,5 @@ Customer personal information is limited to what logistics operations require
 ## Remaining operational limitations
 
 - No predictive ETA exists in the backend, so none is displayed.
-- Reassignment company-scoping: `reassignDelivery` currently permits
-  `OPERATIONS`, `COMPANY_ADMIN`, `SUPER_ADMIN` without a company-ownership
-  check (unlike `dispatchDelivery`); treat as a known policy question, not a
-  UI concern.
 - History is bounded (`limit`, default 50, max 200) rather than paginated
   infinitely.
