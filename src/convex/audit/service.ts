@@ -578,10 +578,49 @@ export const getRecentAuditEvents = query({
 
 /**
  * Get audit events for a specific entity.
+ *
+ * Authorization model (see docs/operations-gap-audit.md):
+ *
+ * Only the known entity-type set is accepted — arbitrary entity-type strings
+ * are rejected at the argument level. Every supported type resolves the
+ * resource server-side and applies the same ownership rule used by the
+ * resource's own domain queries:
+ *
+ *   delivery, proof_of_delivery   → assertDeliveryAuditAccess
+ *                                    (ops/company-scope/driver-assigned/customer-sender)
+ *   order                         → assertOrderAuditAccess
+ *                                    (ops/company-scope/customer-sender)
+ *   users                         → self, or ops/admin
+ *   businesses                    → owning company admin, or ops/admin
+ *   payment_transaction           → payer, company scope via order, or ops/admin
+ *   delivery_quote                → quote owner, company scope via order, or ops/admin
+ *   settlement                    → settlement driver, company scope via order, or ops/admin
+ *   pricing_rule                  → OPERATIONS / SUPER_ADMIN only (platform config,
+ *                                    no per-resource ownership exists)
+ *
+ * Entity types that are written to audit_events but carry no safe ownership
+ * semantics (e.g. the logging bridge's "unknown") are NOT in the supported
+ * set and are therefore rejected. Drivers and customers get access only where
+ * an actual schema-backed ownership relationship exists — never merely because
+ * they hold a role.
  */
+const AUDIT_ENTITY_TYPES = [
+  "delivery",
+  "order",
+  "proof_of_delivery",
+  "users",
+  "businesses",
+  "payment_transaction",
+  "delivery_quote",
+  "settlement",
+  "pricing_rule",
+] as const;
+
 export const getAuditEventsForEntity = query({
   args: {
-    entityType: v.string(),
+    entityType: v.union(
+      ...AUDIT_ENTITY_TYPES.map((t) => v.literal(t)),
+    ),
     entityId: v.string(),
     limit: v.optional(v.number()),
   },
@@ -589,10 +628,113 @@ export const getAuditEventsForEntity = query({
     const user = await getCurrentAuthUser(ctx);
     if (!user) throw new Error("Authentication required");
 
-    // Must be operations, company_admin, or super_admin
-    const allowedRoles = [ROLES.OPERATIONS, ROLES.COMPANY_ADMIN, ROLES.SUPER_ADMIN];
-    if (!allowedRoles.includes(user.role as any)) {
-      throw new Error("Access denied: insufficient permissions to view audit logs");
+    // Resolve the resource first so authorization can be scoped to it, then
+    // apply the resource's existing ownership rule. Unknown/missing entities
+    // fail closed.
+    switch (args.entityType) {
+      case "delivery": {
+        const delivery = await ctx.db.get(args.entityId as Id<"deliveries">);
+        if (!delivery) throw new Error("Delivery not found");
+        await assertDeliveryAuditAccess(ctx, user, delivery);
+        break;
+      }
+
+      case "order": {
+        const order = await ctx.db.get(args.entityId as Id<"orders">);
+        if (!order) throw new Error("Order not found");
+        assertOrderAuditAccess(user, order);
+        break;
+      }
+
+      case "proof_of_delivery": {
+        const pod = await ctx.db.get(args.entityId as Id<"proof_of_delivery">);
+        if (!pod) throw new Error("Proof of delivery not found");
+        // POD audit events always carry deliveryId; fall back to the record.
+        const deliveryId = pod.deliveryId;
+        const delivery = await ctx.db.get(deliveryId);
+        if (!delivery) throw new Error("Delivery not found");
+        await assertDeliveryAuditAccess(ctx, user, delivery);
+        break;
+      }
+
+      case "users": {
+        const target = await ctx.db.get(args.entityId as Id<"users">);
+        if (!target) throw new Error("User not found");
+        const adminRoles = [ROLES.OPERATIONS, ROLES.COMPANY_ADMIN, ROLES.SUPER_ADMIN];
+        if (target._id !== user.userId && !adminRoles.includes(user.role as any))
+        {
+          throw new Error("Access denied: cannot view another user's audit events");
+        }
+        break;
+      }
+
+      case "businesses": {
+        const business = await ctx.db.get(args.entityId as Id<"businesses">);
+        if (!business) throw new Error("Business not found");
+        if (
+          user.role !== ROLES.SUPER_ADMIN &&
+          user.role !== ROLES.OPERATIONS &&
+          user.businessId !== business._id
+        ) {
+          throw new Error("Access denied: business belongs to another company");
+        }
+        break;
+      }
+
+      case "payment_transaction": {
+        const txn = await ctx.db.get(args.entityId as Id<"payment_transactions">);
+        if (!txn) throw new Error("Payment transaction not found");
+        const order = await ctx.db.get(txn.orderId);
+        if (
+          user.role !== ROLES.SUPER_ADMIN &&
+          user.role !== ROLES.OPERATIONS &&
+          txn.userId !== user.userId &&
+          !(user.role === ROLES.COMPANY_ADMIN && order && order.businessId === user.businessId)
+        ) {
+          throw new Error("Access denied: payment belongs to another user or company");
+        }
+        break;
+      }
+
+      case "delivery_quote": {
+        const quote = await ctx.db.get(args.entityId as Id<"delivery_quotes">);
+        if (!quote) throw new Error("Quote not found");
+        const order = await ctx.db.get(quote.orderId);
+        if (
+          user.role !== ROLES.SUPER_ADMIN &&
+          user.role !== ROLES.OPERATIONS &&
+          quote.userId !== user.userId &&
+          !(user.role === ROLES.COMPANY_ADMIN && order && order.businessId === user.businessId)
+        ) {
+          throw new Error("Access denied: quote belongs to another user or company");
+        }
+        break;
+      }
+
+      case "settlement": {
+        const settlement = await ctx.db.get(args.entityId as Id<"settlements">);
+        if (!settlement) throw new Error("Settlement not found");
+        const order = await ctx.db.get(settlement.orderId);
+        if (
+          user.role !== ROLES.SUPER_ADMIN &&
+          user.role !== ROLES.OPERATIONS &&
+          settlement.driverId !== user.userId &&
+          !(user.role === ROLES.COMPANY_ADMIN && order && order.businessId === user.businessId)
+        ) {
+          throw new Error("Access denied: settlement belongs to another driver or company");
+        }
+        break;
+      }
+
+      case "pricing_rule": {
+        // Platform pricing configuration: no per-resource ownership exists in
+        // the schema. Operations/admin-only by explicit classification.
+        const adminRoles = [ROLES.OPERATIONS, ROLES.SUPER_ADMIN];
+        if (!adminRoles.includes(user.role as any)) {
+          throw new Error("Access denied: pricing audit is operations-only");
+        }
+        break;
+      }
     }
 
     const events = await ctx.db

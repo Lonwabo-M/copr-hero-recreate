@@ -90,6 +90,68 @@ is left as a follow-up decision, not changed silently in this audit.
 
 ---
 
+## 2b. Generic Audit Entity Authorization
+
+**Status: resolved.** The residual finding above has been closed by hardening
+`audit/service.getAuditEventsForEntity`. The query no longer accepts arbitrary
+entity-type strings and no longer grants role-only access.
+
+### Supported entity types and authorization rules
+
+Entity types below were discovered by tracing **every actual writer** to
+`audit_events` in the repository (not from comments or documentation):
+
+| Entity Type | Example Resource (writer) | Authorization Rule | Ownership Basis |
+| --- | --- | --- | --- |
+| `delivery` | delivery transitions (`recordDeliveryTransition`) | `assertDeliveryAuditAccess` — same rule as `getDelivery` | delivery → order → business/sender; `courierId` |
+| `order` | order-scoped events | `assertOrderAuditAccess` — same rule as hardened order audit | `orders.businessId` / `orders.senderId` |
+| `proof_of_delivery` | POD events (`recordPODEvent`) | `assertDeliveryAuditAccess` on the POD's delivery | pod → delivery |
+| `users` | profile updates (`users.ts`) | self, or OPERATIONS / COMPANY_ADMIN / SUPER_ADMIN | `users._id` |
+| `businesses` | company profile updates (`users/businessProfile.ts`) | owning company admin, or OPERATIONS / SUPER_ADMIN | `businesses._id` vs `users.businessId` |
+| `payment_transaction` | payment events (`payments/mutations.ts`) | payer, company scope via order, or OPERATIONS / SUPER_ADMIN | `txn.userId`; `txn.orderId → orders.businessId` |
+| `delivery_quote` | quote events (`pricing/service.ts`) | quote owner, company scope via order, or OPERATIONS / SUPER_ADMIN | `quote.userId`; `quote.orderId → orders.businessId` |
+| `settlement` | settlement events (`pricing/service.ts`) | settlement driver, company scope via order, or OPERATIONS / SUPER_ADMIN | `settlement.driverId`; `settlement.orderId → orders.businessId` |
+| `pricing_rule` | rule events (`pricing/service.ts`) | **OPERATIONS / SUPER_ADMIN only** (explicit classification) | none exists — platform configuration |
+
+### Fail-closed behaviour
+
+- **Argument level:** `entityType` is a literal union of the supported set.
+  Arbitrary strings (including the logging bridge's `"unknown"` entityType,
+  which carries no ownership semantics) are rejected before any read.
+- **Resource level:** every supported type resolves the resource server-side
+  first; a missing record fails closed (`"… not found"`).
+- **Ownership level:** a COMPANY_ADMIN with no company association, or an
+  order whose business cannot be established, is denied. Drivers and customers
+  get access **only** where a schema-backed ownership relationship exists —
+  never merely because they hold a role.
+- **Ordering:** authorization completes before the `by_entity` index read on
+  every direct invocation; there is no caller-trust path.
+
+### Intentionally unsupported entity types
+
+- `unknown` (logging bridge `storeCriticalEvent`): system diagnostics with
+  optional/unset entity IDs and no ownership semantics — not queryable through
+  this endpoint. System log access remains with the ops/admin role-gated
+  queries (`getRecentAuditEvents`, `getAuditEventsByAction`, `getAuditStats`)
+  where category filtering applies.
+- Any future entity type must be added to `AUDIT_ENTITY_TYPES` **with** an
+  explicit resource-authorization case; adding the string alone grants nothing.
+
+### Callers
+
+A repository-wide search found **no frontend or backend callers** of
+`getAuditEventsForEntity`. The endpoint is safe when invoked directly, and no
+redundant caller-side authorization needed removal or addition.
+
+### Residual finding — updated
+
+~~`getAuditEventsForEntity` is role-gated but not resource-scoped per entity
+type~~ → **Closed.** Every supported entity type now has resource-level
+authorization; `pricing_rule` is explicitly classified operations/admin-only;
+unknown types are rejected at the argument level.
+
+---
+
 ## 3. Operational mutation authorization matrix (as verified this session)
 
 | Operation | Roles | Resource scoping |
