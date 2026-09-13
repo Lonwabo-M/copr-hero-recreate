@@ -1537,13 +1537,34 @@ export const getMyDeliveries = query({
         .query("deliveries")
         .withIndex("by_courier", (q) => q.eq("courierId", user.userId));
     } else if (user.role === ROLES.CUSTOMER) {
-      // Get user's orders first, then their deliveries
+      // Customer sees only deliveries for their own orders — enforced
+      // server-side. The senderId is never accepted from the client. Each
+      // order's deliveries are read through the by_order index, so only rows
+      // belonging to this customer are ever touched.
       const orders = await ctx.db
         .query("orders")
         .withIndex("by_sender", (q) => q.eq("senderId", user.userId))
         .collect();
 
-      q = ctx.db.query("deliveries");
+      const collected: Doc<"deliveries">[] = [];
+      for (const order of orders) {
+        const rows = await ctx.db
+          .query("deliveries")
+          .withIndex("by_order", (q) => q.eq("orderId", order._id))
+          .collect();
+        collected.push(...rows);
+      }
+
+      // Newest first; status filter and limit applied server-side.
+      collected.sort((a, b) =>
+        (b.startedAt ?? b.assignedAt ?? b._creationTime) -
+        (a.startedAt ?? a.assignedAt ?? a._creationTime),
+      );
+      const limit = args.limit ?? 50;
+      const statusFiltered = args.status
+        ? collected.filter((d) => d.status === args.status)
+        : collected;
+      return statusFiltered.slice(0, limit);
     } else if (
       user.role === ROLES.COMPANY_ADMIN ||
       user.role === ROLES.FLEET_MANAGER

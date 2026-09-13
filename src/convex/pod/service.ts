@@ -5,7 +5,7 @@
  * All POD operations are server-side authorized and idempotent.
  */
 
-import { mutation, query, action, internalMutation } from "../_generated/server";
+import { mutation, query, action, internalMutation, QueryCtx, MutationCtx } from "../_generated/server";
 import { v } from "convex/values";
 import { Id, Doc } from "../_generated/dataModel";
 import { DELIVERY_STATUS, ROLES } from "../schema";
@@ -42,7 +42,7 @@ export const getPODForDelivery = query({
     if (!delivery) throw new Error("Delivery not found");
 
     // Check access
-    if (!canAccessPOD(user, delivery)) {
+    if (!(await canAccessPOD(ctx, user, delivery))) {
       throw new Error("Access denied");
     }
 
@@ -81,7 +81,7 @@ export const getPOD = query({
     const delivery = await ctx.db.get(pod.deliveryId);
     if (!delivery) throw new Error("Delivery not found");
 
-    if (!canAccessPOD(user, delivery)) {
+    if (!(await canAccessPOD(ctx, user, delivery))) {
       throw new Error("Access denied");
     }
 
@@ -655,7 +655,24 @@ export const createPODInternal = internalMutation({
 
 // ─── Authorization Helpers ────────────────────────────────────────────────────
 
-function canAccessPOD(user: AuthUser, delivery: Doc<"deliveries">): boolean {
+/**
+ * Server-side POD access authorization.
+ *
+ * Ownership is resolved through the delivery's order (the authoritative
+ * customer/business record) — never from client-supplied identity. Mirrors the
+ * ownership rules of deliveries/state_machine.getDelivery and
+ * tracking/queries.authorizeTrackingAccess:
+ *   - SUPER_ADMIN / OPERATIONS: any delivery
+ *   - DRIVER: only their assigned deliveries
+ *   - COMPANY_ADMIN: only deliveries whose order belongs to their company
+ *     (fails closed when the admin has no company association)
+ *   - CUSTOMER: only deliveries whose order they sent
+ */
+async function canAccessPOD(
+  ctx: QueryCtx | MutationCtx,
+  user: AuthUser,
+  delivery: Doc<"deliveries">,
+): Promise<boolean> {
   // Super admin and operations can access all
   if (user.role === ROLES.SUPER_ADMIN || user.role === ROLES.OPERATIONS) {
     return true;
@@ -666,14 +683,17 @@ function canAccessPOD(user: AuthUser, delivery: Doc<"deliveries">): boolean {
     return true;
   }
 
-  // Customer can access their own deliveries
-  if (user.role === ROLES.CUSTOMER) {
-    return true; // Will be filtered by order ownership in query
+  // Company admin can access company deliveries via the order's business
+  if (user.role === ROLES.COMPANY_ADMIN) {
+    if (!user.businessId) return false;
+    const order = await ctx.db.get(delivery.orderId);
+    return !!order && order.businessId === user.businessId;
   }
 
-  // Company admin can access company deliveries
-  if (user.role === ROLES.COMPANY_ADMIN) {
-    return true; // Will be filtered by business ownership in query
+  // Customer can access their own deliveries via the order's sender
+  if (user.role === ROLES.CUSTOMER) {
+    const order = await ctx.db.get(delivery.orderId);
+    return !!order && order.senderId === user.userId;
   }
 
   return false;
