@@ -50,9 +50,10 @@ import {
  */
 export function useConvexConnectionBridge(): void {
   const connection = useConvexConnectionState();
+  const { isWebSocketConnected, hasEverConnected } = connection;
   useEffect(() => {
-    reportConvexConnection(connection.isWebSocketConnected, connection.hasEverConnected);
-  }, [connection.isWebSocketConnected, connection.hasEverConnected]);
+    reportConvexConnection(isWebSocketConnected, hasEverConnected);
+  }, [isWebSocketConnected, hasEverConnected]);
 }
 
 // ─── Use Sync Engine (app-lifecycle sync driver) ──────────────────────────────
