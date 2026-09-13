@@ -157,18 +157,19 @@ test("getActiveDeliveries uses exact existing state-machine statuses", () => {
     stateMachine.indexOf("export const getActiveDeliveries = query"),
     stateMachine.indexOf("export const getMyDeliveryHistory"),
   );
-  // Match status literals as strings (the file uses DELIVERY_STATUS.ASSIGNED etc).
+  // The implementation references the existing DELIVERY_STATUS constants —
+  // it must not invent new status strings.
   const statuses = [
-    "assigned",
-    "driver_accepted",
-    "en_route_to_pickup",
-    "at_pickup",
-    "picked_up",
-    "in_transit",
-    "at_dropoff",
+    "DELIVERY_STATUS.ASSIGNED",
+    "DELIVERY_STATUS.DRIVER_ACCEPTED",
+    "DELIVERY_STATUS.EN_ROUTE_TO_PICKUP",
+    "DELIVERY_STATUS.AT_PICKUP",
+    "DELIVERY_STATUS.PICKED_UP",
+    "DELIVERY_STATUS.IN_TRANSIT",
+    "DELIVERY_STATUS.AT_DROPOFF",
   ];
   for (const s of statuses) {
-    assertTrue(block.includes(`"${s}"`), `active statuses include ${s}`);
+    assertTrue(block.includes(s), `active statuses include ${s}`);
   }
 });
 
@@ -246,9 +247,14 @@ test("tactical map coordinate range is derived from real data, not a fixed fake 
 
 test("tactical map route lines connect pickup → dropoff for deliveries with both coords", () => {
   assertContains(opsPage, "strokeDasharray={selected ? \"none\" : \"4 4\"}", "routes are dashed for non-selected");
-  assertContains(opsPage, "route lines", "map draws route lines");
-  // SvgMap derives routes from pickups (which carry the delivery with dropoff coords).
+  // SvgMap derives routes from pickups (which carry the delivery with dropoff coords)
+  // and renders them as SVG <line> elements inside the map.
   assertContains(opsPage, "const routes = pickups", "routes are derived from pickup markers with delivery dropoff");
+  const routesBlock = opsPage.slice(
+    opsPage.indexOf("const routes = pickups"),
+    opsPage.indexOf("const pickupMarkers = pickups"),
+  );
+  assertContains(routesBlock, "<line", "map draws route lines as SVG lines");
 });
 
 // ─── 4. Tracking freshness ─────────────────────────────────────────────────────
@@ -349,7 +355,7 @@ test("reassign action uses reassignDelivery mutation", () => {
 test("dispatchDelivery backend mutation is operations-authorized", () => {
   const block = dispatchEngine.slice(
     dispatchEngine.indexOf("export const dispatchDelivery = mutation"),
-    dispatchEngine.indexOf("export const getDispatchOffers"),
+    dispatchEngine.indexOf("export const acceptAssignment = mutation"),
   );
   assertTrue(
     block.includes("ROLES.OPERATIONS") || block.includes("allowedRoles"),
@@ -365,7 +371,7 @@ test("dispatchDelivery backend mutation is operations-authorized", () => {
 test("reassignDelivery backend mutation is operations-authorized", () => {
   const block = dispatchEngine.slice(
     dispatchEngine.indexOf("export const reassignDelivery = mutation"),
-    dispatchEngine.indexOf("export const getMyDispatchOffers"),
+    dispatchEngine.indexOf("export const processExpiredOffers = mutation"),
   );
   assertTrue(
     block.includes("ROLES.OPERATIONS") || block.includes("allowedRoles"),
@@ -526,8 +532,22 @@ test("drivers panel shows totalTrips only as informational context (not a perfor
 
 console.log("\n13. History tab");
 
-test("history tab uses getMyDeliveries (operations sees all)", () => {
-  assertContains(opsPage, "api.deliveries.state_machine.getMyDeliveries", "history tab reads all deliveries");
+test("history tab uses getOperationalDeliveryHistory (ops-scoped, not driver-scoped)", () => {
+  assertContains(
+    opsPage,
+    "api.deliveries.state_machine.getOperationalDeliveryHistory",
+    "history tab uses the operations-scoped history query",
+  );
+  assertNotContains(
+    opsPage,
+    "api.deliveries.state_machine.getMyDeliveries",
+    "history tab must not use the driver-scoped getMyDeliveries",
+  );
+  // The backend query must itself be operations-gated.
+  const block = stateMachine.slice(
+    stateMachine.indexOf("export const getOperationalDeliveryHistory = query"),
+  );
+  assertContains(block, "ROLES.OPERATIONS", "getOperationalDeliveryHistory is operations-gated server-side");
 });
 
 test("history tab shows delivered / failed / cancelled counts", () => {

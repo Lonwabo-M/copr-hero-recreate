@@ -1730,7 +1730,9 @@ export const getMyDeliveryHistory = query({
         dropoffCity: dropoffAddress?.city ?? null,
         dropoffStreet: dropoffAddress?.street ?? null,
       });
-    }    return { items, nextCursor };
+    }
+
+    return { items, nextCursor };
   },
 });
 

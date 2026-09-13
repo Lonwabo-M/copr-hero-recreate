@@ -161,52 +161,44 @@ function OperationsCentreInner() {
   const [activeTab, setActiveTab] = useState<OpsTab>("live");
   const [selectedDeliveryId, setSelectedDeliveryId] = useState<string | null>(null);
   const [dispatchTargetId, setDispatchTargetId] = useState<string | null>(null);
-
-  // ── Operational action state (UI-only, Convex remains authoritative) ────────
-
-  const actionState = {
-    reassigningId: "" as string | null,
-    failDelivery: (deliveryId: string, reason: string) =>
-      failDelivery({ deliveryId: deliveryId as any, reason }).then(
-        () => undefined,
-        (err: any) => console.error("failDelivery rejected:", err?.message),
-      ),
-    cancelDelivery: (deliveryId: string, reason: string) =>
-      cancelDelivery({ deliveryId: deliveryId as any, reason }).then(
-        () => undefined,
-        (err: any) => console.error("cancelDelivery rejected:", err?.message),
-      ),
-    completeWithPOD: (deliveryId: string) =>
-      completeDeliveryWithPOD({
-        deliveryId: deliveryId as any,
-        recipientName: "Delivered by operations",
-      }).then(
-        () => undefined,
-        (err: any) => console.error("completeDeliveryWithPOD rejected:", err?.message),
-      ),
-  };
+  const [reassigningId, setReassigningId] = useState<string | null>(null);
 
   // ── Operational action handlers (existing backend mutations only) ──────────
+  // Backend RBAC remains authoritative; UI rejections are logged, not hidden.
 
   async function handleReassign(deliveryId: string) {
-    actionState.reassigningId = deliveryId;
+    setReassigningId(deliveryId);
     try {
       await reassignDelivery({ deliveryId: deliveryId as any });
+    } catch (err: any) {
+      console.error("reassignDelivery rejected:", err?.message);
     } finally {
-      actionState.reassigningId = null;
+      setReassigningId(null);
     }
   }
 
   function handleFail(deliveryId: string, reason: string) {
-    actionState.failDelivery(deliveryId, reason);
+    failDelivery({ deliveryId: deliveryId as any, reason }).then(
+      () => undefined,
+      (err: any) => console.error("failDelivery rejected:", err?.message),
+    );
   }
 
   function handleCancel(deliveryId: string, reason: string) {
-    actionState.cancelDelivery(deliveryId, reason);
+    cancelDelivery({ deliveryId: deliveryId as any, reason }).then(
+      () => undefined,
+      (err: any) => console.error("cancelDelivery rejected:", err?.message),
+    );
   }
 
   function handleCompleteWithPOD(deliveryId: string) {
-    actionState.completeWithPOD(deliveryId);
+    completeDeliveryWithPOD({
+      deliveryId: deliveryId as any,
+      recipientName: "Delivered by operations",
+    }).then(
+      () => undefined,
+      (err: any) => console.error("completeDeliveryWithPOD rejected:", err?.message),
+    );
   }
 
   // ── Core reactive queries ──────────────────────────────────────────────────
@@ -231,11 +223,6 @@ function OperationsCentreInner() {
     dispatchTargetId ? { deliveryId: dispatchTargetId as any } : "skip",
   );
 
-  const operationalHistory = useQuery(
-    api.deliveries.state_machine.getOperationalDeliveryHistory,
-    { status: undefined },
-  );
-
   const dispatchDelivery = useMutation(
     api.deliveries.state_machine.dispatchDelivery,
   );
@@ -251,12 +238,6 @@ function OperationsCentreInner() {
   const completeDeliveryWithPOD = useMutation(
     api.pod.service.completeDeliveryWithPOD,
   );
-  const podForDelivery = useQuery(
-    api.pod.service.getPODForDelivery,
-    selectedDeliveryId ? { deliveryId: selectedDeliveryId as any } : "skip",
-  );
-
-  const selectedPOD = selectedDeliveryId ? podForDelivery : undefined;
 
   // ── Derived views ──────────────────────────────────────────────────────────
 
@@ -422,7 +403,7 @@ function OperationsCentreInner() {
           {activeTab === "exceptions" && (
             <ExceptionsTab
               exceptions={exceptions}
-              reassigningId={actionState.reassigningId}
+              reassigningId={reassigningId}
               onReassign={handleReassign}
               onCompleteWithPOD={handleCompleteWithPOD}
               onFail={handleFail}
@@ -538,7 +519,9 @@ function DispatchTab({
     setDispatchReassigningId(id);
 
   const activePending = deliveries.filter(
-    (d) => d.status === DELIVERY_STATUS.PENDING_DISPATCH,
+    (d) =>
+      d.status === DELIVERY_STATUS.PENDING_DISPATCH ||
+      d.status === DELIVERY_STATUS.REASSIGNMENT_REQUIRED,
   );
 
   const handleDispatch = async (id: string) => {
@@ -927,51 +910,56 @@ function LiveTab({
                       ))}
                     </div>
                   </div>
-                )}                  {selectedDelivery && (
-                  <div className="ops-detail-section">
-                    {(() => {
-                      const pod = selectedPOD;
-                      return (
-                        <>
-                          <div className="ops-detail-label" style={{ marginBottom: 8 }}><CheckSquare size={13} />Proof of delivery</div>
-                          {pod ? (
-                            pod === null ? (
-                              <div className="ops-detail-value ops-small ops-muted">No POD on record</div>
-                            ) : (
-                              <div className="ops-detail-value ops-small">
-                                <div>Outcome: {pod.outcome ?? "—"}</div>
-                                <div>Submitted: {formatDateTime(pod.deliveredAt)}</div>
-                                {pod.recipientName ? (
-                                  <div className="ops-small ops-muted">Recipient: {pod.recipientName}</div>
-                                ) : null}
-                                {pod.failureReason ? (
-                                  <div className="ops-small" style={{ color: "#C62828" }}>
-                                    Failure reason: {pod.failureReason}
-                                  </div>
-                                ) : null}
-                                {pod.files && pod.files.length > 0 && (
-                                  <div className="ops-small ops-muted">{pod.files.length} evidence file(s)</div>
-                                )}
-                                {pod.signatureUrl && (
-                                  <div className="ops-small">
-                                    Signature: <a href={pod.signatureUrl} target="_blank" rel="noopener noreferrer" className="ops-link">View</a>
-                                  </div>
-                                )}
-                              </div>
-                            )
-                          ) : (
-                            <div className="ops-detail-value ops-small ops-muted">Loading POD…</div>
-                          )}
-                        </>
-                      );
-                    })()}
-                  </div>
+                )}
+                {selectedDelivery && (
+                  <DeliveryPODSection deliveryId={selectedDelivery._id as string} />
                 )}
               </div>
             </div>
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ─── Delivery POD section (scoped query for the selected delivery) ─────────────
+
+function DeliveryPODSection({ deliveryId }: { deliveryId: string }) {
+  const pod = useQuery(
+    api.pod.service.getPODForDelivery,
+    deliveryId ? { deliveryId: deliveryId as any } : "skip",
+  );
+
+  return (
+    <div className="ops-detail-section">
+      <div className="ops-detail-label" style={{ marginBottom: 8 }}><CheckSquare size={13} />Proof of delivery</div>
+      {pod === undefined ? (
+        <div className="ops-detail-value ops-small ops-muted">Loading POD…</div>
+      ) : pod === null ? (
+        <div className="ops-detail-value ops-small ops-muted">No POD on record</div>
+      ) : (
+        <div className="ops-detail-value ops-small">
+          <div>Outcome: {pod.outcome ?? "—"}</div>
+          <div>Submitted: {formatDateTime(pod.deliveredAt)}</div>
+          {pod.recipientName ? (
+            <div className="ops-small ops-muted">Recipient: {pod.recipientName}</div>
+          ) : null}
+          {pod.failureReason ? (
+            <div className="ops-small" style={{ color: "#C62828" }}>
+              Failure reason: {pod.failureReason}
+            </div>
+          ) : null}
+          {pod.files && pod.files.length > 0 && (
+            <div className="ops-small ops-muted">{pod.files.length} evidence file(s)</div>
+          )}
+          {pod.recipientSignatureId && (
+            <div className="ops-small">
+              Signature on file
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -1342,13 +1330,6 @@ function ExceptionsTab({
 
 // ─── History Tab ──────────────────────────────────────────────────────────────
 
-function HistoryTab({
-  drivers,
-}: {
-  drivers: DriverLocationEntry[];
-}) {
-    const historyList: Array<HistoryRow> = operationalHistory?.items ?? [];
-
 type HistoryRow = {
   _id: Id<"deliveries">;
   trackingNumber: string;
@@ -1357,6 +1338,18 @@ type HistoryRow = {
   completedAt?: number | null;
   courierId?: Id<"users"> | null;
 };
+
+function HistoryTab({
+  drivers,
+}: {
+  drivers: DriverLocationEntry[];
+}) {
+  const operationalHistory = useQuery(
+    api.deliveries.state_machine.getOperationalDeliveryHistory,
+    {},
+  );
+
+  const historyList: Array<HistoryRow> = operationalHistory?.items ?? [];
 
   const completedCount = historyList.filter((d) => d.status === DELIVERY_STATUS.DELIVERED).length;
   const failedCount = historyList.filter((d) => d.status === DELIVERY_STATUS.FAILED).length;
