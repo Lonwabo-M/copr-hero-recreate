@@ -27,8 +27,6 @@ import { api } from "@/convex/_generated/api";
 import CustomerShell from "@/components/shells/CustomerShell";
 import { DELIVERY_STATUS } from "@/convex/schema";
 import {
-  Search,
-  Copy,
   Check,
   MapPin,
   CheckCircle2,
@@ -91,7 +89,7 @@ const ACTIVE_STATUSES: Record<string, string> = {
 };
 
 function customerTimeline(status: string): Array<{ label: string; state: "done" | "active" | "pending" }> {
-  const flow = [
+  const flow: Array<{ label: string; statuses: string[] }> = [
     { label: "Delivery requested", statuses: [DELIVERY_STATUS.REQUESTED] },
     { label: "Dispatched", statuses: [DELIVERY_STATUS.PENDING_DISPATCH] },
     { label: "Driver assigned", statuses: [DELIVERY_STATUS.ASSIGNED] },
@@ -221,7 +219,6 @@ function RouteMap({
 
 export default function DeliveryTracking() {
   const { deliveryId } = useParams<{ deliveryId: string }>();
-  const [copied, setCopied] = [false, (_v: boolean) => {}];
 
   const delivery = useQuery(
     api.deliveries.state_machine.getDelivery,
@@ -236,8 +233,8 @@ export default function DeliveryTracking() {
     deliveryId ? { deliveryId: deliveryId as any } : "skip",
   );
 
-  // Loading: route param present but queries still streaming.
-  if (deliveryId && (delivery === undefined || tracking === undefined)) {
+  // Loading: queries still streaming (incl. the no-route-param case).
+  if (delivery === undefined || tracking === undefined) {
     return (
       <CustomerShell activeItem="Track Delivery">
         <div className="track-main">

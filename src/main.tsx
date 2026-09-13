@@ -15,6 +15,7 @@ import AuthPage from "./pages/Auth.tsx";
 import Dashboard from "./pages/Dashboard.tsx";
 import RequestDelivery from "./pages/RequestDelivery.tsx";
 import TrackDelivery from "./pages/TrackDelivery.tsx";
+import DeliveryTracking from "./pages/DeliveryTracking.tsx";
 import Wallet from "./pages/Wallet.tsx";
 import Settings from "./pages/Settings.tsx";
 import PastDeliveries from "./pages/PastDeliveries.tsx";
@@ -173,6 +174,14 @@ createRoot(document.getElementById("root")!).render(
                 element={
                   <RoleGate area={APP_AREAS.CUSTOMER}>
                     <TrackDelivery />
+                  </RoleGate>
+                }
+              />
+              <Route
+                path="/deliveries/:deliveryId"
+                element={
+                  <RoleGate area={APP_AREAS.CUSTOMER}>
+                    <DeliveryTracking />
                   </RoleGate>
                 }
               />

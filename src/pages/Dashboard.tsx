@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { Link } from "react-router";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import CustomerShell from "@/components/shells/CustomerShell";
@@ -8,6 +9,7 @@ import "@/styles/dashboard.css";
 // Order type that matches what the dashboard components expect
 interface DashboardOrder {
   id: string;
+  deliveryId: string; // real Convex _id — used for the detail-page link
   status: "In Transit" | "Pending";
   pickup: { name: string; address: string; date: string; time: string };
   dropoff: { name: string; address: string };
@@ -19,6 +21,7 @@ interface DashboardOrder {
 function transformDeliveryToOrder(delivery: any, order: any): DashboardOrder {
   return {
     id: `#${delivery.trackingNumber}`,
+    deliveryId: delivery._id,
     status: delivery.status === "in_transit" ? "In Transit" : "Pending",
     pickup: {
       name: "Pickup Location",
@@ -150,9 +153,11 @@ export default function Dashboard() {
                     return matchesFilter && matchesSearch;
                   })
                   .map((order) => (
-                    <div
+                    <Link
                       key={order.id}
+                      to={`/deliveries/${order.deliveryId}`}
                       className={`dash-order-card ${selectedOrder === order.id ? "active" : ""}`}
+                      style={{ textDecoration: "none", color: "inherit", display: "block" }}
                       onClick={() => handleSelectOrder(order.id)}
                     >
                       <div className="dash-order-card-header">
@@ -166,7 +171,7 @@ export default function Dashboard() {
                         <span style={{ color: "#999" }}>→</span>
                         <span>{order.dropoff.name}</span>
                       </div>
-                    </div>
+                    </Link>
                   ))}
               </div>
             </div>
