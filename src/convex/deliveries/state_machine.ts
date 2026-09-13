@@ -14,7 +14,7 @@
  * 6. Is safe against duplicate requests
  */
 
-import { mutation, query } from "../_generated/server";
+import { mutation, query, MutationCtx } from "../_generated/server";
 import { v } from "convex/values";
 import { Id, Doc } from "../_generated/dataModel";
 import {
@@ -33,6 +33,48 @@ import { PERMISSIONS, ROLES } from "../schema";
 import { AUDIT_ACTIONS } from "../audit/service";
 import { internal } from "../_generated/api";
 import { createLogger, LOG_CATEGORIES, generateCorrelationId } from "../logging/service";
+import type { NotificationEventType } from "../notifications/service";
+
+// ─── Delivery notification fan-out ──────────────────────────────────────────
+// Domain-event → in-app notification bridge. Recipients are always resolved
+// server-side from authoritative relationships (order sender, assigned
+// courier) — never accepted from the client. `sendDeliveryNotification` is
+// idempotent per (eventType, deliveryId, user), so retried transitions cannot
+// create duplicate notifications. Notification failure is logged, never
+// allowed to fail the domain transaction itself.
+async function notifyDeliveryEvent(
+  ctx: MutationCtx,
+  eventType: NotificationEventType,
+  deliveryId: Id<"deliveries">,
+  extra?: { recipientUserIds?: Id<"users">[]; templateData?: Record<string, string> },
+): Promise<void> {
+  try {
+    const delivery = await ctx.db.get(deliveryId);
+    if (!delivery) return;
+
+    const recipientUserIds: Id<"users">[] = extra?.recipientUserIds ?? [];
+
+    // Customer recipient: the order's authoritative sender.
+    if (extra?.recipientUserIds === undefined) {
+      const order = await ctx.db.get(delivery.orderId);
+      if (order?.senderId) recipientUserIds.push(order.senderId);
+    }
+
+    if (recipientUserIds.length === 0) return;
+
+    await ctx.runMutation(internal.notifications.service.sendDeliveryNotification, {
+      deliveryId,
+      eventType,
+      recipientUserIds,
+      templateData: extra?.templateData,
+    });
+  } catch (error) {
+    console.error(
+      `[notifyDeliveryEvent] Failed to send "${eventType}" notification for delivery ${deliveryId}`,
+      error,
+    );
+  }
+}
 
 // ─── Helper Functions ─────────────────────────────────────────────────────────
 
@@ -242,6 +284,9 @@ export const createOrderAndDelivery = mutation({
       metadata: JSON.stringify({ trackingNumber, orderName: args.orderName }),
     });
 
+    // 10. Notify the customer their delivery request was received.
+    await notifyDeliveryEvent(ctx, "delivery_created", deliveryId);
+
     return { orderId, deliveryId, trackingNumber, price: orderPrice };
   },
 });
@@ -343,6 +388,9 @@ export const createDelivery = mutation({
       toStatus: DELIVERY_STATUS.REQUESTED,
       metadata: JSON.stringify({ trackingNumber, pickupLat: args.pickupLat, pickupLng: args.pickupLng, dropoffLat: args.dropoffLat, dropoffLng: args.dropoffLng }),
     });
+
+    // 9. Notify the customer their delivery request was received.
+    await notifyDeliveryEvent(ctx, "delivery_created", deliveryId);
 
     return { deliveryId, trackingNumber };
   },
@@ -504,6 +552,11 @@ export const assignDriver = mutation({
       metadata: JSON.stringify({ driverId: args.driverId, vehicleId: args.vehicleId }),
     });
 
+    // 10. Notify the customer their driver has been assigned.
+    await notifyDeliveryEvent(ctx, "delivery_assigned", args.deliveryId, {
+      templateData: { driverName: driver.name ?? "A driver" },
+    });
+
     return { success: true };
   },
 });
@@ -576,6 +629,9 @@ export const acceptAssignment = mutation({
       fromStatus: delivery.status,
       toStatus: DELIVERY_STATUS.DRIVER_ACCEPTED,
     });
+
+    // 9. Notify the customer the driver accepted their delivery.
+    await notifyDeliveryEvent(ctx, "delivery_accepted", args.deliveryId);
 
     return { success: true };
   },
@@ -655,6 +711,9 @@ export const rejectAssignment = mutation({
       metadata: JSON.stringify({ reason: args.reason }),
     });
 
+    // 9. Notify the customer of the delay (existing template wording).
+    await notifyDeliveryEvent(ctx, "delivery_rejected", args.deliveryId);
+
     return { success: true };
   },
 });
@@ -725,6 +784,9 @@ export const startEnRouteToPickup = mutation({
       toStatus: DELIVERY_STATUS.EN_ROUTE_TO_PICKUP,
     });
 
+    // 9. Notify the customer the driver is en route to pickup.
+    await notifyDeliveryEvent(ctx, "delivery_en_route_pickup", args.deliveryId);
+
     return { success: true };
   },
 });
@@ -794,6 +856,9 @@ export const arriveAtPickup = mutation({
       fromStatus: delivery.status,
       toStatus: DELIVERY_STATUS.AT_PICKUP,
     });
+
+    // 9. Notify the customer the driver arrived at pickup.
+    await notifyDeliveryEvent(ctx, "delivery_arrived_pickup", args.deliveryId);
 
     return { success: true };
   },
@@ -867,6 +932,9 @@ export const pickupPackage = mutation({
       toStatus: DELIVERY_STATUS.PICKED_UP,
     });
 
+    // 9. Notify the customer their package was picked up.
+    await notifyDeliveryEvent(ctx, "delivery_picked_up", args.deliveryId);
+
     return { success: true };
   },
 });
@@ -937,6 +1005,9 @@ export const startTrip = mutation({
       toStatus: DELIVERY_STATUS.IN_TRANSIT,
     });
 
+    // 9. Notify the customer their delivery is in transit.
+    await notifyDeliveryEvent(ctx, "delivery_in_transit", args.deliveryId);
+
     return { success: true };
   },
 });
@@ -1006,6 +1077,9 @@ export const arriveAtDropoff = mutation({
       fromStatus: delivery.status,
       toStatus: DELIVERY_STATUS.AT_DROPOFF,
     });
+
+    // 9. Notify the customer the driver arrived at the destination.
+    await notifyDeliveryEvent(ctx, "delivery_arrived_dropoff", args.deliveryId);
 
     return { success: true };
   },
@@ -1101,7 +1175,10 @@ export const completeDelivery = mutation({
       toStatus: DELIVERY_STATUS.DELIVERED,
     });
 
-    // 10. Create the driver settlement (POD validation → completion →
+    // 10. Notify the customer their delivery is complete.
+    await notifyDeliveryEvent(ctx, "delivery_completed", args.deliveryId);
+
+    // 11. Create the driver settlement (POD validation → completion →
     // settlement). Runs inside the same mutation transaction: a settlement
     // failure fails the completion (never an apparently-completed delivery
     // with missing financial records), and the deterministic
@@ -1209,7 +1286,12 @@ export const cancelDelivery = mutation({
       metadata: JSON.stringify({ reason: args.reason }),
     });
 
-    // 10. Compensation policy (explicit): CANCELLED deliveries earn the
+    // 10. Notify the customer their delivery was cancelled.
+    await notifyDeliveryEvent(ctx, "delivery_cancelled", args.deliveryId, {
+      templateData: args.reason ? { reason: args.reason } : undefined,
+    });
+
+    // 11. Compensation policy (explicit): CANCELLED deliveries earn the
     // driver NOTHING. Cancellations are only permitted before pickup, so no
     // work has been performed. There is no partial-compensation rule in this
     // repository, so zero is encoded deliberately — no settlement record is
@@ -1307,7 +1389,12 @@ export const failDelivery = mutation({
       metadata: JSON.stringify({ reason: args.reason }),
     });
 
-    // 9. Compensation policy (explicit): FAILED deliveries earn the driver
+    // 9. Notify the customer their delivery failed.
+    await notifyDeliveryEvent(ctx, "delivery_failed", args.deliveryId, {
+      templateData: { reason: args.reason ?? "See your delivery page for details" },
+    });
+
+    // 10. Compensation policy (explicit): FAILED deliveries earn the driver
     // NOTHING. No partial-compensation business rule exists in this
     // repository, so zero is encoded deliberately — no settlement record is
     // created here. This is a documented, unresolved business policy: if the
@@ -1419,6 +1506,9 @@ export const requestReassignment = mutation({
       toStatus: DELIVERY_STATUS.REASSIGNMENT_REQUIRED,
       metadata: JSON.stringify({ reason: args.reason }),
     });
+
+    // 9. Notify the customer the delivery is being reassigned.
+    await notifyDeliveryEvent(ctx, "delivery_reassigned", args.deliveryId);
 
     return { success: true };
   },

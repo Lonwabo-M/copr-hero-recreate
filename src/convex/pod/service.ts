@@ -453,6 +453,17 @@ export const completeDeliveryWithPOD = mutation({
       });
     }
 
+    // Notify the customer their delivery is complete (authoritative sender
+    // recipient, idempotent per (event, delivery, user)).
+    const order = await ctx.db.get(delivery.orderId);
+    if (order?.senderId) {
+      await ctx.runMutation(internal.notifications.service.sendDeliveryNotification, {
+        deliveryId: args.deliveryId,
+        eventType: "delivery_completed",
+        recipientUserIds: [order.senderId],
+      });
+    }
+
     return { podId, deliveryId: args.deliveryId, alreadyExists: false };
   },
 });

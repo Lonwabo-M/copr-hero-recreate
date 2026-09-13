@@ -578,10 +578,15 @@ const schema = defineSchema(
       description: v.string(),
       isRead: v.boolean(),
       entityId: v.optional(v.string()),
+      // Idempotency for domain-event notifications: `${eventType}:${deliveryId}`
+      // (or the analogous event/entity pair). Unique per (user, eventKey) — a
+      // retried domain transition cannot create a duplicate notification.
+      eventKey: v.optional(v.string()),
       createdAt: v.number(),
     })
       .index("by_user", ["userId"])
-      .index("by_user_unread", ["userId", "isRead"]),
+      .index("by_user_unread", ["userId", "isRead"])
+      .index("by_user_event", ["userId", "eventKey"]),
 
     // ─── Notification Preferences ──────────────────────────────────────────
     // User notification settings. One record per user.

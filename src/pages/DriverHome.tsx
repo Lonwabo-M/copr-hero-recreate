@@ -1,5 +1,5 @@
 import { useQuery } from "convex/react";
-import { Loader2 } from "lucide-react";
+import { Loader2, Bell } from "lucide-react";
 import { api } from "@/convex/_generated/api";
 import DriverShell from "@/components/shells/DriverShell";
 import { useAuth } from "@/hooks/use-auth";
@@ -29,6 +29,11 @@ export default function DriverHome() {
   const current = useQuery(api.tracking.queries.getMyCurrentDelivery, {});
   const history = useQuery(api.deliveries.state_machine.getMyDeliveries, { limit: 50 });
   const offers = useQuery(api.dispatch.engine.getMyDispatchOffers, {});
+
+  // Driver-facing in-app notifications (existing infrastructure, session-scoped).
+  const notifications = useQuery(api.notifications.service.getMyNotifications, {});
+  const unreadCount =
+    notifications?.filter((n) => !n.isRead).length ?? 0;
 
   const activeDelivery = current?.delivery ?? null;
 
@@ -110,6 +115,47 @@ export default function DriverHome() {
                 >
                   Open Active Delivery
                 </button>
+              </div>
+
+              {/* In-app notifications — existing infra, session-scoped query. */}
+              <div className="driver-action-card" style={{ padding: 16 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                  <h2 style={{ fontSize: 15, fontWeight: 600, color: "#202020" }}>
+                    Notifications
+                  </h2>
+                  {unreadCount > 0 && (
+                    <span className="driver-offer-countdown">{unreadCount} new</span>
+                  )}
+                </div>
+                {notifications === undefined ? (
+                  <p style={{ fontSize: 13, color: "#666", marginBottom: 12 }}>Loading…</p>
+                ) : notifications.length === 0 ? (
+                  <p style={{ fontSize: 13, color: "#666", marginBottom: 12 }}>
+                    <Bell size={13} style={{ verticalAlign: "-2px", marginRight: 6 }} />
+                    No notifications yet. Delivery updates appear here.
+                  </p>
+                ) : (
+                  notifications.slice(0, 3).map((n) => (
+                    <div
+                      key={n._id}
+                      style={{
+                        padding: "8px 0",
+                        borderBottom: "1px solid #f0f0f0",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 13,
+                          fontWeight: n.isRead ? 400 : 600,
+                          color: "#202020",
+                        }}
+                      >
+                        {n.title}
+                      </div>
+                      <div style={{ fontSize: 12, color: "#666" }}>{n.description}</div>
+                    </div>
+                  ))
+                )}
               </div>
 
               {/* Activity summary */}

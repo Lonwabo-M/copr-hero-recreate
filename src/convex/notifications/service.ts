@@ -39,8 +39,11 @@ export type NotificationEventType =
   | "delivery_failed"
   | "delivery_cancelled"
   | "delivery_reassigned"
+  // Dispatch (driver-facing)
+  | "delivery_offer"
   // Payment events
   | "payment_received"
+  | "payment_confirmed"
   | "payment_failed"
   | "invoice_generated"
   | "settlement_completed"
@@ -138,7 +141,20 @@ const NOTIFICATION_TEMPLATES: Record<NotificationEventType, NotificationTemplate
     descriptionTemplate: "Order #{orderId} has been reassigned to a new driver.",
     iconType: "delivery",
   },
+  // Dispatch (driver-facing)
+  delivery_offer: {
+    category: "delivery",
+    titleTemplate: "New Delivery Offer",
+    descriptionTemplate: "You have a new delivery offer for order #{orderId} — it expires in 2 minutes.",
+    iconType: "delivery",
+  },
   // Payment events
+  payment_confirmed: {
+    category: "payment",
+    titleTemplate: "Payment Confirmed",
+    descriptionTemplate: "Your payment for order #{orderId} has been confirmed.",
+    iconType: "payment",
+  },
   payment_received: {
     category: "payment",
     titleTemplate: "Payment Received",
@@ -268,12 +284,16 @@ export const getMyPreferences = query({
 // ─── Mutations ────────────────────────────────────────────────────────────────
 
 /**
- * Create a notification for a user.
- * This is the primary mutation for creating notifications.
+ * Create a notification for the authenticated user.
+ *
+ * Security: the recipient is ALWAYS the session user. The legacy arbitrary
+ * `userId` argument is ignored — a client must never be able to target another
+ * user's notification feed (domain-event notifications for other users are
+ * created exclusively by the internal senders below).
  */
 export const createNotification = mutation({
   args: {
-    userId: v.id("users"),
+    userId: v.optional(v.id("users")), // ignored — kept for API compatibility
     eventType: v.string(),
     title: v.string(),
     description: v.string(),
@@ -287,12 +307,15 @@ export const createNotification = mutation({
     )),
   },
   handler: async (ctx, args) => {
+    const user = await getCurrentAuthUser(ctx);
+    if (!user) throw new Error("Authentication required");
+
     const now = Date.now();
 
     // Check user preferences
     const prefs = await ctx.db
       .query("notification_preferences")
-      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .withIndex("by_user", (q) => q.eq("userId", user.userId))
       .unique();
 
     // If preferences exist and delivery updates are disabled, skip
@@ -302,7 +325,7 @@ export const createNotification = mutation({
 
     // Create notification
     const notificationId = await ctx.db.insert("notifications", {
-      userId: args.userId,
+      userId: user.userId,
       type: args.category ?? "delivery",
       title: args.title,
       description: args.description,
@@ -451,10 +474,22 @@ export const sendDeliveryNotification = internalMutation({
     if (!delivery) return;
 
     const order = await ctx.db.get(delivery.orderId);
-    const orderIdShort = order ? args.deliveryId.slice(-6).toUpperCase() : "UNKNOWN";
+    const orderIdShort = args.deliveryId.slice(-6).toUpperCase();
+
+    // Idempotency: one event type per delivery must not produce duplicate
+    // notifications when a domain transition is retried. eventKey is derived
+    // server-side from the event + the authoritative delivery id.
+    const eventKey = `${args.eventType}:${args.deliveryId}`;
+
+    // Resolve the driver's display name once (for {driverName} templates).
+    let driverName: string | null = null;
+    if (delivery.courierId) {
+      const courier = await ctx.db.get(delivery.courierId);
+      driverName = courier?.name ?? null;
+    }
 
     const now = Date.now();
-    const results = [];
+    const results: Id<"users">[] = [];
 
     const log = createLogger(LOG_CATEGORIES.NOTIFICATION);
     log.info(`Sending delivery notification: ${args.eventType}`, {
@@ -463,13 +498,24 @@ export const sendDeliveryNotification = internalMutation({
     });
 
     for (const userId of args.recipientUserIds) {
+      // Idempotency: skip if this (user, event) notification already exists.
+      const existing = await ctx.db
+        .query("notifications")
+        .withIndex("by_user_event", (q) =>
+          q.eq("userId", userId).eq("eventKey", eventKey)
+        )
+        .first();
+      if (existing) {
+        continue;
+      }
+
       // Check preferences
       const prefs = await ctx.db
         .query("notification_preferences")
         .withIndex("by_user", (q) => q.eq("userId", userId))
         .unique();
 
-      // Skip if delivery updates disabled
+      // Skip if delivery updates disabled for delivery-category events
       if (prefs && !prefs.deliveryUpdates && template.category === "delivery") {
         continue;
       }
@@ -478,13 +524,18 @@ export const sendDeliveryNotification = internalMutation({
       let title = template.titleTemplate;
       let description = template.descriptionTemplate;
 
-      description = description.replace("{orderId}", orderIdShort);
+      description = description.split("{orderId}").join(orderIdShort);
+      if (driverName) {
+        title = title.split("{driverName}").join(driverName);
+        description = description.split("{driverName}").join(driverName);
+      }
 
-      // Apply custom template data
+      // Apply custom template data (fills any remaining placeholders, including
+      // {orderId} and {reason} in the title when a template needs it there)
       if (args.templateData) {
         for (const [key, value] of Object.entries(args.templateData)) {
-          title = title.replace(`{${key}}`, value);
-          description = description.replace(`{${key}}`, value);
+          title = title.split(`{${key}}`).join(value);
+          description = description.split(`{${key}}`).join(value);
         }
       }
 
@@ -496,6 +547,7 @@ export const sendDeliveryNotification = internalMutation({
         description,
         isRead: false,
         entityId: args.deliveryId,
+        eventKey,
         createdAt: now,
       });
 
@@ -530,6 +582,8 @@ export const sendPaymentNotification = internalMutation({
       .withIndex("by_user", (q) => q.eq("userId", args.userId))
       .unique();
 
+    // Existing preference rule (unchanged): the deliveryUpdates toggle is the
+    // only opt-out in the model and gates delivery- AND payment-category events.
     if (prefs && !prefs.deliveryUpdates && template.category === "payment") {
       return;
     }
@@ -540,8 +594,8 @@ export const sendPaymentNotification = internalMutation({
 
     if (args.templateData) {
       for (const [key, value] of Object.entries(args.templateData)) {
-        title = title.replace(`{${key}}`, value);
-        description = description.replace(`{${key}}`, value);
+        title = title.split(`{${key}}`).join(value);
+        description = description.split(`{${key}}`).join(value);
       }
     }
 

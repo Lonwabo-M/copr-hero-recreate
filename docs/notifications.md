@@ -78,10 +78,14 @@ notifications: {
   title: string,
   description: string,
   isRead: boolean,
+  // Idempotency: `${eventType}:${deliveryId}` — unique per (userId, eventKey).
+  eventKey?: string,
   entityId?: string,
   createdAt: number,
 }
 ```
+
+Indexes: `by_user`, `by_user_unread`, `by_user_event` (idempotency lookup).
 
 ### Notification Preferences
 
@@ -264,42 +268,103 @@ When a user has no preferences record:
 
 ---
 
-## Integration Points
+## Integration Points (implemented)
 
-### Delivery State Machine
+The notification lifecycle is wired into the authoritative domain operations. All senders are **internal mutations** (`internal.notifications.service.*`) invoked from server-side domain code — never from React, and never with client-supplied recipients.
+
+### Delivery State Machine (all delivery lifecycle events)
+
+Every customer-facing transition in `src/convex/deliveries/state_machine.ts` fans out through one error-isolated helper, `notifyDeliveryEvent`, which resolves the recipient **server-side** from the authoritative order sender and delegates to `sendDeliveryNotification`:
+
+| Domain event (audit action) | Notification type | Recipient (server-resolved) |
+|---|---|---|
+| order + delivery created (both creation paths) | `delivery_created` | order sender |
+| `assignDriver` | `delivery_assigned` (+ `{driverName}`) | order sender |
+| `acceptDelivery` | `delivery_accepted` | order sender |
+| `rejectDelivery` | `delivery_rejected` | order sender |
+| `startDelivery` (en route to pickup) | `delivery_en_route_pickup` | order sender |
+| `arriveAtPickup` | `delivery_arrived_pickup` | order sender |
+| `confirmPickup` | `delivery_picked_up` | order sender |
+| `startTransit` | `delivery_in_transit` | order sender |
+| `arriveAtDropoff` | `delivery_arrived_dropoff` | order sender |
+| `completeDelivery` | `delivery_completed` | order sender |
+| `cancelDelivery` | `delivery_cancelled` (+ `{reason}` when provided) | order sender |
+| `failDelivery` | `delivery_failed` (+ `{reason}` or customer-safe fallback) | order sender |
+| `reassignDelivery` | `delivery_reassigned` | order sender |
+
+Notification failure is caught and logged — it can never fail the delivery transaction itself.
 
 ```typescript
-// In state_machine.ts completeDelivery mutation
-await ctx.runMutation(api.notifications.service.sendDeliveryNotification, {
+// state_machine.ts — helper used by every transition
+async function notifyDeliveryEvent(ctx, eventType, deliveryId, extra?) {
+  try {
+    const delivery = await ctx.db.get(deliveryId);
+    if (!delivery) return;
+    const recipientUserIds = extra?.recipientUserIds ?? [];
+    if (extra?.recipientUserIds === undefined) {
+      const order = await ctx.db.get(delivery.orderId);
+      if (order?.senderId) recipientUserIds.push(order.senderId);
+    }
+    if (recipientUserIds.length === 0) return;
+    await ctx.runMutation(internal.notifications.service.sendDeliveryNotification, {
+      deliveryId, eventType, recipientUserIds, templateData: extra?.templateData,
+    });
+  } catch (error) {
+    console.error(`[notifyDeliveryEvent] ...`, error);
+  }
+}
+```
+
+### Dispatch Engine (driver-facing)
+
+`createDispatchOfferInternal` (the single offer-creation point used by dispatch and re-dispatch) notifies the offer's authoritative target driver:
+
+```typescript
+await ctx.runMutation(internal.notifications.service.sendDeliveryNotification, {
   deliveryId: args.deliveryId,
-  eventType: "delivery_completed",
-  recipientUserIds: [order.senderId],
-  templateData: {},
+  eventType: "delivery_offer",
+  recipientUserIds: [args.driverId],
 });
 ```
 
-### Dispatch Engine
+The notification is idempotent per (event, delivery, driver), so re-dispatch to the same driver never duplicates the notification.
 
-```typescript
-// In dispatch/engine.ts when offer is sent
-await ctx.runMutation(api.notifications.service.sendDeliveryNotification, {
-  deliveryId: args.deliveryId,
-  eventType: "delivery_assigned",
-  recipientUserIds: [order.senderId],
-  templateData: { driverName: driver.name },
-});
-```
+### POD Completion (customer)
 
-### Pricing Service
+`completeDeliveryWithPOD` (`pod/service.ts`) notifies the customer (order sender) after the delivery is marked delivered and the settlement is created. Uses `delivery_completed` — the same idempotency key as the state-machine completion path, so a customer who completes via POD gets exactly one completion notification.
 
-```typescript
-// In pricing/service.ts when settlement completes
-await ctx.runMutation(api.notifications.service.sendPaymentNotification, {
-  userId: driverId,
-  eventType: "settlement_completed",
-  templateData: { amount: (earnings / 100).toFixed(2) },
-});
-```
+### Payment Confirmation (customer)
+
+`completePaymentTransaction` (`payments/mutations.ts`, internal, provider-evidence-driven) notifies the transaction's authoritative payer with `payment_confirmed`. Customer-safe wording only — no settlement, earnings, or platform-fee internals.
+
+Financial notifications that are **not** wired (deliberately): `settlement_completed`, `invoice_generated`, `payment_received` (wallet credit). No external payout or withdrawal system exists; wallet-credit events are not part of the delivery lifecycle. These templates remain defined but unused.
+
+---
+
+## Idempotency
+
+Domain transitions can be retried (client retries, provider webhooks). Duplicate notifications are prevented structurally:
+
+- `notifications.eventKey` stores `${eventType}:${deliveryId}` (derived server-side, never from the client).
+- The `by_user_event` index (`userId`, `eventKey`) backs an existence check before insert; a retried transition finds the existing record and skips it.
+- `sendPaymentNotification` is only invoked from already-idempotent internal payment mutations (`completePaymentTransaction` is a no-op for an already-`completed` transaction).
+
+---
+
+## Role / Resource Security
+
+- **Recipients are resolved server-side** from authoritative relationships (order sender, assigned courier, transaction payer, offer driver). No mutation accepts a recipient user ID from the client.
+- **Reading** is session-scoped: `getMyNotifications` filters by the authenticated user; `markAsRead`/`deleteNotification` verify ownership and deny foreign records.
+- **Creation boundaries**: the only public mutation, `createNotification`, ignores its legacy `userId` argument and always targets the authenticated session user — one user cannot generate notifications for another.
+- **Customer/driver boundary**: customers receive delivery + payment-confirmation events only; drivers receive `delivery_offer` events only. No customer sees dispatch/earnings internals; no driver sees customer payment-provider details.
+
+## Deep Links
+
+Delivery notifications carry `entityId` = the delivery ID (written server-side). The customer Notifications page navigates to the customer tracking page `/deliveries/:deliveryId` when a delivery notification is opened (and marks it read). Payment/system notifications stay in place — no separate payment-detail route exists. Driver notifications currently surface on the Driver Home page (recent items + unread count) via the same session-scoped query; opening the Driver Offers / Active Delivery pages shows the underlying state. No links cross role boundaries.
+
+## External Channels
+
+**Not implemented by this system.** SMS, email, push (FCM/Web-push/Twilio/Resend/etc.) are not sent anywhere. The preference flags `emailNotifications`/`smsNotifications`/`pushNotifications` exist in the schema but no external transport consumes them. The lifecycle is strictly in-app: domain event → Convex notification record → reactive query → UI.
 
 ---
 

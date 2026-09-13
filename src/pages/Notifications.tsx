@@ -1,4 +1,5 @@
 import { useQuery, useMutation } from "convex/react";
+import { useNavigate } from "react-router";
 import { api } from "@/convex/_generated/api";
 import CustomerShell from "@/components/shells/CustomerShell";
 import { Package, CreditCard, AlertTriangle, Bell, Loader2 } from "lucide-react";
@@ -14,6 +15,7 @@ const iconMap: Record<string, typeof Package> = {
 };
 
 export default function Notifications() {
+  const navigate = useNavigate();
   const notifications = useQuery(api.notifications.service.getMyNotifications, {});
   const markAsRead = useMutation(api.notifications.service.markAsRead);
   const markAllAsRead = useMutation(api.notifications.service.markAllAsRead);
@@ -31,6 +33,17 @@ export default function Notifications() {
       await markAsRead({ notificationId: notificationId as any });
     } catch (error) {
       console.error("Failed to mark as read:", error);
+    }
+  };
+
+  // Deep link: delivery notifications open the customer's live tracking page
+  // for that delivery (entityId is the delivery id written server-side at
+  // creation). Payment/system notifications stay in place — no payment detail
+  // route exists to target.
+  const handleNotificationOpen = (n: { _id: string; type: string; isRead: boolean; entityId?: string | null }) => {
+    if (!n.isRead) void handleMarkRead(n._id);
+    if (n.type === "delivery" && n.entityId) {
+      navigate(`/deliveries/${n.entityId}`);
     }
   };
 
@@ -93,8 +106,8 @@ export default function Notifications() {
                   <div
                     key={n._id}
                     className={`notification-item ${!n.isRead ? "unread" : ""}`}
-                    onClick={() => !n.isRead && handleMarkRead(n._id)}
-                    style={{ cursor: n.isRead ? "default" : "pointer" }}
+                    onClick={() => handleNotificationOpen(n)}
+                    style={{ cursor: "pointer" }}
                   >
                     <div className={`notification-icon ${n.type}`}><Icon size={20} /></div>
                     <div className="notification-content">

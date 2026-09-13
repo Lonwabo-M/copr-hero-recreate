@@ -21,6 +21,7 @@ import { v } from "convex/values";
 import { Id, Doc } from "../_generated/dataModel";
 import { DELIVERY_STATUS, ROLES } from "../schema";
 import { requireAuth, getCurrentAuthUser } from "../auth/authorization";
+import { internal } from "../_generated/api";
 import {
   createScoringService,
   DeliveryContext,
@@ -614,6 +615,25 @@ async function createDispatchOfferInternal(
     status: "pending",
     offeredAt: Date.now(),
     expiresAt: args.expiresAt,
+  }).then(async (offerId: Id<"dispatch_offers">) => {
+    // Driver-facing in-app notification for the new offer. Recipient is the
+    // offer's authoritative target driver — resolved server-side. The
+    // notification sender is idempotent per (event, delivery, user): a
+    // re-dispatch to the same driver cannot create duplicate notifications.
+    // Notification failure never fails the dispatch itself.
+    try {
+      await ctx.runMutation(internal.notifications.service.sendDeliveryNotification, {
+        deliveryId: args.deliveryId,
+        eventType: "delivery_offer",
+        recipientUserIds: [args.driverId],
+      });
+    } catch (error) {
+      console.error(
+        `[createDispatchOfferInternal] offer notification failed for driver ${args.driverId}`,
+        error,
+      );
+    }
+    return offerId;
   });
 }
 

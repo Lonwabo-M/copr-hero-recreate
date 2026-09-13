@@ -198,6 +198,16 @@ export const completePaymentTransaction = internalMutation({
       orderId: tx.orderId,
     });
 
+    // Notify the customer their payment was confirmed. Recipient is the
+    // transaction's authoritative payer (server-resolved); internal mutation
+    // so no client identity is involved. Customer-safe wording only — no
+    // settlement/settlement internals are exposed.
+    await ctx.runMutation(internal.notifications.service.sendPaymentNotification, {
+      userId: tx.userId,
+      eventType: "payment_confirmed",
+      templateData: { orderId: args.transactionId.slice(-6).toUpperCase() },
+    });
+
     // NOTE: Deliberately NO calls to processSettlement/completeSettlement and
     // NO changes to deliveries/orders. Customer payment ≠ driver settlement
     // (docs/customer-payment.md §5).
