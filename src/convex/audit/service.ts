@@ -19,11 +19,11 @@
  * - Compliance reporting
  */
 
-import { query, internalMutation, internalQuery } from "../_generated/server";
+import { query, internalMutation, internalQuery, QueryCtx, MutationCtx } from "../_generated/server";
 import { v } from "convex/values";
 import { Id, Doc } from "../_generated/dataModel";
 import { ROLES, PERMISSIONS } from "../schema";
-import { getCurrentAuthUser } from "../auth/authorization";
+import { getCurrentAuthUser, AuthUser } from "../auth/authorization";
 
 // ─── Audit Event Types ────────────────────────────────────────────────────────
 
@@ -475,10 +475,13 @@ export const getAuditEventsForDelivery = query({
     const user = await getCurrentAuthUser(ctx);
     if (!user) throw new Error("Authentication required");
 
-    // Authorization check
-    if (!canViewAuditForDelivery(user)) {
-      throw new Error("Access denied: insufficient permissions to view audit logs");
-    }
+    // Resolve the resource first so authorization can be scoped to it.
+    // Same resource-level ownership rule as deliveries/state_machine.getDelivery:
+    // role eligibility alone is NOT access — the delivery's company/assignment
+    // is resolved server-side and cross-company reads fail closed.
+    const delivery = await ctx.db.get(args.deliveryId);
+    if (!delivery) throw new Error("Delivery not found");
+    await assertDeliveryAuditAccess(ctx, user, delivery);
 
     const events = await ctx.db
       .query("audit_events")
@@ -504,9 +507,13 @@ export const getAuditEventsForOrder = query({
     const user = await getCurrentAuthUser(ctx);
     if (!user) throw new Error("Authentication required");
 
-    if (!canViewAuditForOrder(user)) {
-      throw new Error("Access denied: insufficient permissions to view audit logs");
-    }
+    // Resolve the resource first so authorization can be scoped to it.
+    // Resource-level ownership rule mirrors getDelivery: operations/super_admin
+    // have full access; company_admin must own the order's business; customers
+    // must be the order sender. Cross-company reads fail closed.
+    const order = await ctx.db.get(args.orderId);
+    if (!order) throw new Error("Order not found");
+    assertOrderAuditAccess(user, order);
 
     const events = await ctx.db
       .query("audit_events")
@@ -713,36 +720,81 @@ export const getAuditStats = query({
 
 // ─── Authorization Helpers ────────────────────────────────────────────────────
 
-function canViewAuditForDelivery(user: any): boolean {
-  // Operations, company_admin, and super_admin can view all audit logs
-  const allowedRoles = [ROLES.OPERATIONS, ROLES.COMPANY_ADMIN, ROLES.SUPER_ADMIN];
-  if (allowedRoles.includes(user.role)) {
-    return true;
+/**
+ * Resource-level audit access for a delivery.
+ *
+ * Mirrors deliveries/state_machine.getDelivery exactly:
+ *   - SUPER_ADMIN / OPERATIONS: any delivery
+ *   - COMPANY_ADMIN: only deliveries whose order belongs to their company
+ *   - DRIVER: only deliveries assigned to them
+ *   - CUSTOMER: only deliveries whose order they sent
+ *
+ * Fails closed: a company admin with no company association, a missing order,
+ * or an order whose ownership cannot be established is denied. No client-
+ * supplied identity is trusted — company/ownership comes from server records.
+ */
+async function assertDeliveryAuditAccess(
+  ctx: QueryCtx | MutationCtx,
+  user: AuthUser,
+  delivery: Doc<"deliveries">
+): Promise<void> {
+  if (user.role === ROLES.SUPER_ADMIN || user.role === ROLES.OPERATIONS) {
+    return;
   }
 
-  // Drivers can view audit for their own deliveries
+  if (user.role === ROLES.COMPANY_ADMIN) {
+    const order = await ctx.db.get(delivery.orderId);
+    if (!order || !user.businessId || order.businessId !== user.businessId) {
+      throw new Error("Access denied: delivery belongs to another company");
+    }
+    return;
+  }
+
   if (user.role === ROLES.DRIVER) {
-    return true; // Will be filtered by delivery assignment in practice
+    if (delivery.courierId !== user.userId) {
+      throw new Error("Access denied: not your delivery");
+    }
+    return;
   }
 
-  // Customers can view audit for their own deliveries
   if (user.role === ROLES.CUSTOMER) {
-    return true; // Will be filtered by order ownership in practice
+    const order = await ctx.db.get(delivery.orderId);
+    if (!order || order.senderId !== user.userId) {
+      throw new Error("Access denied: not your delivery");
+    }
+    return;
   }
 
-  return false;
+  throw new Error("Access denied: insufficient permissions to view audit logs");
 }
 
-function canViewAuditForOrder(user: any): boolean {
-  const allowedRoles = [ROLES.OPERATIONS, ROLES.COMPANY_ADMIN, ROLES.SUPER_ADMIN];
-  if (allowedRoles.includes(user.role)) {
-    return true;
+/**
+ * Resource-level audit access for an order.
+ *
+ *   - SUPER_ADMIN / OPERATIONS: any order
+ *   - COMPANY_ADMIN: only orders belonging to their company
+ *   - CUSTOMER: only orders they sent
+ *
+ * Fails closed: a company admin with no company association is denied.
+ */
+function assertOrderAuditAccess(user: AuthUser, order: Doc<"orders">): void {
+  if (user.role === ROLES.SUPER_ADMIN || user.role === ROLES.OPERATIONS) {
+    return;
   }
 
-  // Customers can view audit for their own orders
+  if (user.role === ROLES.COMPANY_ADMIN) {
+    if (!user.businessId || order.businessId !== user.businessId) {
+      throw new Error("Access denied: order belongs to another company");
+    }
+    return;
+  }
+
   if (user.role === ROLES.CUSTOMER) {
-    return true;
+    if (order.senderId !== user.userId) {
+      throw new Error("Access denied: not your order");
+    }
+    return;
   }
 
-  return false;
+  throw new Error("Access denied: insufficient permissions to view audit logs");
 }
