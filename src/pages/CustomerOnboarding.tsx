@@ -58,14 +58,6 @@ function validateEmail(email: string): string | null {
   return null;
 }
 
-function validWebsite(value: string): string | null {
-  if (!value.trim()) return null;
-  if (!/^(https?:\/\/)?[\w-]+(\.[\w-]+)+([/?#].*)?$/i.test(value.trim())) {
-    return "Enter a valid website address";
-  }
-  return null;
-}
-
 /** Per-step validation. Returns the first error, or null when the step is valid. */
 function validateStep(step: number, form: OnboardingForm): string | null {
   const req = (v: string, label: string) => (!v.trim() ? `${label} is required` : null);
@@ -75,8 +67,7 @@ function validateStep(step: number, form: OnboardingForm): string | null {
         req(form.businessName, "Business legal name") ??
         (form.businessPhone.trim() && !/^\+?[0-9\s()-]{3,20}$/.test(form.businessPhone.trim())
           ? "Enter a valid business phone number"
-          : null) ??
-        validWebsite(form.businessAddress) // businessAddress doubles as registered address text
+          : null)
       );
     case 1:
       return (
