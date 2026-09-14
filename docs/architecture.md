@@ -1262,19 +1262,19 @@ process.env.VLY_APP_NAME
 
 **Never log or expose secrets.** Never use secrets in queries or mutations (only in actions). Never include secrets in thrown error messages.
 
-### 12.4 Email OTP Secret
+### 12.4 Authentication & Email Secret
+
+**Authentication method: email + password** (Convex Auth `Password`
+provider). See `docs/authentication.md` for the complete flows.
 
 | | |
 |---|---|
-| Variable | `EMAIL_OTP_API_KEY` |
-| Scope | Server-only (Convex environment). Never prefixed `VITE_`; never bundled into client code. |
-| Used by | `src/convex/auth/emailOtp.ts` — `x-api-key` header on the email-OTP delivery request |
-| Required | Yes, for sign-in. Email OTP cannot deliver codes without it. |
-| Missing behaviour | Fails closed with a clear server-side configuration error naming the variable ("Email OTP provider is not configured. Add EMAIL_OTP_API_KEY …"). No fallback key, no silent skip, no fake success. |
-| Error hygiene | Provider/HTTP failures throw a generic "Failed to send verification email" — raw axios errors are never serialized (their `config.headers` contain the key) toward the client sign-in flow. |
-| Development | Set via the project's API keys settings (or `npx convex env set EMAIL_OTP_API_KEY ...`). The key is intentionally absent from `.env.example` — placeholder only. |
-| Production | Must be defined on the production Convex deployment before sign-in works. |
-| History | The key was previously hardcoded in `emailOtp.ts` (audit finding B3/S1). Removed and moved to the environment; **the previously exposed credential should be rotated with the provider** — code removal does not un-leak it. |
+| Primary auth | `Password` provider (`src/convex/auth.ts`) — sign-up, sign-in, password reset. Passwords hashed with Scrypt by the provider; never stored or logged in plaintext. |
+| Reset/email bridge | `src/convex/auth/email.ts` — sends password-reset codes only. |
+| Variable | `EMAIL_API_KEY` (server-only Convex environment; never `VITE_`-prefixed). |
+| Missing behaviour | Fails closed with a clear server-side configuration error naming the variable. No fallback key, no silent skip, no fake success. |
+| Error hygiene | Provider/HTTP failures throw a generic "Failed to send email" — raw axios errors are never serialized (their `config.headers` contain the key). |
+| Retired | `EMAIL_OTP_API_KEY` is no longer used by any code path — the email-OTP provider was removed. The previously exposed OTP bridge credential can be **retired/rotated** with the provider once legacy-account migration is complete. |
 
 ---
 

@@ -332,7 +332,7 @@ export default function DriverProfile() {
                   <div className="driver-timeline-item">
                     <span className="driver-timeline-time">Sign-in method</span>
                     <span className="driver-timeline-text">
-                      Email verification code — no password
+                      Email and password
                     </span>
                   </div>
                 </div>

@@ -3,21 +3,25 @@ import axios from "axios";
 import { RandomReader, generateRandomString } from "@oslojs/crypto/random";
 
 /**
- * Email OTP provider bridge.
+ * Email delivery bridge for Convex Auth's Password provider.
  *
- * The provider credential is read from the server-only Convex environment —
+ * Used ONLY for password-reset codes (and the optional linking provider that
+ * lets legacy verified-email accounts adopt a password). Primary sign-in /
+ * sign-up is email + password and needs no email delivery at all.
+ *
+ * The bridge credential is read from the server-only Convex environment —
  * never hardcoded, never logged, never returned to the client, and never
  * included in thrown error messages (an axios error object serializes its
  * request headers, which would leak the key). Missing configuration fails
  * clearly on the server before any provider call is attempted.
  *
- * Configure via the project's API-keys settings / Convex env:
- *   EMAIL_OTP_API_KEY
+ * Configure via the project's API keys settings / Convex env:
+ *   EMAIL_API_KEY
  */
-export const emailOtp = Email({
-  id: "email-otp",
+export const emailDelivery = Email({
+  id: "email-delivery",
   maxAge: 60 * 15, // 15 minutes
-  // This function can be asynchronous
+  // Six-digit numeric codes keep the reset experience consistent and simple.
   async generateVerificationToken() {
     const random: RandomReader = {
       read(bytes: Uint8Array) {
@@ -28,13 +32,13 @@ export const emailOtp = Email({
     return generateRandomString(random, alphabet, 6);
   },
   async sendVerificationRequest({ identifier: email, token }) {
-    const apiKey = process.env.EMAIL_OTP_API_KEY;
+    const apiKey = process.env.EMAIL_API_KEY;
     if (!apiKey) {
       // Fail closed with a clear server-side configuration error. The
       // message names only the missing variable — no secret material,
       // no provider infrastructure details.
       throw new Error(
-        "Email OTP provider is not configured. Add EMAIL_OTP_API_KEY in the project's API keys settings."
+        "Email delivery is not configured. Add EMAIL_API_KEY in the project's API keys settings."
       );
     }
 
@@ -52,12 +56,11 @@ export const emailOtp = Email({
           },
         },
       );
-    } catch (error) {
+    } catch {
       // Do NOT serialize the raw axios error: `error.config.headers` contains
       // the API key, and the JSON body would leak provider details. Throw a
-      // generic delivery failure instead — Convex Auth surfaces thrown
-      // errors from this hook toward the client sign-in flow.
-      throw new Error("Failed to send verification email");
+      // generic delivery failure instead.
+      throw new Error("Failed to send email");
     }
   },
 });
