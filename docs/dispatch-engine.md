@@ -246,13 +246,15 @@ Record rejection reason
 ### 4. Expiration
 
 ```
-Periodic process checks for expired offers
+Scheduled pass (every minute, see "Automated Offer Expiry" below)
     ↓
 Find all offers where expiresAt < now AND status = "pending"
     ↓
 Update status to "expired"
     ↓
-(If no accepted offers for delivery, triggers reassignment)
+Delivery becomes eligible for reassignment via the existing reassignment
+flows (manual Operations re-dispatch or `requestReassignment`); the
+Operations Centre surfaces `offer_expired` as an attention item.
 ```
 
 ---
@@ -348,6 +350,93 @@ Enforcement details:
 
 **Frontend visibility is not the authorization boundary**: React → Convex
 mutation → server-side authentication → RBAC → company ownership → reassignment.
+
+---
+
+## Automated Offer Expiry
+
+The production-readiness audit (B1) identified that `processExpiredOffers`
+had no automatic invocation — expired offers left deliveries stuck in
+`assigned` until Operations manually re-dispatched. A Convex cron now runs
+the existing expiry logic on a fixed schedule.
+
+### Schedule & Invocation Path
+
+| | |
+|---|---|
+| Cron definition | `src/convex/crons.ts` (Convex-native `cronJobs` — no external scheduler) |
+| Schedule | Every 1 minute (`crons.interval("expire dispatch offers", { minutes: 1 }, ...)`) |
+| Target | `internal.dispatch.engine.processExpiredOffersCron` (internal mutation — not reachable from clients) |
+| Shared core | `processExpiredOffersInternal` in `dispatch/engine.ts` — the *same* function the manual operations mutation invokes. There is one expiry implementation, not two. |
+
+**Why 1 minute:** the dispatch configuration expires offers after 2 minutes
+(`offerExpiryMs` in `scoring_service.ts`). A 1-minute interval processes an
+abandoned offer within ~1 minute of expiry, so a delivery is stuck in
+`assigned` for at most ~3 minutes end-to-end. The job performs one bounded
+indexed lookup per run (typically zero rows), so the frequency carries no
+meaningful load. This is scheduled cleanup, **not** exact real-time expiry.
+
+### What the Expiry Pass Does
+
+1. Range-scans `dispatch_offers` by the `by_expires` index for offers past
+   their `expiresAt`, filtering to `status === "pending"` in memory (Convex
+   index ranges require equality fields as the index prefix, so `status`
+   cannot be equality-filtered inside a range on `expiresAt`).
+2. Re-checks each offer inside the write loop: only offers still `pending`
+   and past expiry are closed (`status: "expired"`, `respondedAt` stamped).
+3. **Delivery state is never modified by the expiry pass.** Closing the last
+   pending offer makes the delivery eligible for reassignment through the
+   existing flows: manual Operations re-dispatch (`dispatchDelivery` /
+   `reassignDelivery`) or `requestReassignment`. The Operations Centre
+   surfaces these as `offer_expired` attention items.
+
+### Concurrency & Idempotency
+
+- The predicate `status === "pending" && expiresAt < now` can never match an
+  accepted, rejected, cancelled, or already-expired offer, so the cron cannot
+  interfere with a driver who accepted or invalidate a deliberate response.
+- The per-item re-check inside the write loop closes the race between the
+  index scan and the write: an acceptance/rejection/cancellation that lands
+  mid-pass is respected on the next read.
+- Already-expired offers no longer match, so repeated or overlapping runs
+  (cron, manual trigger, or both) are idempotent — no double-processing.
+- Repeated passes cannot regress terminal deliveries: the pass does not touch
+  `deliveries` at all, and `delivered`/`failed`/`cancelled` remain terminal in
+  the state machine.
+
+### Manual Operational Recovery
+
+The cron is automation, not a replacement for operator intervention. The
+manual, operations-authorized `processExpiredOffers` mutation keeps its exact
+existing boundary (authentication + OPERATIONS/COMPANY_ADMIN/SUPER_ADMIN
+roles) and remains available for immediate on-demand sweeps. It is safe to
+run immediately before or after a scheduled pass (idempotent core).
+
+### Observability & Failure Handling
+
+- Uses the existing structured logging service (`LOG_CATEGORIES.DISPATCH`).
+- A per-offer summary is logged when work occurred: counts of expired offers
+  and per-item failures. No offer/delivery/driver identifiers or sensitive
+  values are logged in the summary; per-item error logs include offer,
+  delivery, and driver IDs strictly for diagnosis.
+- Per-item error isolation: a single problematic offer is logged and skipped
+  (staying `pending` for the next pass) instead of terminating the run.
+  Failures are never silently swallowed.
+
+### Notifications & Audit
+
+No new notification or audit behaviour was introduced for expiry. Offer
+creation notifications (`delivery_offer`) fire at dispatch time, not expiry;
+the expiry pass only closes offers. Existing dispatch/reassignment audit
+behaviour is unchanged.
+
+### Tests
+
+`src/convex/dispatch/expiry_cron.test.ts` covers: cron wiring and interval,
+internal-only invocation, shared-core delegation (no second implementation),
+predicate safety for accepted/rejected/cancelled/expired offers, the
+concurrency re-check, per-item error isolation, observability, terminal-state
+integrity, and manual-recovery availability.
 
 ---
 

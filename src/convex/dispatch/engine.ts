@@ -16,7 +16,12 @@
  * - All state transitions are validated
  */
 
-import { mutation, query } from "../_generated/server";
+import {
+  mutation,
+  query,
+  internalMutation,
+  MutationCtx,
+} from "../_generated/server";
 import { v } from "convex/values";
 import { Id, Doc } from "../_generated/dataModel";
 import { DELIVERY_STATUS, ROLES } from "../schema";
@@ -28,6 +33,7 @@ import {
   DriverCandidate,
   haversineDistance,
 } from "./scoring_service";
+import { createLogger, LOG_CATEGORIES } from "../logging/service";
 
 // ─── Public Queries ───────────────────────────────────────────────────────────
 
@@ -452,7 +458,89 @@ export const reassignDelivery = mutation({
 });
 
 /**
- * Process expired offers and trigger reassignment if needed.
+ * Shared expiry-processing core (existing logic, extracted for reuse).
+ *
+ * Closes every dispatch offer whose `expiresAt` has passed while it is still
+ * `pending`. Accepted / rejected / expired / cancelled offers are untouched,
+ * and no delivery state is modified here — a closed offer makes the delivery
+ * eligible for the existing reassignment flows (manual Operations
+ * re-dispatch or `requestReassignment`), which remain authoritative.
+ *
+ * Idempotent: an already-`expired` offer no longer matches the predicate, so
+ * repeated runs (cron, manual trigger, overlapping invocations) cannot
+ * double-process an offer.
+ *
+ * Error isolation: a per-offer failure is logged with context and skipped so
+ * one bad record cannot terminate the whole pass. Failures are never silent —
+ * they are counted and reported in the run summary.
+ */
+async function processExpiredOffersInternal(ctx: MutationCtx) {
+  const now = Date.now();
+  let expiredCount = 0;
+  let failureCount = 0;
+
+  const log = createLogger(LOG_CATEGORIES.DISPATCH);
+
+  // Bounded index scan: `by_expires` narrows candidates to offers past their
+  // expiry window; the status predicate is applied in-memory because Convex
+  // index ranges require equality fields to be a prefix of the index
+  // ("expiresAt" leads here, so "status" cannot be equality-filtered in the
+  // range itself). Still far narrower than scanning all offers.
+  const candidateOffers = await ctx.db
+    .query("dispatch_offers")
+    .withIndex("by_expires", (q) => q.lt("expiresAt", now))
+    .collect();
+  const expiredOffers = candidateOffers.filter(
+    (o) => o.status === "pending"
+  );
+
+  for (const offer of expiredOffers) {
+    try {
+      // Re-check inside the loop: an overlapping acceptance / rejection /
+      // cancellation may have flipped the status between the scan and the
+      // write. Only offers still `pending` and past their expiry are closed.
+      const current = await ctx.db.get(offer._id);
+      if (!current || current.status !== "pending" || current.expiresAt >= now) {
+        continue;
+      }
+
+      await ctx.db.patch(current._id, {
+        status: "expired",
+        respondedAt: now,
+      });
+      expiredCount++;
+    } catch (error) {
+      // One problematic offer must not stop the scheduled run. Log with
+      // enough context to diagnose; the offer stays `pending` and will be
+      // retried by the next pass.
+      failureCount++;
+      log.error("Failed to expire dispatch offer", {
+        metadata: {
+          offerId: offer._id,
+          deliveryId: offer.deliveryId,
+          driverId: offer.driverId,
+          expiresAt: offer.expiresAt,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      });
+    }
+  }
+
+  if (expiredCount > 0 || failureCount > 0) {
+    log.info("Expired-offer pass complete", {
+      metadata: { expiredCount, failureCount },
+    });
+  }
+
+  return { expiredCount, failureCount };
+}
+
+/**
+ * Process expired offers (existing operations mutation, preserved).
+ *
+ * Public, operations-authorized trigger for the shared expiry core. Manual
+ * recovery from the Operations Centre keeps working exactly as before; the
+ * scheduled job invokes the same core via `processExpiredOffersCron` below.
  */
 export const processExpiredOffers = mutation({
   args: {},
@@ -465,25 +553,22 @@ export const processExpiredOffers = mutation({
       throw new Error("Access denied");
     }
 
-    const now = Date.now();
-    let expiredCount = 0;
-
-    // Find all pending offers that have expired
-    const allOffers = await ctx.db.query("dispatch_offers").collect();
-    const expiredOffers = allOffers.filter(
-      (o) => o.status === "pending" && o.expiresAt < now
-    );
-
-    for (const offer of expiredOffers) {
-      await ctx.db.patch(offer._id, {
-        status: "expired",
-        respondedAt: now,
-      });
-      expiredCount++;
-    }
-
-    return { expiredCount };
+    return processExpiredOffersInternal(ctx);
   },
+});
+
+/**
+ * Scheduled execution path for offer expiry (invoked by crons.ts only).
+ *
+ * Internal mutation so no public endpoint exists solely for the cron. Runs
+ * the same shared core as the manual `processExpiredOffers` operation —
+ * identical predicate, identical write, no second expiry implementation.
+ * Cron invocations have no user session, so no authentication is performed
+ * here; the function is not reachable from clients.
+ */
+export const processExpiredOffersCron = internalMutation({
+  args: {},
+  handler: async (ctx) => processExpiredOffersInternal(ctx),
 });
 
 // ─── Internal Helpers ─────────────────────────────────────────────────────────
@@ -491,6 +576,8 @@ export const processExpiredOffers = mutation({
 /**
  * Internal helper: Discover candidate drivers for a delivery.
  */
+// (helper functions continue below; the expiry core lives above with the
+// dispatch entry points it serves)
 async function discoverCandidatesInternal(
   ctx: any,
   args: { pickupLat: number; pickupLng: number; packageWeight: number; maxDistance: number }
