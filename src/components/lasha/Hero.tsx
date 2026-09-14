@@ -1,4 +1,4 @@
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, MapPin } from "lucide-react";
 import { useNavigate } from "react-router";
 
 export default function Hero() {
@@ -75,6 +75,34 @@ export default function Hero() {
               Track Shipment
               <ArrowRight size={14} />
             </button>
+          </div>
+
+          {/* Pilot coverage note — bottom of the hero */}
+          <div
+            style={{
+              marginTop: 48,
+              maxWidth: 520,
+              display: "flex",
+              gap: 14,
+              borderLeft: "2px solid var(--lasha-cyan)",
+              paddingLeft: 16,
+              alignItems: "flex-start",
+            }}
+          >
+            <MapPin size={16} style={{ color: "var(--lasha-cyan)", flexShrink: 0, marginTop: 3 }} />
+            <p
+              style={{
+                fontSize: 14,
+                lineHeight: 1.6,
+                color: "rgba(255,255,255,0.6)",
+                margin: 0,
+              }}
+            >
+              <strong style={{ color: "#ffffff", fontWeight: 700 }}>
+                Pilot coverage:
+              </strong>{" "}
+              Western Cape (Cape Winelands to Cape Metro) and Gauteng (East Rand)
+            </p>
           </div>
         </div>
       </div>

@@ -86,9 +86,6 @@
   position: relative;
   padding: 8px 0;
   transition: color 0.18s ease;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
 }
 
 .dash-topnav-link:hover {
@@ -820,11 +817,6 @@
 }
 
 @media (max-width: 1024px) {
-  /* The topnav links now contain only the single "Home" (landing) link, so
-     they stay visible on mobile — the sidebar has no landing-page entry. */
-  .dash-topnav-links {
-    gap: 0 !important;
-  }
 
   .dash-mobile-toggle {
     display: flex !important;

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Menu, ArrowLeft } from "lucide-react";
+import { Menu } from "lucide-react";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { clearAllOfflineData } from "@/lib/offline/db";
 import { useNavigate } from "react-router";
@@ -56,17 +56,21 @@ export default function AppShell({
 
   const handleNav = (item: NavItem) => {
     navigate(item.route);
-  };
-
-  const handleLogout = () => {
+  };  const handleLogout = () => {
     // Offline resilience hygiene: queued operational data (buffered GPS,
     // cached deliveries) is session-scoped and must never survive logout —
     // it would leak one driver's location trail into another session on a
     // shared device. Cleared BEFORE sign-out so it runs while still mounted.
     void clearAllOfflineData().catch((err) =>
       console.warn("[logout] offline data cleanup failed:", err)
-    );
-    signOut();
+  );
+    // Land on the public landing page after logout. A full load here is
+    // deliberate: it is immune to the RequireAuth redirect race (the router
+    // can bounce to /auth the moment isAuthenticated flips) and guarantees a
+    // clean post-session state.
+    void signOut().finally(() => {
+      window.location.assign("/");
+    });
   };
 
   return (
@@ -97,18 +101,6 @@ export default function AppShell({
           )}
           <span className="dash-topnav-logo-text">{brandLabel ?? "Lasha"}</span>
         </div>
-
-        {/* Simple way back to the public landing page from any shell. */}
-        <nav className="dash-topnav-links">
-          <button
-            className="dash-topnav-link"
-            onClick={() => navigate("/")}
-            title="Back to the Lasha landing page"
-          >
-            <ArrowLeft size={14} />
-            Home
-          </button>
-        </nav>
 
         <div className="dash-topnav-right">
           <button

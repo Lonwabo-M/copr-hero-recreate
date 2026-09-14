@@ -293,12 +293,35 @@ export default function CustomerOnboarding() {
           >
             Lasha
           </span>
-          <span
-            className="lasha-label"
-            style={{ fontSize: 10, color: "var(--lasha-cyan)" }}
-          >
-            Step {step + 1} of {STEPS.length}
-          </span>
+          <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
+            {/* Abort onboarding → back to the public landing page. */}
+            <button
+              type="button"
+              onClick={() => navigate("/")}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                background: "none",
+                border: "none",
+                color: "var(--lasha-cyan)",
+                fontFamily: "Inter, sans-serif",
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: "pointer",
+                padding: 0,
+              }}
+            >
+              <ArrowLeft size={14} />
+              Home
+            </button>
+            <span
+              className="lasha-label"
+              style={{ fontSize: 10, color: "var(--lasha-cyan)" }}
+            >
+              Step {step + 1} of {STEPS.length}
+            </span>
+          </div>
         </div>
         <div style={{ height: 3, backgroundColor: "var(--lasha-ivory-dark)" }}>
           <div

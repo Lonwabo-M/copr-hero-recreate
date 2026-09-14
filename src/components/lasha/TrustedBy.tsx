@@ -1,13 +1,16 @@
 import { useMemo } from "react";
 
 // ─── TrustedBy ───────────────────────────────────────────────────────────────
-// "Trusted by" logo carousel directly below the hero. Simple infinite marquee
-// (CSS animation, pausable on hover) of the partner logos the user listed.
-// Real logo files can be dropped into /public/logos/<file> later — each entry
-// below has an img src that renders only if the file exists, with a styled
-// text fallback until then (no fake logo images, no mock assets required).
+// "Trusted by leading organisations" logo carousel directly below the hero.
+// Layout follows the supplied reference: the uppercase title sits on the left
+// of the strip, logos scroll in an infinite marquee to its right.
 //
-// Partners: TIA, CSIR, Welo, Department of Science and Technology.
+// Logos render grayscale by default and regain their full colour on hover.
+// Real logo files can be dropped into /public/logos/ later — each entry has an
+// img src that renders once the file exists, with a styled text fallback until
+// then (no fake logo images).
+//
+// Partners: CSIR, Welo, TIA, Department of Science and Technology.
 
 interface Partner {
   name: string;
@@ -18,9 +21,9 @@ interface Partner {
 }
 
 const PARTNERS: Partner[] = [
-  { name: "TIA", mark: "TIA", src: "/logos/tia.svg" },
   { name: "CSIR", mark: "CSIR", src: "/logos/csir.svg" },
   { name: "Welo", mark: "Welo", src: "/logos/welo.svg" },
+  { name: "TIA", mark: "TIA", src: "/logos/tia.svg" },
   { name: "Department of Science and Technology", mark: "DST", src: "/logos/dst.svg" },
 ];
 
@@ -30,94 +33,106 @@ export default function TrustedBy() {
 
   return (
     <section
-      aria-label="Trusted by"
+      aria-label="Trusted by leading organisations"
       style={{
-        backgroundColor: "#ffffff",
+        backgroundColor: "var(--lasha-ivory)",
         borderBottom: "1px solid var(--lasha-border-light)",
-        padding: "36px 0",
+        padding: "28px 0",
         overflow: "hidden",
       }}
     >
-      <div className="lasha-container">
+      <div className="trustedby-row lasha-container">
+        {/* Title — fixed on the left of the strip (reference layout) */}
         <p
           className="lasha-label"
-          style={{ fontSize: 10, textAlign: "center", marginBottom: 24 }}
+          style={{ fontSize: 10, whiteSpace: "nowrap", marginRight: 40, flexShrink: 0 }}
         >
-          Trusted by
+          Trusted by leading organisations
         </p>
-      </div>
 
-      {/* Marquee strip */}
-      <div className="trustedby-viewport">
-        <div className="trustedby-track">
-          {strip.map((p, i) => (
-            <div
-              key={`${p.name}-${i}`}
-              className="trustedby-tile"
-              title={p.name}
-              aria-hidden={i >= PARTNERS.length}
-            >
-              <img
-                src={p.src}
-                alt={p.name}
-                loading="lazy"
-                onError={(e) => {
-                  // No logo file uploaded yet → hide the img; the styled text
-                  // fallback renders instead. Swap in /public/logos/*.svg when
-                  // the real assets are available.
-                  const img = e.currentTarget;
-                  img.style.display = "none";
-                  const fallback = img.nextElementSibling as HTMLElement | null;
-                  if (fallback) fallback.style.display = "flex";
-                }}
-              />
+        {/* Marquee strip */}
+        <div className="trustedby-viewport">
+          <div className="trustedby-track">
+            {strip.map((p, i) => (
               <div
-                className="trustedby-fallback"
-                style={{ display: "none" }}
-                aria-hidden="true"
+                key={`${p.name}-${i}`}
+                className="trustedby-tile"
+                title={p.name}
+                aria-hidden={i >= PARTNERS.length}
               >
-                <span className="trustedby-fallback-mark">{p.mark}</span>
-                <span className="trustedby-fallback-name">{p.name}</span>
+                <img
+                  src={p.src}
+                  alt={p.name}
+                  loading="lazy"
+                  onError={(e) => {
+                    // No logo file uploaded yet → hide the img; the styled text
+                    // fallback renders instead. Swap in /public/logos/*.svg
+                    // when the real assets are available.
+                    const img = e.currentTarget;
+                    img.style.display = "none";
+                    const fallback = img.nextElementSibling as HTMLElement | null;
+                    if (fallback) fallback.style.display = "flex";
+                  }}
+                />
+                <div
+                  className="trustedby-fallback"
+                  style={{ display: "none" }}
+                  aria-hidden="true"
+                >
+                  <span className="trustedby-fallback-mark">{p.mark}</span>
+                  <span className="trustedby-fallback-name">{p.name}</span>
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </div>
 
       <style>{`
+        .trustedby-row {
+          display: flex;
+          align-items: center;
+        }
         .trustedby-viewport {
+          flex: 1;
           overflow: hidden;
-          -webkit-mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
-          mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+          -webkit-mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
+          mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
         }
         .trustedby-track {
           display: flex;
-          gap: 56px;
+          align-items: center;
+          gap: 72px;
           width: max-content;
-          padding-left: 56px;
-          animation: trustedby-scroll 30s linear infinite;
+          padding-left: 72px;
+          animation: trustedby-scroll 32s linear infinite;
         }
-        .trustedby-viewport:hover .trustedby-track {
+        .trustedby-row:hover .trustedby-track {
           animation-play-state: paused;
         }
         .trustedby-tile {
           display: flex;
           align-items: center;
           justify-content: center;
-          height: 56px;
-          min-width: 150px;
+          height: 52px;
+          min-width: 140px;
         }
-        .trustedby-tile img {
-          max-height: 44px;
-          max-width: 170px;
-          object-fit: contain;
+        /* Grayscale by default, full colour on hover (reference behaviour). */
+        .trustedby-tile img,
+        .trustedby-fallback-mark {
           filter: grayscale(1);
-          opacity: 0.6;
-          transition: opacity 0.2s ease, filter 0.2s ease;
+          opacity: 0.55;
+          transition: filter 0.25s ease, opacity 0.25s ease;
         }
-        .trustedby-tile img:hover {
+        .trustedby-tile:hover img,
+        .trustedby-tile:hover .trustedby-fallback-mark {
           filter: grayscale(0);
           opacity: 1;
+        }
+        .trustedby-tile img {
+          max-height: 42px;
+          max-width: 160px;
+          object-fit: contain;
         }
         .trustedby-fallback {
           flex-direction: column;
@@ -131,11 +146,6 @@ export default function TrustedBy() {
           font-weight: 800;
           letter-spacing: 0.08em;
           color: var(--lasha-navy);
-          opacity: 0.55;
-          transition: opacity 0.2s ease;
-        }
-        .trustedby-tile:hover .trustedby-fallback-mark {
-          opacity: 1;
         }
         .trustedby-fallback-name {
           font-size: 9px;
@@ -151,8 +161,18 @@ export default function TrustedBy() {
           from { transform: translateX(0); }
           to { transform: translateX(-50%); }
         }
-        @media (prefers-reduced-motion: reduce) {
-          .trustedby-track { animation: none; }
+        @media (max-width: 768px) {
+          .trustedby-row {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 16px;
+          }
+          .trustedby-row .lasha-label {
+            margin-right: 0;
+          }
+          .trustedby-viewport {
+            width: 100%;
+          }
         }
       `}</style>
     </section>
