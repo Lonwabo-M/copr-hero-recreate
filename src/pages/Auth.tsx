@@ -1,6 +1,6 @@
 import { useAuthActions } from "@convex-dev/auth/react";
 import { useState } from "react";
-import { useSearchParams, Link } from "react-router";
+import { useSearchParams, Link, useNavigate } from "react-router";
 import { ArrowRight, ArrowLeft, Eye, EyeOff } from "lucide-react";
 
 type Mode = "login" | "signup" | "forgot" | "reset";
@@ -54,6 +54,7 @@ function safeAuthError(err: unknown, fallback: string): string {
 
 export default function AuthPage({ redirectAfterAuth = "/post-auth" }: AuthProps) {
   const { signIn } = useAuthActions();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   // Preserve the exact deep-link the user was trying to reach (set by
   // RequireAuth/RoleGate as ?returnTo=...).
@@ -90,8 +91,11 @@ export default function AuthPage({ redirectAfterAuth = "/post-auth" }: AuthProps
     setLoading(true);
     setError("");
     try {
+      // signIn resolves only after the session token is stored (Convex Auth
+      // contract), so client-side navigation is safe here — a full page
+      // reload would re-download the bundle and add seconds of latency.
       await signIn("password", { email: email.trim(), password, flow: "signIn" });
-      window.location.href = returnTo ?? redirectAfterAuth;
+      navigate(returnTo ?? redirectAfterAuth, { replace: true });
     } catch (err: unknown) {
       setError(safeAuthError(err, "Invalid email or password"));
       setLoading(false);
@@ -115,7 +119,7 @@ export default function AuthPage({ redirectAfterAuth = "/post-auth" }: AuthProps
         password,
         flow: "signUp",
       });
-      window.location.href = returnTo ?? redirectAfterAuth;
+      navigate(returnTo ?? redirectAfterAuth, { replace: true });
     } catch (err: unknown) {
       setError(safeAuthError(err, "Could not create your account"));
       setLoading(false);
@@ -167,7 +171,7 @@ export default function AuthPage({ redirectAfterAuth = "/post-auth" }: AuthProps
         flow: "reset-verification",
       });
       // Reset signs the user in — continue to their role-aware destination.
-      window.location.href = returnTo ?? redirectAfterAuth;
+      navigate(returnTo ?? redirectAfterAuth, { replace: true });
     } catch (err: unknown) {
       setError(safeAuthError(err, "Invalid or expired reset code"));
       setLoading(false);
