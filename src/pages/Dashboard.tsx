@@ -3,8 +3,9 @@ import { Link } from "react-router";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import CustomerShell from "@/components/shells/CustomerShell";
-import { Loader2 } from "lucide-react";
+import { Loader2, Package } from "lucide-react";
 import "@/styles/dashboard.css";
+import "@/styles/pages.css";
 
 // Order type that matches what the dashboard components expect
 interface DashboardOrder {
@@ -114,10 +115,10 @@ export default function Dashboard() {
             <Loader2 size={24} className="animate-spin" style={{ color: "#999" }} />
           </div>
         ) : orders.length === 0 ? (
-          <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", height: "100%", gridColumn: "1 / -1", gap: 16 }}>
-            <div style={{ fontSize: 48, opacity: 0.3 }}>📦</div>
-            <h3 style={{ fontSize: 18, fontWeight: 600, color: "#333" }}>No deliveries yet</h3>
-            <p style={{ fontSize: 14, color: "#999" }}>Create your first delivery to get started.</p>
+          <div className="empty-state" style={{ gridColumn: "1 / -1" }}>
+            <div className="empty-state-icon"><Package size={24} /></div>
+            <div className="empty-state-title">No deliveries yet</div>
+            <div className="empty-state-desc">Create your first delivery to get started.</div>
           </div>
         ) : (
           <>

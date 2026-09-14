@@ -56,7 +56,9 @@ export default function AppShell({
 
   const handleNav = (item: NavItem) => {
     navigate(item.route);
-  };  const handleLogout = () => {
+  };
+
+  const handleLogout = () => {
     // Offline resilience hygiene: queued operational data (buffered GPS,
     // cached deliveries) is session-scoped and must never survive logout —
     // it would leak one driver's location trail into another session on a

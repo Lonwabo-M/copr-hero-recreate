@@ -1,14 +1,6 @@
 import { ArrowRight, MapPin } from "lucide-react";
-import { useNavigate } from "react-router";
 
 export default function Hero() {
-  const navigate = useNavigate();
-
-  const handleGuestAccess = () => {
-    sessionStorage.setItem("lasha_guest", "true");
-    navigate("/dashboard");
-  };
-
   return (
     <section
       id="hero"
@@ -61,10 +53,6 @@ export default function Hero() {
               Get Started
               <ArrowRight size={16} />
             </a>
-            <button onClick={handleGuestAccess} className="lasha-btn-secondary" style={{ color: "var(--lasha-cyan-light)", borderColor: "rgba(7,148,181,0.5)" }}>
-              Guest Access
-              <ArrowRight size={14} />
-            </button>
             <button
               onClick={() =>
                 document.querySelector("#how-it-works")?.scrollIntoView({ behavior: "smooth" })

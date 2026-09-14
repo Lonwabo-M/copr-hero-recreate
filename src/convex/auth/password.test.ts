@@ -247,6 +247,52 @@ test("dispatch/delivery auth surfaces unaffected by the auth-method change", () 
   assert.ok(authz.includes("hasPermission(user.role, permission)"), "RBAC evaluation unchanged");
 });
 
+// ─── Duplicate sign-up safety (no duplicate identities) ─────────────────────
+// Convex Auth keys authAccounts uniquely by (provider, providerAccountId=email).
+// Re-signup with the same email either signs into the EXISTING account (same
+// password — the library verifies the secret and returns the existing account)
+// or is rejected (different password) → the UI shows "An account with this
+// email already exists". One email can never create a second user row.
+test("duplicate signup is rejected safely — same email maps to one account", () => {
+  const libSource = readFileSync(
+    new URL(
+      "../../../node_modules/@convex-dev/auth/dist/server/implementation/mutations/createAccountFromCredentials.js",
+      import.meta.url
+    ),
+    "utf8"
+  );
+  // Uniqueness is enforced by the providerAndAccountId index lookup.
+  assert.ok(libSource.includes('"providerAndAccountId"'));
+  assert.ok(libSource.includes("already exists`"));
+  // Existing account with a matching secret returns the SAME account —
+  // it does not create a new user identity.
+  assert.ok(libSource.includes("user: (await ctx.db.get(existingAccount.userId))"));
+  // The auth UI maps the failure to a user-safe message.
+  const authPageSource = readFileSync(
+    new URL("../../pages/Auth.tsx", import.meta.url),
+    "utf8"
+  );
+  assert.ok(
+    authPageSource.includes('already exists")) return "An account with this email already exists"')
+  );
+});
+
+test("no fake guest auth path exists — entering the portal requires a session", () => {
+  const heroSource = readFileSync(
+    new URL("../../components/lasha/Hero.tsx", import.meta.url),
+    "utf8"
+  );
+  assert.ok(!heroSource.includes("lasha_guest"));
+  assert.ok(!heroSource.includes("Guest Access"));
+  // Route protection is unchanged: RequireAuth bounces unauthenticated users.
+  const requireAuthSource = readFileSync(
+    new URL("../../components/RequireAuth.tsx", import.meta.url),
+    "utf8"
+  );
+  assert.ok(requireAuthSource.includes("!isAuthenticated"));
+  assert.ok(requireAuthSource.includes("/auth?returnTo="));
+});
+
 // ─── Report ──────────────────────────────────────────────────────────────────
 
 console.log(`\n${passed} passed, ${failures.length} failed`);

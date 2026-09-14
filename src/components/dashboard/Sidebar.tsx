@@ -77,6 +77,7 @@ export default function Sidebar({
               <Icon size={20} strokeWidth={1.5} />
               <span>{item.label}</span>
               {item.hasNotif && !isActive && <span className="notif-dot" />}
+              {item.hasNotif && !isActive && <span className="visually-hidden">unread notifications</span>}
             </button>
           );
         })}
