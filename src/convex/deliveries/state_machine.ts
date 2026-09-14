@@ -488,6 +488,23 @@ export const assignDriver = mutation({
     const delivery = await ctx.db.get(args.deliveryId);
     if (!delivery) throw new Error("Delivery not found");
 
+    // 2b. Resolve the delivery's order (the authoritative company-owner
+    // record) and enforce company ownership for COMPANY_ADMIN — the same
+    // rule as dispatchDelivery/reassignDelivery/requestReassignment. The
+    // actor's company comes from the session user (never client args); the
+    // delivery's company comes from its order. Fails closed: a company
+    // admin with no company association, a missing order, or an order whose
+    // business cannot be established is denied. Runs before any write.
+    const order = await ctx.db.get(delivery.orderId);
+    if (!order) throw new Error("Order not found");
+
+    if ((user.role as string) === ROLES.COMPANY_ADMIN) {
+      const actorBusinessId = user.businessId;
+      if (!actorBusinessId || !order.businessId || order.businessId !== actorBusinessId) {
+        throw new Error("Access denied: delivery belongs to another company");
+      }
+    }
+
     // 3. Validate current state
     if (delivery.status !== DELIVERY_STATUS.PENDING_DISPATCH) {
       throw new Error(

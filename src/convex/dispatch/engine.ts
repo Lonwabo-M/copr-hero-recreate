@@ -167,9 +167,15 @@ export const dispatchDelivery = mutation({
       );
     }
 
-    // 4. Check company access (if company admin)
-    if (user.role === ROLES.COMPANY_ADMIN && order.businessId !== user.businessId) {
-      throw new Error("Access denied: delivery belongs to another company");
+    // 4. Check company access (if company admin) — same authoritative rule
+    // as reassignDelivery/requestReassignment/assignDriver. Fails closed:
+    // a company admin with no company association, or an order whose
+    // business cannot be established, is denied (undefined !== undefined
+    // alone would otherwise fail open).
+    if (user.role === ROLES.COMPANY_ADMIN) {
+      if (!user.businessId || !order.businessId || order.businessId !== user.businessId) {
+        throw new Error("Access denied: delivery belongs to another company");
+      }
     }
 
     // 5. Create delivery context for scoring

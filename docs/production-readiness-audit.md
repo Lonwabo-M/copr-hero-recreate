@@ -225,7 +225,7 @@ Observability exists: `/health`, `/health/live`, `/health/ready` + Vly monitorin
 | # | Blocker | Type | Status |
 |---|---|---|---|
 | B1 | Offer expiry automation (cron or ops-tab trigger for `processExpiredOffers`) | Operational reliability | **FIXED** — Convex cron added (`src/convex/crons.ts`), runs the existing expiry core every minute via `internal.dispatch.engine.processExpiredOffersCron`. See `docs/dispatch-engine.md` → "Automated Offer Expiry". |
-| B2 | COMPANY_ADMIN ownership check on `assignDriver` (parity with dispatch/reassign) | Security consistency | Open |
+| B2 | COMPANY_ADMIN ownership check on `assignDriver` (parity with dispatch/reassign) | Security consistency | **FIXED** — `assignDriver` now enforces the session-derived `delivery.orderId → orders.businessId` ownership rule (fail-closed) before any write; the same-class fail-open edge in `dispatchDelivery` (`undefined !== undefined`) was also fixed. See `docs/dispatch-engine.md` → "Assignment Authorization". |
 | B3 | Hardcoded email-OTP API key → environment configuration | Secret hygiene | Open |
 
 **Pilot-acceptable (documented, not blocking):** manual role provisioning; no admin-specific pages; no external payout; no SMS/email/push; manual tracking-retention execution; no wallet top-up charging.
@@ -237,7 +237,7 @@ Observability exists: `/health`, `/health/live`, `/health/ready` + Vly monitorin
 Ranked by production risk → customer impact → operational impact → complexity:
 
 1. ~~**B1 — Schedule offer expiry** (Convex cron calling `processExpiredOffers`): removes the only stuck-state path; small, isolated.~~ **DONE** — implemented as a 1-minute Convex cron invoking the existing expiry core (`processExpiredOffersCron`); verified by `expiry_cron.test.ts`.
-2. **B2 — `assignDriver` company-ownership check**: one-function authorization parity fix; reuses the `reassignDelivery` pattern.
+2. ~~**B2 — `assignDriver` company-ownership check**: one-function authorization parity fix; reuses the `reassignDelivery` pattern.~~ **DONE** — enforced fail-closed before any write; also fixed the same-class fail-open edge in `dispatchDelivery`; verified by `assign_authz.test.ts`.
 3. **B3 — Move the OTP bridge key to env**: trivial secret-hygiene fix.
 4. **Driver payout provider integration** (Paystack Transfers) behind the existing eligibility gate — the largest customer/operational value item after the gates are correct.
 5. **Admin role-management mutation** (super_admin-only, audited) to replace dashboard provisioning.

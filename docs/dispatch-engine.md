@@ -259,6 +259,66 @@ Operations Centre surfaces `offer_expired` as an attention item.
 
 ---
 
+## Assignment Authorization
+
+All operations that assign or re-dispatch a driver to a delivery enforce a
+consistent authorization model. The backend is authoritative — React UI
+visibility is never the authorization boundary:
+
+```
+React → Convex mutation → session authentication → RBAC permission →
+COMPANY_ADMIN company ownership (session-derived) → assignment
+```
+
+### Role Matrix
+
+| Operation | SUPER_ADMIN | OPERATIONS | COMPANY_ADMIN | FLEET_MANAGER | DRIVER | CUSTOMER |
+|---|---|---|---|---|---|---|
+| `dispatchDelivery` (engine) | ✅ | ✅ | ✅ own company only | ✅ | ❌ | ❌ |
+| `assignDriver` (state machine) | ✅ | ✅ | ✅ own company only | ❌ | ❌ | ❌ |
+| `reassignDelivery` (engine) | ✅ | ✅ | ✅ own company only | ❌ | ❌ | ❌ |
+| `requestReassignment` (state machine) | ✅ | ✅ | ✅ own company only | ❌ | ✅ own assignment only | ❌ |
+| `acceptAssignment` / `rejectAssignment` | — | ❌ | ❌ | ❌ | ✅ session driver only | ❌ |
+
+`FLEET_MANAGER` holds fleet/driver-management permissions but not
+`delivery:assign`; it is unchanged by the authorization hardening.
+
+### COMPANY_ADMIN Ownership Rule
+
+The authoritative ownership chain is `delivery.orderId → orders.businessId`,
+compared against `users.businessId` of the **session** user:
+
+- The actor's company is resolved server-side from the authenticated session
+  — never from client-supplied company/business/user/driver IDs.
+- The delivery's company is resolved from its order record — never inferred
+  from the assigned courier, pickup/drop-off location, or driver metadata.
+- **Fail closed:** a COMPANY_ADMIN with no company association, a missing
+  order, or an order whose business cannot be established is denied. Both
+  sides of the comparison must exist; an `undefined !== undefined` comparison
+  alone would fail open and is explicitly guarded against in every check.
+
+### Authorization Ordering
+
+The ownership check executes **before any write** — before assignment
+patches, offer cancellation/creation, tracking events, success audit events,
+or notifications. An unauthorized COMPANY_ADMIN request therefore produces
+no assignment change, no state change, no offer change, and no successful
+audit event, and the mutation remains atomic (authorization failures throw
+before the first `db.patch`).
+
+### Assignment Target Validation
+
+The target driver is normal business input, not proof of authority. Existing
+target validation is preserved: the driver must exist, have an available
+driver profile, and the vehicle must belong to that driver. Note that the
+dispatch model treats drivers as a **platform-wide courier pool**
+(`driver_profiles` has no company relationship, and `dispatchDelivery` offers
+any available driver to any company's delivery); a company-scoped driver
+restriction would contradict the dispatch engine and invent a new fleet
+model, so it is intentionally not enforced.
+
+---
+
 ## Concurrency Protection
 
 ### Race Condition Prevention

@@ -193,12 +193,20 @@ test("reassignDelivery enforces company ownership for COMPANY_ADMIN (same rule a
     "delivery belongs to another company",
     "denial is explicit, matching dispatchDelivery's denial",
   );
-  // Same authoritative rule as dispatchDelivery
+  // Same authoritative rule as dispatchDelivery. The rule was hardened to
+  // fail closed: both sides of the comparison must exist (a bare
+  // `undefined !== undefined` comparison would fail open when a company
+  // admin has no company association and the order has no business).
   const dispatch = dispatchBlock();
   assertContains(
     dispatch,
-    "if (user.role === ROLES.COMPANY_ADMIN && order.businessId !== user.businessId)",
+    "if (user.role === ROLES.COMPANY_ADMIN) {",
     "dispatchDelivery's existing ownership rule is unchanged",
+  );
+  assertContains(
+    dispatch,
+    "!user.businessId || !order.businessId || order.businessId !== user.businessId",
+    "dispatchDelivery ownership check fails closed",
   );
 });
 
