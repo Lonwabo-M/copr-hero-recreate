@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Menu } from "lucide-react";
+import { Menu, ArrowLeft } from "lucide-react";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { clearAllOfflineData } from "@/lib/offline/db";
 import { useNavigate } from "react-router";
@@ -30,8 +30,6 @@ interface AppShellProps {
   brandLabel?: string;
 }
 
-const STATIC_LINKS = ["Home", "About Us", "Services", "Contact US"];
-
 const LOGOUT_LABEL = "Log out";
 
 export default function AppShell({
@@ -42,7 +40,6 @@ export default function AppShell({
   brandLabel,
 }: AppShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [activeLink, setActiveLink] = useState("Home");
   const { signOut } = useAuthActions();
   const navigate = useNavigate();
 
@@ -101,19 +98,16 @@ export default function AppShell({
           <span className="dash-topnav-logo-text">{brandLabel ?? "Lasha"}</span>
         </div>
 
+        {/* Simple way back to the public landing page from any shell. */}
         <nav className="dash-topnav-links">
-          {STATIC_LINKS.map((link) => (
-            <button
-              key={link}
-              className={`dash-topnav-link ${activeLink === link ? "active" : ""}`}
-              onClick={() => setActiveLink(link)}
-            >
-              {link}
-              {activeLink === link && (
-                <span className="dash-topnav-link-underline" />
-              )}
-            </button>
-          ))}
+          <button
+            className="dash-topnav-link"
+            onClick={() => navigate("/")}
+            title="Back to the Lasha landing page"
+          >
+            <ArrowLeft size={14} />
+            Home
+          </button>
         </nav>
 
         <div className="dash-topnav-right">

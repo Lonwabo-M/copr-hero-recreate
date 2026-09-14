@@ -1,5 +1,6 @@
 import Navbar from "@/components/lasha/Navbar";
 import Hero from "@/components/lasha/Hero";
+import TrustedBy from "@/components/lasha/TrustedBy";
 import WhyLasha from "@/components/lasha/WhyLasha";
 import WhoWeServe from "@/components/lasha/WhoWeServe";
 import HowItWorks from "@/components/lasha/HowItWorks";
@@ -20,6 +21,7 @@ export default function Landing() {
     >
       <Navbar />
       <Hero />
+      <TrustedBy />
       <WhyLasha />
       <WhoWeServe />
       <HowItWorks />
