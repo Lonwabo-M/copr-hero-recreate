@@ -55,8 +55,8 @@ test("reset flow is wired to the email-delivery bridge (provider-supported reset
     "bridge implements the provider's email contract",
   );
   assert.ok(
-    emailBridge.includes("https://auth.freebuff.app/send_otp"),
-    "bridge delivers the provider's reset code",
+    emailBridge.includes("https://integrations.vly.ai/v1/email/send"),
+    "bridge delivers the reset code via the platform email API",
   );
 });
 
@@ -223,10 +223,13 @@ test("legacy migration: email-linking enabled via the reset provider (no duplica
 });
 
 test("secrets remain server-side (bridge env var, no VITE_ prefix)", () => {
-  assert.ok(emailBridge.includes("process.env.EMAIL_API_KEY"), "bridge reads EMAIL_API_KEY");
+  assert.ok(
+    emailBridge.includes("process.env.VLY_INTEGRATION_KEY"),
+    "bridge authenticates with the platform's already-provisioned VLY_INTEGRATION_KEY",
+  );
   assert.ok(!emailBridge.includes("VITE_"), "no client-side env exposure");
   assert.ok(emailBridge.includes("if (!apiKey)"), "missing-secret fails closed before the provider call");
-  assert.ok(!emailBridge.includes("JSON.stringify(error)"), "no axios-error serialization leak");
+  assert.ok(!emailBridge.includes("JSON.stringify(error)"), "no error-object serialization leak");
 });
 
 // ─── Regression anchors ──────────────────────────────────────────────────────

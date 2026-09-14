@@ -1,22 +1,28 @@
 import { Email } from "@convex-dev/auth/providers/Email";
-import axios from "axios";
 import { RandomReader, generateRandomString } from "@oslojs/crypto/random";
 
 /**
- * Email delivery bridge for Convex Auth's Password provider.
+ * Email delivery via the platform email API (Freebuff/Vly).
  *
- * Used ONLY for password-reset codes (and the optional linking provider that
- * lets legacy verified-email accounts adopt a password). Primary sign-in /
- * sign-up is email + password and needs no email delivery at all.
+ * Used ONLY for password-reset codes. Primary sign-in / sign-up is
+ * email + password and needs no email delivery at all.
  *
- * The bridge credential is read from the server-only Convex environment —
- * never hardcoded, never logged, never returned to the client, and never
- * included in thrown error messages (an axios error object serializes its
- * request headers, which would leak the key). Missing configuration fails
- * clearly on the server before any provider call is attempted.
+ * How it sends:
+ *   POST https://integrations.vly.ai/v1/email/send
+ *   Authorization: Bearer <VLY_INTEGRATION_KEY>
+ *   { to: [...], from: "noreply@project.freebuff.dev", subject, html, text }
  *
- * Configure via the project's API keys settings / Convex env:
- *   EMAIL_API_KEY
+ * This is the same endpoint the platform's own `@vly-ai/integrations`
+ * email client uses, authenticated with the deployment's already-provisioned
+ * `VLY_INTEGRATION_KEY` — no separate email provider or extra key required.
+ *
+ * Secret hygiene:
+ * - The key is read only from the server-side Convex environment; it is
+ *   never hardcoded, logged, returned to the client, or included in thrown
+ *   error messages (HTTP error objects can carry request headers, which
+ *   would leak the key).
+ * - Missing configuration fails closed with a clear server-side error
+ *   naming only the missing variable.
  */
 export const emailDelivery = Email({
   id: "email-delivery",
@@ -32,34 +38,40 @@ export const emailDelivery = Email({
     return generateRandomString(random, alphabet, 6);
   },
   async sendVerificationRequest({ identifier: email, token }) {
-    const apiKey = process.env.EMAIL_API_KEY;
+    const apiKey = process.env.VLY_INTEGRATION_KEY;
     if (!apiKey) {
-      // Fail closed with a clear server-side configuration error. The
-      // message names only the missing variable — no secret material,
-      // no provider infrastructure details.
       throw new Error(
-        "Email delivery is not configured. Add EMAIL_API_KEY in the project's API keys settings."
+        "Email delivery is not configured. Add VLY_INTEGRATION_KEY in the project's API keys settings."
       );
     }
 
-    try {
-      await axios.post(
-        "https://auth.freebuff.app/send_otp",
-        {
-          to: email,
-          otp: token,
-          appName: process.env.VLY_APP_NAME || "a freebuff.com application",
-        },
-        {
-          headers: {
-            "x-api-key": apiKey,
-          },
-        },
-      );
-    } catch {
-      // Do NOT serialize the raw axios error: `error.config.headers` contains
-      // the API key, and the JSON body would leak provider details. Throw a
-      // generic delivery failure instead.
+    const code = token;
+    const response = await fetch("https://integrations.vly.ai/v1/email/send", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "X-Vly-Version": "0.1.0",
+      },
+      body: JSON.stringify({
+        to: [email],
+        from: "noreply@project.freebuff.dev",
+        subject: "Your Lasha password reset code",
+        text: `Your Lasha password reset code is ${code}. It expires in 15 minutes. If you did not request this, you can ignore this email.`,
+        html: [
+          '<div style="font-family:Inter,Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;">',
+          '  <h2 style="color:#082631;margin:0 0 8px;">Reset your password</h2>',
+          '  <p style="color:#4a5a60;font-size:14px;line-height:1.6;">Use the code below to set a new password for your Lasha account. It expires in 15 minutes.</p>',
+          `  <div style="font-size:32px;font-weight:700;letter-spacing:0.3em;color:#082631;background:#f4f6f7;border-radius:12px;padding:16px 24px;text-align:center;margin:20px 0;">${code}</div>`,
+          '  <p style="color:#8a959a;font-size:12px;line-height:1.6;">If you did not request a password reset, you can safely ignore this email — your current password remains active.</p>',
+          "</div>",
+        ].join(""),
+      }),
+    });
+
+    if (!response.ok) {
+      // Do NOT include the response body or any request headers in the
+      // thrown error — throw a generic delivery failure instead.
       throw new Error("Failed to send email");
     }
   },

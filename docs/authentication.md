@@ -78,17 +78,23 @@ Provider-supported flow (no custom reset-token system):
    sessions, and signs the user in.
 5. On success the user continues to `/post-auth` (role-aware destination).
 
-## Email Delivery Secret
+## Email Delivery
 
-The reset-code bridge (`src/convex/auth/email.ts`) reads its credential from
-the server-only Convex environment:
+Password-reset codes are delivered through the **platform email API**
+(`POST https://integrations.vly.ai/v1/email/send` — the same endpoint the
+platform's own `@vly-ai/integrations` email client uses), authenticated with
+the deployment's already-provisioned `VLY_INTEGRATION_KEY` (server-only
+Convex environment). No separate email provider or additional key is
+required.
 
 | | |
 |---|---|
-| Variable | `EMAIL_API_KEY` |
+| Endpoint | `https://integrations.vly.ai/v1/email/send` (from `src/convex/auth/email.ts`) |
+| Auth | `Authorization: Bearer VLY_INTEGRATION_KEY` — already provisioned on this deployment |
+| Sender | `noreply@project.freebuff.dev` (platform default) |
 | Required for | Password-reset code delivery only — primary sign-up/sign-in needs no email delivery |
 | Missing behaviour | Fails closed with a clear server-side configuration error; no fallback key, no silent skip, no fake success |
-| Error hygiene | Provider failures throw a generic "Failed to send email"; raw axios errors (which embed request headers) are never serialized |
+| Error hygiene | Provider failures throw a generic "Failed to send email"; HTTP error bodies/headers are never serialized into thrown errors |
 
 ## Legacy OTP Accounts
 
@@ -139,8 +145,9 @@ a role in the auth UI.
   responses, or error messages. Client-side validation is UX only.
 - Sessions: issued and managed entirely by Convex Auth (existing
   `auth.addHttpRoutes()` in `src/convex/http.ts` — no second auth HTTP API).
-- Secrets: `EMAIL_API_KEY` is server-only (never `VITE_`-prefixed, never
-  logged, never returned). No authentication secret exists in client code.
+- Secrets: `VLY_INTEGRATION_KEY` is server-only (never `VITE_`-prefixed,
+  never logged, never returned). No authentication secret exists in client
+  code.
 - Protected routes: unchanged `RequireAuth`/`RoleGate` guards; backend RBAC
   remains authoritative for every query/mutation.
 - Abuse protection: Convex Auth's built-in sign-in rate limiting applies to

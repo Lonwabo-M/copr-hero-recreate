@@ -194,7 +194,7 @@ Required before real deployment (managed via the project's Keys/API settings and
 | `PAYSTACK_SECRET_KEY` | Payment init/verify + webhook signature verification (server-side) |
 | Paystack webhook URL | Register `https://<convex-deployment>.convex.site/payments/paystack/webhook` |
 | `GOOGLE_MAPS_API_KEY` | Geocoding + health-check routing provider |
-| `EMAIL_API_KEY` | Email-delivery bridge key for password-reset codes (server-only Convex env) — replaces the retired `EMAIL_OTP_API_KEY` |
+| `VLY_INTEGRATION_KEY` | Platform email API key for password-reset codes (server-only Convex env, already provisioned) — replaces the retired `EMAIL_OTP_API_KEY` |
 | `CONVEX_SITE_URL` | Convex Auth OIDC issuer (self-issued tokens) |
 | `VITE_CONVEX_URL` | Client Convex endpoint (already set) |
 | Role provisioning | Manually assign DRIVER/OPERATIONS/COMPANY_ADMIN roles via dashboard for pilot staff |
@@ -226,7 +226,7 @@ Observability exists: `/health`, `/health/live`, `/health/ready` + Vly monitorin
 |---|---|---|---|
 | B1 | Offer expiry automation (cron or ops-tab trigger for `processExpiredOffers`) | Operational reliability | **FIXED** — Convex cron added (`src/convex/crons.ts`), runs the existing expiry core every minute via `internal.dispatch.engine.processExpiredOffersCron`. See `docs/dispatch-engine.md` → "Automated Offer Expiry". |
 | B2 | COMPANY_ADMIN ownership check on `assignDriver` (parity with dispatch/reassign) | Security consistency | **FIXED** — `assignDriver` now enforces the session-derived `delivery.orderId → orders.businessId` ownership rule (fail-closed) before any write; the same-class fail-open edge in `dispatchDelivery` (`undefined !== undefined`) was also fixed. See `docs/dispatch-engine.md` → "Assignment Authorization". |
-| B3 | Hardcoded email-OTP API key → environment configuration | Secret hygiene | **FIXED, then SUPERSEDED** — the key was moved to the environment (B3), and the email-OTP authentication path has since been fully removed and replaced by email + password (Convex Auth `Password` provider). `EMAIL_OTP_API_KEY` is no longer referenced by any code; the previously exposed OTP credential can be retired with the provider. Password-reset email delivery now uses `EMAIL_API_KEY`. |
+| B3 | Hardcoded email-OTP API key → environment configuration | Secret hygiene | **FIXED, then SUPERSEDED** — the key was moved to the environment (B3), and the email-OTP authentication path has since been fully removed and replaced by email + password (Convex Auth `Password` provider). `EMAIL_OTP_API_KEY` is no longer referenced by any code; the previously exposed OTP credential can be retired with the provider. Password-reset email delivery now uses the platform email API with the already-provisioned `VLY_INTEGRATION_KEY`. |
 
 **Pilot-acceptable (documented, not blocking):** manual role provisioning; no admin-specific pages; no external payout; no SMS/email/push; manual tracking-retention execution; no wallet top-up charging.
 

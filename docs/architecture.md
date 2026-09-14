@@ -1255,7 +1255,7 @@ const response = await fetch("https://api.paystack.co/..."); // Never!
 // Available in Convex functions via process.env:
 process.env.PAYSTACK_SECRET_KEY
 process.env.GOOGLE_MAPS_API_KEY
-process.env.EMAIL_OTP_API_KEY
+process.env.VLY_INTEGRATION_KEY
 process.env.SMS_GATEWAY_KEY
 process.env.VLY_APP_NAME
 ```
@@ -1271,7 +1271,7 @@ provider). See `docs/authentication.md` for the complete flows.
 |---|---|
 | Primary auth | `Password` provider (`src/convex/auth.ts`) — sign-up, sign-in, password reset. Passwords hashed with Scrypt by the provider; never stored or logged in plaintext. |
 | Reset/email bridge | `src/convex/auth/email.ts` — sends password-reset codes only. |
-| Variable | `EMAIL_API_KEY` (server-only Convex environment; never `VITE_`-prefixed). |
+| Variable | `VLY_INTEGRATION_KEY` (server-only Convex environment; never `VITE_`-prefixed). Already provisioned on this deployment. |
 | Missing behaviour | Fails closed with a clear server-side configuration error naming the variable. No fallback key, no silent skip, no fake success. |
 | Error hygiene | Provider/HTTP failures throw a generic "Failed to send email" — raw axios errors are never serialized (their `config.headers` contain the key). |
 | Retired | `EMAIL_OTP_API_KEY` is no longer used by any code path — the email-OTP provider was removed. The previously exposed OTP bridge credential can be **retired/rotated** with the provider once legacy-account migration is complete. |
