@@ -115,10 +115,21 @@ export default function Dashboard() {
             <Loader2 size={24} className="animate-spin" style={{ color: "#999" }} />
           </div>
         ) : orders.length === 0 ? (
-          <div className="empty-state" style={{ gridColumn: "1 / -1" }}>
-            <div className="empty-state-icon"><Package size={24} /></div>
-            <div className="empty-state-title">No deliveries yet</div>
-            <div className="empty-state-desc">Create your first delivery to get started.</div>
+          <div
+            className="empty-state"
+            style={{
+              gridColumn: "1 / -1",
+              flex: 1,
+              height: "100%",
+              width: "100%",
+              display: "flex",
+            }}
+          >
+            <div style={{ margin: "auto" }}>
+              <div className="empty-state-icon"><Package size={24} /></div>
+              <div className="empty-state-title">No deliveries yet</div>
+              <div className="empty-state-desc">Create your first delivery to get started.</div>
+            </div>
           </div>
         ) : (
           <>

@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { useNavigate } from "react-router";
 import { useQuery } from "convex/react";
@@ -23,12 +23,14 @@ import { ROLES } from "@/convex/schema";
 // unchanged. This is UX routing only — the backend enforces authorization on
 // every query and mutation.
 //
-// Latency: all redirects are client-side (react-router navigate) — the session
-// token is already stored by the time Auth.tsx navigates here, so full page
-// reloads would only re-download the bundle. The user and onboarding-status
-// queries run IN PARALLEL; the customer destination is chosen only once the
-// role is resolved, so a driver/ops/admin account whose role is still loading
-// can never be transiently routed into onboarding.
+// Latency/correctness: all redirects are client-side (react-router navigate).
+// Right after sign-up/sign-in the session token is already stored, but
+// useConvexAuth flips to authenticated ASYNCHRONOUSLY — navigating away the
+// instant isAuthenticated is false caused a bounce back to /auth (users had to
+// refresh). A short grace period lets the session propagate before deciding
+// the user is really signed out.
+
+const SIGNED_OUT_GRACE_MS = 2500;
 
 function DestinationSpinner() {
   return (
@@ -86,12 +88,26 @@ export default function PostAuthRedirect() {
   const navigate = useNavigate();
   const { isLoading, isAuthenticated, user } = useAuth();
 
+  // Grace period: immediately after sign-up the token is stored but
+  // isAuthenticated is still false for a moment. Only treat the user as
+  // signed out once the grace window has elapsed without authentication.
+  const [signedOutConfirmed, setSignedOutConfirmed] = useState(false);
+
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
-      // Not signed in (e.g. visited /post-auth directly) → back to auth.
+      const timer = setTimeout(() => setSignedOutConfirmed(true), SIGNED_OUT_GRACE_MS);
+      return () => clearTimeout(timer);
+    }
+    // Authentication succeeded within the window — cancel the bounce.
+    setSignedOutConfirmed(false);
+  }, [isLoading, isAuthenticated]);
+
+  useEffect(() => {
+    if (signedOutConfirmed) {
+      // Genuinely not signed in (e.g. visited /post-auth directly) → auth.
       navigate("/auth", { replace: true });
     }
-  }, [isLoading, isAuthenticated, navigate]);
+  }, [signedOutConfirmed, navigate]);
 
   if (!isAuthenticated) {
     return <DestinationSpinner />;

@@ -2,18 +2,9 @@ export default function About() {
   return (
     <section
       id="about"
-      className="lasha-overlay relative overflow-hidden"
-      style={{ padding: "140px 0" }}
+      className="relative overflow-hidden"
+      style={{ padding: "140px 0", backgroundColor: "var(--lasha-navy)" }}
     >
-      {/* Background image */}
-      <img
-        src="https://images.unsplash.com/photo-1601584115197-04ecc0da31d7?w=1920&q=80"
-        alt="South African urban logistics"
-        className="absolute inset-0 w-full h-full object-cover"
-        style={{ filter: "brightness(0.28) saturate(0.5)" }}
-        loading="lazy"
-      />
-
       <div className="lasha-container">
         <div className="about-grid">
           {/* Left: Heading */}

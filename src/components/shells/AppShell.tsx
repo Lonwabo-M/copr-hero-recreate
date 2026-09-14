@@ -89,9 +89,9 @@ export default function AppShell({
           </button>
           {logo === "img" ? (
             <img
-              src="/logo.svg"
+              src="/assets/21.png"
               alt="Lasha"
-              style={{ height: 28 }}
+              style={{ height: 28, width: "auto", objectFit: "contain" }}
               onError={(e) => {
                 (e.target as HTMLImageElement).style.display = "none";
               }}

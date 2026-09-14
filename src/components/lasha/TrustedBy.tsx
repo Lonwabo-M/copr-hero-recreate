@@ -23,7 +23,7 @@ interface Partner {
 const PARTNERS: Partner[] = [
   { name: "CSIR", mark: "CSIR", src: "/logos/csir.svg" },
   { name: "Welo", mark: "Welo", src: "/logos/welo.svg" },
-  { name: "TIA", mark: "TIA", src: "/logos/tia.svg" },
+  { name: "TIA", mark: "TIA", src: "/assets/tia-logo-1.png" },
   { name: "Department of Science and Technology", mark: "DST", src: "/logos/dst.svg" },
 ];
 

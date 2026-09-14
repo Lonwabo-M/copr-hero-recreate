@@ -283,16 +283,17 @@ export default function CustomerOnboarding() {
             justifyContent: "space-between",
           }}
         >
-          <span
-            style={{
-              fontSize: 24,
-              fontWeight: 800,
-              color: "var(--lasha-navy)",
-              letterSpacing: "-0.03em",
+          <img
+            src="/assets/21.png"
+            alt="Lasha"
+            style={{ height: 32, width: "auto", objectFit: "contain" }}
+            onError={(e) => {
+              const img = e.currentTarget;
+              if (img.dataset.fallback === "1") return;
+              img.dataset.fallback = "1";
+              img.style.display = "none";
             }}
-          >
-            Lasha
-          </span>
+          />
           <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
             {/* Abort onboarding → back to the public landing page. */}
             <button

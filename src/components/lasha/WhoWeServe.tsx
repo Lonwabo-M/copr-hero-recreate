@@ -4,18 +4,9 @@ export default function WhoWeServe() {
   return (
     <section
       id="who-we-serve"
-      className="lasha-overlay relative overflow-hidden"
-      style={{ padding: "140px 0" }}
+      className="relative overflow-hidden"
+      style={{ padding: "140px 0", backgroundColor: "var(--lasha-navy)" }}
     >
-      {/* Background image - Toyota Quantum / South African urban logistics */}
-      <img
-        src="https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=1920&q=80"
-        alt="Toyota Quantum delivery vehicle"
-        className="absolute inset-0 w-full h-full object-cover object-center"
-        style={{ filter: "brightness(0.25) saturate(0.55)" }}
-        loading="lazy"
-      />
-
       <div className="lasha-container">
         {/* Technical label */}
         <p className="lasha-label mb-12" style={{ color: "var(--lasha-cyan-light)" }}>
