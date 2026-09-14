@@ -21,7 +21,7 @@ export default function DriverShell(props: {
   useSyncEngine();
 
   return (
-    <AppShell area="driver" activeItem={props.activeItem} brandLabel="Lasha">
+    <AppShell area="driver" activeItem={props.activeItem}>
       <DriverConnectivityIndicator />
       {props.children}
     </AppShell>

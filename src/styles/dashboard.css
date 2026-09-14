@@ -197,14 +197,27 @@
 }
 
 .dash-sidebar-item .notif-dot {
-  /* Sits right after the label text (in flow), not pinned to the far corner. */
-  position: static;
-  margin-left: 4px;
-  width: 6px;
-  height: 6px;
+  /* Unread-count badge: superscripted on the top-right of the label, the
+     conventional position. min-width + baseline nudge keep 1- and 2-digit
+     counts visually centred on the same spot. */
+  position: relative;
+  top: -0.5em;
+  margin-left: 2px;
+  margin-right: -8px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background: var(--yellow);
-  border-radius: 50%;
+  color: #202020;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+  border-radius: 999px;
   flex-shrink: 0;
+  box-sizing: border-box;
 }
 
 .visually-hidden {

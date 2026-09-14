@@ -1,9 +1,12 @@
 import { useEffect, useState } from "react";
 import { Menu } from "lucide-react";
 import { useAuthActions } from "@convex-dev/auth/react";
+import { useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import { clearAllOfflineData } from "@/lib/offline/db";
 import { useNavigate } from "react-router";
 import Sidebar from "@/components/dashboard/Sidebar";
+import LashaLogo from "@/components/branding/LashaLogo";
 import {
   AREA_LABELS,
   AREA_NAVIGATION,
@@ -24,9 +27,8 @@ interface AppShellProps {
   children: React.ReactNode;
   /** Sidebar item to highlight for the current page. */
   activeItem: string;
-  /** Logo variant: Dashboard used the SVG logo, other pages the "L" mark. */
-  logo?: "img" | "icon";
-  /** Custom brand text after the logo (defaults to "Lasha"). */
+  /** Optional area qualifier rendered beside the logo (e.g. "Lasha Admin").
+   *  The plain "Lasha" text is gone — the mark IS the brand. */
   brandLabel?: string;
 }
 
@@ -36,7 +38,6 @@ export default function AppShell({
   area,
   children,
   activeItem,
-  logo = "icon",
   brandLabel,
 }: AppShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -44,6 +45,14 @@ export default function AppShell({
   const navigate = useNavigate();
 
   const navItems: NavItem[] = AREA_NAVIGATION[area];
+
+  // Reactive unread count — the notification indicator reflects the user's
+  // actual unread notifications via the existing session-scoped Convex query
+  // (getUnreadCount). Convex push updates it live; it is never decorative.
+  // While the session is resolving this query legitimately returns the
+  // unauthenticated placeholder — the dot simply stays hidden until it lands.
+  const unreadCount = useQuery(api.notifications.service.getUnreadCount);
+  const hasUnread = (unreadCount ?? 0) > 0;
 
   // Matches the resize behaviour every page previously implemented inline.
   useEffect(() => {
@@ -87,21 +96,12 @@ export default function AppShell({
           >
             <Menu size={22} />
           </button>
-          {logo === "img" ? (
-            <img
-              src="/assets/21.png"
-              alt="Lasha"
-              style={{ height: 28, width: "auto", objectFit: "contain" }}
-              onError={(e) => {
-                (e.target as HTMLImageElement).style.display = "none";
-              }}
-            />
-          ) : (
-            <div className="lasha-logo-icon">
-              <span>L</span>
-            </div>
+          {/* Logo — actual Lasha mark, cropped to its visible bounds (~3× the
+              previous sliver-in-a-box rendering; header height unchanged) */}
+          <LashaLogo height={84} />
+          {brandLabel && (
+            <span className="dash-topnav-logo-text">{brandLabel}</span>
           )}
-          <span className="dash-topnav-logo-text">{brandLabel ?? "Lasha"}</span>
         </div>
 
         <div className="dash-topnav-right">
@@ -135,9 +135,11 @@ export default function AppShell({
           />
         )}
 
-        {/* Area-scoped sidebar */}
+        {/* Area-scoped sidebar — the unread badge rides along so the
+            Notifications entry reflects the live unread count. */}
         <Sidebar
           activeItem={activeItem}
+          unreadCount={hasUnread && unreadCount ? unreadCount : 0}
           onItemChange={(label) => {
             if (label === LOGOUT_LABEL) {
               handleLogout();

@@ -24,6 +24,9 @@ interface SidebarProps {
   isOpen: boolean;
   /** Navigation entries for the current application area (role-scoped). */
   items: NavItem[];
+  /** Live unread-notification count (session-scoped Convex query, pushed
+   *  from AppShell). 0/undefined → no badge. Never decorative. */
+  unreadCount?: number;
 }
 
 // ─── Icon registry ───────────────────────────────────────────────────────────
@@ -61,6 +64,7 @@ export default function Sidebar({
   onItemChange,
   isOpen,
   items,
+  unreadCount = 0,
 }: SidebarProps) {
   return (
     <aside className={`dash-sidebar ${isOpen ? "open" : ""}`}>
@@ -76,8 +80,14 @@ export default function Sidebar({
             >
               <Icon size={20} strokeWidth={1.5} />
               <span>{item.label}</span>
-              {item.hasNotif && !isActive && <span className="notif-dot" />}
-              {item.hasNotif && !isActive && <span className="visually-hidden">unread notifications</span>}
+              {item.hasNotif && unreadCount > 0 && !isActive && (
+                <span
+                  className="notif-dot"
+                  aria-label={`${unreadCount} unread notification${unreadCount === 1 ? "" : "s"}`}
+                >
+                  {unreadCount > 9 ? "9+" : unreadCount}
+                </span>
+              )}
             </button>
           );
         })}

@@ -29,6 +29,7 @@ import { mutation, query, QueryCtx, MutationCtx } from "../_generated/server";
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import { requireAuth, getCurrentAuthUser } from "../auth/authorization";
+import { getAuthUserId } from "@convex-dev/auth/server";
 import { Id, Doc } from "../_generated/dataModel";
 import { ROLES, type Role } from "../schema";
 import { AUDIT_ACTIONS } from "../audit/service";
@@ -121,7 +122,25 @@ export function isOnboardingComplete(
 export const getOnboardingStatus = query({
   args: {},
   handler: async (ctx) => {
-    const userId = await requireAuth(ctx);
+    // Session propagation grace: in the instant right after signUp()/signIn()
+    // resolves, the client may not have attached the fresh token yet, so this
+    // query can execute before authentication is established. Throwing here
+    // would poison the reactive subscription (an errored useQuery never
+    // re-fires on its own), leaving the post-auth spinner stuck until a manual
+    // page refresh. Returning the explicit `unauthenticated` state lets the
+    // subscription survive; callers re-subscribe once the session lands and
+    // the query re-runs with real identity. This is NOT an authorization
+    // downgrade — no data is ever revealed to an unauthenticated caller.
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      return {
+        complete: false,
+        unauthenticated: true,
+        user: { name: "", phone: "", email: "" },
+        business: null,
+        defaultAddress: null,
+      };
+    }
     const data = await resolveOnboardingData(ctx, userId);
     if (!data) {
       throw new Error("User not found");
@@ -130,6 +149,7 @@ export const getOnboardingStatus = query({
 
     return {
       complete: isOnboardingComplete(user, business, defaultAddress),
+      unauthenticated: false,
       user: {
         name: user.name ?? "",
         phone: user.phone ?? "",

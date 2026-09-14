@@ -73,9 +73,12 @@ export default function RequestDelivery() {
         ]);
         pickupCoords = { lat: pickupResult.lat, lng: pickupResult.lng };
         dropoffCoords = { lat: dropoffResult.lat, lng: dropoffResult.lng };
-      } catch (geocodeError: any) {
+      } catch {
+        // The backend geocoder already throws a single clean, user-safe
+        // message — raw Convex/provider output ("[CONVEX A(routing/...)]")
+        // must never reach the UI.
         setError(
-          `Could not resolve address location: ${geocodeError.message || "Please check the addresses and try again."}`
+          "We could not resolve one of the addresses. Check the spelling, add a suburb and city, and try again."
         );
         setGeocoding(false);
         setSubmitting(false);
@@ -118,8 +121,9 @@ export default function RequestDelivery() {
       setScheduleDate("");
       setTimeFrom("00:00");
       setTimeTo("00:00");
-    } catch (err: any) {
-      setError(err.message || "Failed to create delivery. Please try again.");
+    } catch {
+      // Application-level copy only — never surface raw Convex error output.
+      setError("We couldn't create your delivery. Please try again.");
     } finally {
       setGeocoding(false);
       setSubmitting(false);

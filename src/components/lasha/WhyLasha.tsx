@@ -115,9 +115,83 @@ export default function WhyLasha() {
             );
           })}
         </div>
+
+        {/* Fleet band — the taxi asset anchors the "Scale" story: idle minibus-
+            taxi capacity turned into delivery infrastructure. Composition:
+            copy left, vehicle right, generous whitespace, no collage. */}
+        <div className="lasha-card why-fleet">
+          <div className="why-fleet-copy">
+            <span className="lasha-label" style={{ display: "block", marginBottom: 16 }}>
+              04 / The Fleet
+            </span>
+            <h3
+              style={{
+                fontSize: "clamp(26px, 2.6vw, 38px)",
+                fontWeight: 700,
+                letterSpacing: "-0.02em",
+                color: "var(--lasha-navy)",
+                marginBottom: 14,
+              }}
+            >
+              Delivery capacity, already on the road.
+            </h3>
+            <p className="lasha-body" style={{ fontSize: 15, lineHeight: 1.7, maxWidth: 460 }}>
+              Every Lasha driver operates a vetted local vehicle — the same
+              taxis that move South Africa every day, now moving your goods
+              with live tracking and proof of delivery.
+            </p>
+          </div>
+          <div className="why-fleet-visual">
+            <img
+              src="/assets/Taxi_image-removebg-preview.png"
+              alt="Lasha delivery taxi"
+              loading="lazy"
+            />
+          </div>
+        </div>
       </div>
 
       <style>{`
+        .why-fleet {
+          margin-top: 20px;
+          display: grid;
+          grid-template-columns: 1.2fr 1fr;
+          align-items: center;
+          overflow: hidden;
+        }
+        .why-fleet-copy { padding: 48px 56px; }
+        .why-fleet-visual {
+          position: relative;
+          align-self: stretch;
+          min-height: 220px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        /* Cyan wash grounds the cut-out vehicle so it reads as intentional
+           composition, not a floating sticker. */
+        .why-fleet-visual::before {
+          content: "";
+          position: absolute;
+          inset: 0;
+          background: radial-gradient(
+            120% 90% at 70% 30%,
+            rgba(7, 148, 181, 0.10) 0%,
+            rgba(7, 148, 181, 0) 70%
+          );
+        }
+        .why-fleet-visual img {
+          position: relative;
+          width: min(100%, 420px);
+          height: auto;
+          transform: translateY(14%); /* let the vehicle sit into the card base */
+        }
+        @media (max-width: 1024px) {
+          .why-fleet { grid-template-columns: 1fr !important; }
+          .why-fleet-copy { padding: 36px 28px 8px; }
+          .why-fleet-visual { min-height: 180px; }
+          .why-fleet-visual img { width: min(70%, 320px); }
+        }
         @media (max-width: 1024px) {
           #why-lasha .lasha-card {
             grid-template-columns: 1fr !important;

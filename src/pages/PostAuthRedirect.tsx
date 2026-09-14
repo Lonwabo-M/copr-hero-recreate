@@ -77,7 +77,12 @@ function AuthenticatedDestination({
       navigate(homeRouteForRole(role), { replace: true });
       return;
     }
-    if (status === undefined) return; // onboarding status still loading
+    // `unauthenticated` means the status query ran before the fresh session
+    // token reached the Convex client (the signUp → navigate instant). Hold
+    // navigation: the reactive subscription re-fires authenticated within a
+    // beat, and routing on the placeholder `complete: false` would drop
+    // already-onboarded users into onboarding.
+    if (status === undefined || status.unauthenticated) return;
     navigate(status.complete ? "/dashboard" : "/onboarding/customer", { replace: true });
   }, [roleResolved, isCustomerExperience, status, role, navigate]);
 

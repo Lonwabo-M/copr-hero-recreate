@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { Menu, X, ArrowRight } from "lucide-react";
+import { Menu, X } from "lucide-react";
+import LashaLogo from "@/components/branding/LashaLogo";
 
 const navLinks = [
   { label: "Why Lasha", href: "#why-lasha" },
@@ -41,20 +42,9 @@ export default function Navbar() {
       style={{ backgroundColor: "var(--lasha-navy)", height: 76 }}
     >
       <div className="lasha-container flex items-center justify-between h-full">
-        {/* Logo + tagline */}
-        <a href="/" className="flex items-center gap-3 no-underline">
-          <span
-            className="text-white font-extrabold text-xl tracking-tight"
-            style={{ fontFamily: "Inter, sans-serif" }}
-          >
-            Lasha
-          </span>
-          <span
-            className="hidden sm:block text-[10px] font-medium tracking-[0.20em] uppercase"
-            style={{ color: "rgba(255,255,255,0.35)", borderLeft: "1px solid rgba(255,255,255,0.15)", paddingLeft: 12 }}
-          >
-            Logistics Infrastructure
-          </span>
+        {/* Logo — the actual Lasha mark, edge-to-edge (cropped transparent padding) */}
+        <a href="/" className="flex items-center no-underline" aria-label="Lasha home">
+          <LashaLogo height={78} wordmark dark />
         </a>
 
         {/* Desktop links */}
@@ -71,15 +61,6 @@ export default function Navbar() {
               {link.label}
             </button>
           ))}
-          <button
-            onClick={() => handleNav("#how-it-works")}
-            className="text-[13px] font-semibold tracking-wide bg-transparent border-none cursor-pointer transition-colors duration-200"
-            style={{ color: "var(--lasha-cyan)" }}
-            onMouseEnter={(e) => (e.currentTarget.style.color = "var(--lasha-cyan-light)")}
-            onMouseLeave={(e) => (e.currentTarget.style.color = "var(--lasha-cyan)")}
-          >
-            Track Shipment
-          </button>
           <a href="/auth" className="lasha-btn-primary text-[13px]">
             Login
           </a>
@@ -116,13 +97,6 @@ export default function Navbar() {
               {link.label}
             </button>
           ))}
-          <button
-            onClick={() => handleNav("#how-it-works")}
-            className="text-left text-[18px] font-semibold bg-transparent border-none cursor-pointer"
-            style={{ color: "var(--lasha-cyan)" }}
-          >
-            Track Shipment
-          </button>
           <a href="/auth" className="lasha-btn-primary mt-4 justify-center text-[15px]">
             Login
           </a>

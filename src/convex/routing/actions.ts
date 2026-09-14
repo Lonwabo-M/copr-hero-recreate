@@ -223,10 +223,17 @@ export const calculateDistance = action({
 /**
  * Geocode an address string into lat/lng coordinates.
  *
- * Uses Google Maps Geocoding API if the key is available,
- * otherwise falls back to OpenStreetMap Nominatim (free, no key).
+ * Resolution strategy (server-side only, the key never leaves this process):
+ * 1. Normalise the address (whitespace, SA country context).
+ * 2. Google Maps Geocoding when GOOGLE_MAPS_API_KEY is configured, otherwise
+ *    OpenStreetMap Nominatim — each tried across query variants.
+ * 3. On total failure of the primary provider, the other provider is tried
+ *    as an explicit fallback (two independent datasets disagree often
+ *    enough that this materially improves resolution).
+ * 4. If nothing resolves, throw a clean user-safe error.
  *
- * This action MUST run server-side to protect the API key.
+ * NEVER fabricates coordinates: a returned lat/lng always comes from the
+ * provider for one of the user's own address variants.
  */
 export const geocodeAddress = action({
   args: {
@@ -240,13 +247,118 @@ export const geocodeAddress = action({
   handler: async (ctx, args) => {
     const log = createLogger(LOG_CATEGORIES.ROUTING);
     const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+    const variants = geocodeQueryVariants(args.address);
 
-    if (apiKey) {
-      return geocodeGoogle(args.address, apiKey, log);
+    const primary = apiKey
+      ? (q: string) => geocodeGoogle(q, apiKey, log)
+      : (q: string) => geocodeNominatim(q, log);
+    const fallback = apiKey
+      ? (q: string) => geocodeNominatim(q, log)
+      : undefined;
+
+    for (const provider of fallback ? [primary, fallback] : [primary]) {
+      const label = apiKey && provider === primary ? "google-maps" : "nominatim";
+      for (const variant of variants) {
+        try {
+          const result = await provider(variant);
+          if (result) {
+            log.info("Geocoding resolved", {
+              operation: "geocodeAddress",
+              metadata: { provider: label },
+            });
+            return result;
+          }
+        } catch (err) {
+          // Provider HTTP/config failures are not "no results" — skip the
+          // remaining variants and try the next provider immediately.
+          if (err instanceof Error && /API error|error: \d/.test(err.message)) break;
+        }
+      }
     }
-    return geocodeNominatim(args.address, log);
+
+    log.error("Geocoding exhausted all providers/variants", {
+      operation: "geocodeAddress",
+      metadata: { attempts: variants.length },
+    });
+    // Single clean, user-safe failure — raw provider/Convex output never
+    // reaches the client through this path.
+    throw new Error(ADDRESS_UNRESOLVED);
   },
 });
+
+/** Country context applied to free-form addresses. Lasha is a South African
+ *  delivery platform; most user-entered addresses omit the country, and both
+ *  providers resolve far better with it. */
+const DEFAULT_COUNTRY = "South Africa";
+
+/** The single user-facing error thrown when an address genuinely cannot be
+ *  resolved. Clean application-level copy — the UI maps this string instead
+ *  of printing raw Convex/provider output. */
+const ADDRESS_UNRESOLVED =
+  "We could not find that address. Check the spelling, add a suburb and city, and try again.";
+
+/**
+ * Normalise a user-entered address for geocoding:
+ * - collapse whitespace, strip trailing punctuation
+ * - append the country when the address does not already mention it
+ */
+export function normalizeAddressForGeocoding(input: string): string {
+  const cleaned = input.replace(/\s+/g, " ").trim().replace(/[,;]+$/, "");
+  if (!cleaned) return cleaned;
+  if (cleaned.toLowerCase().includes(DEFAULT_COUNTRY.toLowerCase())) {
+    return cleaned;
+  }
+  return `${cleaned}, ${DEFAULT_COUNTRY}`;
+}
+
+/**
+ * Candidate query variants for an address, tried in order. Geocoders reject a
+ * whole query when ONE token is unknown (a misspelt suburb like
+ * "Lemeonkloof" poisons "333 Main Road, Lemeonkloof, The Towers"), so we
+ * retry with single segments removed — each variant keeps the user's street
+ * plus every other context segment, preserving precision.
+ *
+ * Precision floor: never collapse to a bare street + country — that could
+ * silently resolve to a different city's street of the same name, which is
+ * unsafe for courier routing.
+ *
+ * Every candidate is the USER's own address text — no fabricated coordinates,
+ * no fabricated places. Capped to bound latency.
+ */
+export function geocodeQueryVariants(input: string): string[] {
+  const base = normalizeAddressForGeocoding(input);
+  const parts = base.split(",").map((p) => p.trim()).filter(Boolean);
+  if (parts.length < 2) return [base];
+
+  // Last comma-separated token is the appended country (normalize guarantees
+  // it, or the address already contained it — either way dropping ONE
+  // locality segment while keeping the country preserves validity).
+  const country = parts[parts.length - 1];
+  const core = parts.slice(0, -1); // [street, ...context segments]
+  const join = (segs: string[]) =>
+    [...segs, country].filter(Boolean).join(", ");
+
+  const variants = [base];
+  const push = (v: string) => {
+    if (!variants.includes(v) && variants.length < 10) variants.push(v);
+  };
+
+  // Drop the least-significant (last) context segment first — but only when
+  // the street keeps at least one other context segment (never bare street).
+  if (core.length > 2) push(join(core.slice(0, -1)));
+
+  // Then drop each single context segment in turn (keeping the street):
+  // tolerates ONE misspelt/unknown token anywhere in the address. Only when
+  // at least one context segment always survives — a bare street + country
+  // could silently resolve to the wrong city and is never attempted.
+  if (core.length >= 3) {
+    for (let i = 1; i < core.length; i++) {
+      push(join([...core.slice(0, i), ...core.slice(i + 1)]));
+    }
+  }
+
+  return variants;
+}
 
 async function geocodeGoogle(
   address: string,

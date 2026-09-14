@@ -10,8 +10,8 @@ export default function Hero() {
       {/* Background image with overlay */}
       <div className="absolute inset-0">
         <img
-          src="https://images.unsplash.com/photo-1570125909232-eb263c188f7e?w=1920&q=80"
-          alt="South African logistics delivery"
+          src="https://images.unsplash.com/photo-1553413077-190dd305871c?w=1920&q=80"
+          alt="Warehouse logistics and distribution operations"
           className="w-full h-full object-cover object-center"
           style={{ filter: "brightness(0.3) saturate(0.65)" }}
           loading="eager"
@@ -27,11 +27,6 @@ export default function Hero() {
 
       <div className="lasha-container relative z-10 pt-32 pb-24 w-full">
         <div className="max-w-[900px]">
-          {/* Technical label */}
-          <p className="lasha-label mb-6" style={{ color: "var(--lasha-cyan-light)" }}>
-            Logistics Infrastructure
-          </p>
-
           {/* Main heading */}
           <h1 className="lasha-heading lasha-heading-dark mb-8" style={{ maxWidth: 780 }}>
             The logistics infrastructure built for the way{" "}
@@ -53,16 +48,14 @@ export default function Hero() {
               Get Started
               <ArrowRight size={16} />
             </a>
-            <button
-              onClick={() =>
-                document.querySelector("#how-it-works")?.scrollIntoView({ behavior: "smooth" })
-              }
+            <a
+              href="mailto:hello@lasha.co.za"
               className="lasha-btn-secondary"
               style={{ color: "var(--lasha-cyan-light)", borderColor: "rgba(7,148,181,0.5)" }}
             >
-              Track Shipment
+              Book Demo
               <ArrowRight size={14} />
-            </button>
+            </a>
           </div>
 
           {/* Pilot coverage note — bottom of the hero */}

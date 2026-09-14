@@ -20,7 +20,7 @@ export default function PastDeliveries() {
   return (
     <CustomerShell activeItem="Past Deliveries">
       <div className="dash-workspace" style={{ overflow: "auto" }}>
-        <div className="page-container">
+        <div className="page-container" style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: "100%" }}>
           <div className="page-header">
             <h1 className="page-title">Past Deliveries</h1>
             <p className="page-subtitle">View your delivery history and details</p>
@@ -31,7 +31,16 @@ export default function PastDeliveries() {
               <Loader2 size={24} className="animate-spin" style={{ color: "#999" }} />
             </div>
           ) : pastDeliveries.length === 0 ? (
-            <div className="empty-state" style={{ padding: 60 }}>
+            /* Full-height centered empty state — same visual unit as the
+               Activity Center's: icon, heading, copy on one axis. */
+            <div
+              className="empty-state"
+              style={{
+                flex: 1,
+                minHeight: "50vh",
+                width: "100%",
+              }}
+            >
               <div className="empty-state-icon"><Package size={24} /></div>
               <div className="empty-state-title">No past deliveries</div>
               <div className="empty-state-desc">Your completed and cancelled deliveries will appear here.</div>

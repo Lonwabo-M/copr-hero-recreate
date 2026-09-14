@@ -7,8 +7,9 @@ export default function About() {
     >
       <div className="lasha-container">
         <div className="about-grid">
-          {/* Left: Heading */}
-          <div>
+          {/* Left: Heading — vertically centred against the copy block
+              (was align-items:end, which sank the heading to the baseline) */}
+          <div className="about-left">
             <p className="lasha-label mb-8" style={{ color: "var(--lasha-cyan-light)" }}>
               About Lasha
             </p>
@@ -73,7 +74,10 @@ export default function About() {
           display: grid;
           grid-template-columns: 1.2fr 1fr;
           gap: 80px;
-          align-items: end;
+          align-items: center;
+        }
+        .about-left {
+          align-self: center;
         }
         @media (max-width: 900px) {
           .about-grid {

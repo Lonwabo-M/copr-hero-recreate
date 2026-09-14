@@ -9,7 +9,7 @@ export default function OperationsShell(props: {
   activeItem: string;
 }) {
   return (
-    <AppShell area="operations" activeItem={props.activeItem} brandLabel="Lasha">
+    <AppShell area="operations" activeItem={props.activeItem}>
       {props.children}
     </AppShell>
   );

@@ -21,10 +21,10 @@ interface Partner {
 }
 
 const PARTNERS: Partner[] = [
-  { name: "CSIR", mark: "CSIR", src: "/logos/csir.svg" },
-  { name: "Welo", mark: "Welo", src: "/logos/welo.svg" },
+  { name: "CSIR", mark: "CSIR", src: "/assets/CSIR_Logo.png" },
+  { name: "Welo", mark: "Welo", src: "/assets/Welo_Logo.jpg" },
   { name: "TIA", mark: "TIA", src: "/assets/tia-logo-1.png" },
-  { name: "Department of Science and Technology", mark: "DST", src: "/logos/dst.svg" },
+  { name: "Department of Science and Technology", mark: "DST", src: "/assets/DSTI_logo.png" },
 ];
 
 export default function TrustedBy() {
@@ -42,10 +42,17 @@ export default function TrustedBy() {
       }}
     >
       <div className="trustedby-row lasha-container">
-        {/* Title — fixed on the left of the strip (reference layout) */}
+        {/* Title — fixed on the left of the strip (reference layout). Dark
+            grey per the approved treatment (overrides the cyan label default). */}
         <p
           className="lasha-label"
-          style={{ fontSize: 10, whiteSpace: "nowrap", marginRight: 40, flexShrink: 0 }}
+          style={{
+            fontSize: 10,
+            whiteSpace: "nowrap",
+            marginRight: 40,
+            flexShrink: 0,
+            color: "#4b5563",
+          }}
         >
           Trusted by leading organisations
         </p>
@@ -169,6 +176,7 @@ export default function TrustedBy() {
           }
           .trustedby-row .lasha-label {
             margin-right: 0;
+            white-space: normal;
           }
           .trustedby-viewport {
             width: 100%;

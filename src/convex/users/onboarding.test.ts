@@ -95,7 +95,12 @@ test("status query takes no client arguments (identity from session only)", () =
     src.indexOf("export const completeCustomerOnboarding")
   );
   assert.ok(statusBlock.includes("args: {}"));
-  assert.ok(statusBlock.includes("requireAuth(ctx)"));
+  // Identity is session-derived: the unauthenticated window returns an
+  // explicit placeholder (never data); once a session exists the query
+  // resolves the user id server-side.
+  assert.ok(statusBlock.includes("getAuthUserId(ctx)"));
+  assert.ok(statusBlock.includes("unauthenticated: true"));
+  assert.ok(!statusBlock.includes("args.userId"));
   // No client-supplied identity selectors anywhere in the module.
   assert.ok(!src.includes("args.userId"));
   assert.ok(!src.includes("args.businessId"));
