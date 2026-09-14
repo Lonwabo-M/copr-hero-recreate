@@ -35,6 +35,7 @@ import DriverDeliveryDetail from "./pages/DriverDeliveryDetail.tsx";
 import DriverEarnings from "./pages/DriverEarnings.tsx";
 import DriverProfile from "./pages/DriverProfile.tsx";
 import PostAuthRedirect from "./pages/PostAuthRedirect.tsx";
+import CustomerOnboarding from "./pages/CustomerOnboarding.tsx";
 
 /** Silent error boundary — if VlyToolbar crashes it renders nothing instead of
  *  crashing the whole app (e.g. hook errors in WebContainer environment). */
@@ -151,6 +152,16 @@ createRoot(document.getElementById("root")!).render(
               <Route path="/" element={<Landing />} />
               <Route path="/auth" element={<AuthPage />} />
               <Route path="/post-auth" element={<PostAuthRedirect />} />
+
+              {/* ─── Customer Onboarding ───────────────────────────────── */}
+              <Route
+                path="/onboarding/customer"
+                element={
+                  <RoleGate area={APP_AREAS.CUSTOMER}>
+                    <CustomerOnboarding />
+                  </RoleGate>
+                }
+ />
 
               {/* ─── Customer Portal ──────────────────────────────────── */}
               <Route
