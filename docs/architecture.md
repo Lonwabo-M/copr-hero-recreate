@@ -1252,14 +1252,29 @@ const response = await fetch("https://api.paystack.co/..."); // Never!
 ### 12.3 Environment Variables (Convex Actions Only)
 
 ```typescript
-// Available in Convex actions via process.env:
+// Available in Convex functions via process.env:
 process.env.PAYSTACK_SECRET_KEY
 process.env.GOOGLE_MAPS_API_KEY
+process.env.EMAIL_OTP_API_KEY
 process.env.SMS_GATEWAY_KEY
 process.env.VLY_APP_NAME
 ```
 
-**Never log or expose secrets.** Never use secrets in queries or mutations (only in actions).
+**Never log or expose secrets.** Never use secrets in queries or mutations (only in actions). Never include secrets in thrown error messages.
+
+### 12.4 Email OTP Secret
+
+| | |
+|---|---|
+| Variable | `EMAIL_OTP_API_KEY` |
+| Scope | Server-only (Convex environment). Never prefixed `VITE_`; never bundled into client code. |
+| Used by | `src/convex/auth/emailOtp.ts` — `x-api-key` header on the email-OTP delivery request |
+| Required | Yes, for sign-in. Email OTP cannot deliver codes without it. |
+| Missing behaviour | Fails closed with a clear server-side configuration error naming the variable ("Email OTP provider is not configured. Add EMAIL_OTP_API_KEY …"). No fallback key, no silent skip, no fake success. |
+| Error hygiene | Provider/HTTP failures throw a generic "Failed to send verification email" — raw axios errors are never serialized (their `config.headers` contain the key) toward the client sign-in flow. |
+| Development | Set via the project's API keys settings (or `npx convex env set EMAIL_OTP_API_KEY ...`). The key is intentionally absent from `.env.example` — placeholder only. |
+| Production | Must be defined on the production Convex deployment before sign-in works. |
+| History | The key was previously hardcoded in `emailOtp.ts` (audit finding B3/S1). Removed and moved to the environment; **the previously exposed credential should be rotated with the provider** — code removal does not un-leak it. |
 
 ---
 

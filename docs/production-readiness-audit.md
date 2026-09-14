@@ -88,7 +88,7 @@ No workflow stage relies on mock data, `Math.random()` (except tracking-number/u
 
 | # | Severity | Finding | Evidence | Remediation |
 |---|---|---|---|---|
-| S1 | **Medium** | Hardcoded API key in email-OTP bridge (`x-api-key: "fb_email_…"`) | `src/convex/auth/emailOtp.ts` | Move to Convex env var (Keys settings). Server-side only, so not exploitable from the client; still violates secret hygiene. |
+| S1 | **Medium** | Hardcoded API key in email-OTP bridge (`x-api-key: "fb_email_…"`) | `src/convex/auth/emailOtp.ts` | **FIXED** — key removed from source; now read from the server-only `EMAIL_OTP_API_KEY` Convex environment variable with a clear missing-config error. Raw axios errors (which embed request headers) are no longer serialized into thrown errors. **Note: the exposed credential itself should still be rotated with the provider.** |
 | S2 | **Medium** | No automated role provisioning; no role-management mutation exists | No `setUserRole`-style mutation anywhere; `updateMyProfile` accepts only name/phone | For pilot: manual provisioning via Convex dashboard is acceptable (fail-closed). Before scale: build an admin-only role-assignment mutation with audit events. |
 | S3 | **Low** | `assignDriver` (manual ops assignment) lacks the COMPANY_ADMIN company-ownership check that `dispatchDelivery`/`reassignDelivery` enforce | `state_machine.ts` `assignDriver` — permission check only (`DELIVERY_ASSIGN`); COMPANY_ADMIN with that permission could assign a driver on another company's delivery | Add the same ownership resolution used by `reassignDelivery` (order → businessId vs session user's businessId, fail-closed). One-function change; recommended next task. |
 | S4 | **Low** | `getMyCurrentDelivery` and several ops queries allow unbounded `.collect()` on driver-scoped indexes | `tracking/queries.ts`, engine queries | Bounded by per-driver data volume in practice; monitor. |
@@ -194,10 +194,10 @@ Required before real deployment (managed via the project's Keys/API settings and
 | `PAYSTACK_SECRET_KEY` | Payment init/verify + webhook signature verification (server-side) |
 | Paystack webhook URL | Register `https://<convex-deployment>.convex.site/payments/paystack/webhook` |
 | `GOOGLE_MAPS_API_KEY` | Geocoding + health-check routing provider |
+| `EMAIL_OTP_API_KEY` | Email-OTP sign-in provider key (server-only Convex env; see S1) |
 | `CONVEX_SITE_URL` | Convex Auth OIDC issuer (self-issued tokens) |
 | `VITE_CONVEX_URL` | Client Convex endpoint (already set) |
 | Role provisioning | Manually assign DRIVER/OPERATIONS/COMPANY_ADMIN roles via dashboard for pilot staff |
-| Email OTP | Freebuff bridge key currently hardcoded (S1) — move to env |
 
 Observability exists: `/health`, `/health/live`, `/health/ready` + Vly monitoring instrumentation. No feature flags are used; behaviour is code-determined.
 
@@ -226,7 +226,7 @@ Observability exists: `/health`, `/health/live`, `/health/ready` + Vly monitorin
 |---|---|---|---|
 | B1 | Offer expiry automation (cron or ops-tab trigger for `processExpiredOffers`) | Operational reliability | **FIXED** — Convex cron added (`src/convex/crons.ts`), runs the existing expiry core every minute via `internal.dispatch.engine.processExpiredOffersCron`. See `docs/dispatch-engine.md` → "Automated Offer Expiry". |
 | B2 | COMPANY_ADMIN ownership check on `assignDriver` (parity with dispatch/reassign) | Security consistency | **FIXED** — `assignDriver` now enforces the session-derived `delivery.orderId → orders.businessId` ownership rule (fail-closed) before any write; the same-class fail-open edge in `dispatchDelivery` (`undefined !== undefined`) was also fixed. See `docs/dispatch-engine.md` → "Assignment Authorization". |
-| B3 | Hardcoded email-OTP API key → environment configuration | Secret hygiene | Open |
+| B3 | Hardcoded email-OTP API key → environment configuration | Secret hygiene | **FIXED** — `src/convex/auth/emailOtp.ts` now reads `EMAIL_OTP_API_KEY` from the Convex environment (server-only) and fails with a clear configuration error when it is missing; the axios-error serialization leak vector was removed. Deployment requirement: set `EMAIL_OTP_API_KEY` in the Convex environment before sign-in can deliver OTP emails. Verified by `emailOtp.test.ts`. |
 
 **Pilot-acceptable (documented, not blocking):** manual role provisioning; no admin-specific pages; no external payout; no SMS/email/push; manual tracking-retention execution; no wallet top-up charging.
 
@@ -238,7 +238,7 @@ Ranked by production risk → customer impact → operational impact → complex
 
 1. ~~**B1 — Schedule offer expiry** (Convex cron calling `processExpiredOffers`): removes the only stuck-state path; small, isolated.~~ **DONE** — implemented as a 1-minute Convex cron invoking the existing expiry core (`processExpiredOffersCron`); verified by `expiry_cron.test.ts`.
 2. ~~**B2 — `assignDriver` company-ownership check**: one-function authorization parity fix; reuses the `reassignDelivery` pattern.~~ **DONE** — enforced fail-closed before any write; also fixed the same-class fail-open edge in `dispatchDelivery`; verified by `assign_authz.test.ts`.
-3. **B3 — Move the OTP bridge key to env**: trivial secret-hygiene fix.
+3. ~~**B3 — Move the OTP bridge key to env**: trivial secret-hygiene fix.~~ **DONE** — `EMAIL_OTP_API_KEY` env var with safe missing-config failure; see Security Findings S1. External rotation of the previously exposed key is still recommended.
 4. **Driver payout provider integration** (Paystack Transfers) behind the existing eligibility gate — the largest customer/operational value item after the gates are correct.
 5. **Admin role-management mutation** (super_admin-only, audited) to replace dashboard provisioning.
 6. **Tracking-retention cron** (`cleanupTrackingData`).
