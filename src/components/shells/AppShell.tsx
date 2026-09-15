@@ -96,9 +96,9 @@ export default function AppShell({
           >
             <Menu size={22} />
           </button>
-          {/* Logo — actual Lasha mark, cropped to its visible bounds (~3× the
-              previous sliver-in-a-box rendering; header height unchanged) */}
-          <LashaLogo height={84} />
+          {/* Logo — actual Lasha mark, cropped to its visible bounds; sized
+              to sit comfortably inside the 90px header */}
+          <LashaLogo height={56} />
           {brandLabel && (
             <span className="dash-topnav-logo-text">{brandLabel}</span>
           )}

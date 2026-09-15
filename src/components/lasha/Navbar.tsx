@@ -44,7 +44,7 @@ export default function Navbar() {
       <div className="lasha-container flex items-center justify-between h-full">
         {/* Logo — the actual Lasha mark, edge-to-edge (cropped transparent padding) */}
         <a href="/" className="flex items-center no-underline" aria-label="Lasha home">
-          <LashaLogo height={78} wordmark dark />
+          <LashaLogo height={44} wordmark dark />
         </a>
 
         {/* Desktop links */}

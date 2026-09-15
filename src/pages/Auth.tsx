@@ -1,5 +1,5 @@
 import { useAuthActions } from "@convex-dev/auth/react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useSearchParams, Link, useNavigate } from "react-router";
 import { ArrowRight, ArrowLeft, Eye, EyeOff } from "lucide-react";
 
@@ -62,6 +62,17 @@ export default function AuthPage({ redirectAfterAuth = "/post-auth" }: AuthProps
   const initialMode = searchParams.get("mode") === "signup" ? "signup" : "login";
 
   const [mode, setMode] = useState<Mode>(initialMode);
+
+  // The login form links to /auth?mode=signup and vice versa. React Router
+  // re-renders this same mounted component on that navigation (no remount),
+  // so `mode` initialized once from useState never updates — the signup form
+  // only appeared after a manual browser refresh. Sync the mode with the URL
+  // so clicking "Create account" / "Sign in" switches the form immediately.
+  useEffect(() => {
+    const next = searchParams.get("mode") === "signup" ? "signup" : "login";
+    setMode((current) => (current === next ? current : next));
+  }, [searchParams]);
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");

@@ -114,9 +114,8 @@ export default function TrustedBy() {
           padding-left: 72px;
           animation: trustedby-scroll 32s linear infinite;
         }
-        .trustedby-row:hover .trustedby-track {
-          animation-play-state: paused;
-        }
+        /* NOTE: no hover pause — the marquee keeps scrolling when the user
+           hovers so logos are always cycling (per product decision). */
         .trustedby-tile {
           display: flex;
           align-items: center;
