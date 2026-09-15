@@ -1231,10 +1231,20 @@ export const calculateRoute = action({
   handler: async (ctx, args) => {
     const apiKey = process.env.GOOGLE_MAPS_API_KEY;
     const response = await fetch(
-      `https://maps.googleapis.com/maps/api/directions/json?` +
-      `origin=${args.pickup.lat},${args.pickup.lng}` +
-      `&destination=${args.dropoff.lat},${args.dropoff.lng}` +
-      `&key=${apiKey}`
+      `https://routes.googleapis.com/directions/v2:computeRoutes`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Goog-Api-Key": apiKey,
+          "X-Goog-FieldMask": "routes.distanceMeters,routes.duration",
+        },
+        body: JSON.stringify({
+          origin: { location: { latLng: { latitude: args.pickup.lat, longitude: args.pickup.lng } } },
+          destination: { location: { latLng: { latitude: args.dropoff.lat, longitude: args.dropoff.lng } } },
+          travelMode: "DRIVE",
+        }),
+      }
     );
     const data = await response.json();
     return {
@@ -1254,7 +1264,7 @@ const response = await fetch("https://api.paystack.co/..."); // Never!
 ```typescript
 // Available in Convex functions via process.env:
 process.env.PAYSTACK_SECRET_KEY
-process.env.GOOGLE_MAPS_API_KEY
+process.env.GOOGLE_MAPS_API_KEY  // Google Places (New) + Routes API v2 — the new-generation endpoints (billing-free access; legacy Geocoding/Directions need billing)
 process.env.VLY_INTEGRATION_KEY
 process.env.SMS_GATEWAY_KEY
 process.env.VLY_APP_NAME

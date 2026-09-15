@@ -29,13 +29,24 @@ http.route({
     try {
       const apiKey = process.env.GOOGLE_MAPS_API_KEY;
       if (apiKey) {
+        // Places API (New) — the new-generation geocoding endpoint (billing-
+        // free access; the legacy Geocoding endpoint requires billing).
         const response = await fetch(
-          `https://maps.googleapis.com/maps/api/geocode/json?address=Johannesburg&key=${apiKey}`
+          "https://places.googleapis.com/v1/places:searchText",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Goog-Api-Key": apiKey,
+              "X-Goog-FieldMask": "places.id",
+            },
+            body: JSON.stringify({ textQuery: "Johannesburg, South Africa" }),
+          }
         );
         checks.routing = {
           status: response.ok ? "healthy" : "degraded",
           latencyMs: Date.now() - routingStart,
-          message: response.ok ? "Google Maps available" : `HTTP ${response.status}`,
+          message: response.ok ? "Google Places available" : `HTTP ${response.status}`,
         };
       } else {
         // OSRM fallback

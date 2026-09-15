@@ -225,8 +225,12 @@ export const calculateDistance = action({
  *
  * Resolution strategy (server-side only, the key never leaves this process):
  * 1. Normalise the address (whitespace, SA country context).
- * 2. Google Maps Geocoding when GOOGLE_MAPS_API_KEY is configured, otherwise
- *    OpenStreetMap Nominatim — each tried across query variants.
+ * 2. Google Places API (New) `places:searchText` when GOOGLE_MAPS_API_KEY is
+ *    configured, otherwise OpenStreetMap Nominatim — each tried across query
+ *    variants. (The NEW-generation Places/Routes APIs are used deliberately:
+ *    since Google's March 2025 pricing change they work on billing-free
+ *    projects, while the legacy Geocoding/Directions endpoints require an
+ *    activated billing account.)
  * 3. On total failure of the primary provider, the other provider is tried
  *    as an explicit fallback (two independent datasets disagree often
  *    enough that this materially improves resolution).
@@ -365,37 +369,40 @@ async function geocodeGoogle(
   apiKey: string,
   log: ReturnType<typeof createLogger>
 ): Promise<{ lat: number; lng: number; formattedAddress: string }> {
-  log.info("Geocoding via Google Maps", {
+  log.info("Geocoding via Google Places (New)", {
     operation: "geocodeAddress",
-    metadata: { provider: "google-maps", address },
+    metadata: { provider: "google-places-new", address },
   });
 
-  const params = new URLSearchParams({
-    address,
-    key: apiKey,
+  const response = await fetch("https://places.googleapis.com/v1/places:searchText", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Goog-Api-Key": apiKey,
+      // Field mask controls the response shape (and billed fields) — request
+      // only what the geocode result needs.
+      "X-Goog-FieldMask": "places.formattedAddress,places.location",
+    },
+    body: JSON.stringify({ textQuery: address }),
   });
-
-  const response = await fetch(
-    `https://maps.googleapis.com/maps/api/geocode/json?${params.toString()}`
-  );
 
   if (!response.ok) {
-    throw new Error(`Google Geocoding API error: ${response.status}`);
+    throw new Error(`Google Places API error: ${response.status}`);
   }
 
   const data = await response.json();
 
-  if (data.status !== "OK" || !data.results || data.results.length === 0) {
+  if (!data.places || data.places.length === 0) {
     throw new Error(
-      `Could not geocode address: ${data.error_message ?? data.status}`
+      `Could not geocode address: no results found for "${address}"`
     );
   }
 
-  const result = data.results[0];
+  const place = data.places[0];
   return {
-    lat: result.geometry.location.lat,
-    lng: result.geometry.location.lng,
-    formattedAddress: result.formatted_address,
+    lat: place.location.latitude,
+    lng: place.location.longitude,
+    formattedAddress: place.formattedAddress,
   };
 }
 
@@ -455,24 +462,69 @@ async function getRouteHandler(request: RouteRequest): Promise<RouteResult> {
   return getRouteOSRM(request);
 }
 
+// ─── Routes API v2 (new-generation Directions) ─────────────────────────────
+// Google retired billing-free access to the legacy Directions endpoint in the
+// March 2025 pricing change; the Routes API v2 keeps free monthly caps and is
+// therefore the server-side Google path.
+
+/** Maps the platform's TravelMode strings to Routes API v2 enums. */
+function routesTravelMode(mode: RouteRequest["travelMode"]): string {
+  switch (mode) {
+    case "walking":
+      return "WALK";
+    case "cycling":
+      return "BICYCLE";
+    case "transit":
+      return "TRANSIT";
+    default:
+      return "DRIVE";
+  }
+}
+
+/** Waypoint body for Routes API v2. Mirrors the legacy formatWaypoint
+ *  preference: the raw address string when present, coordinates otherwise. */
+function routesWaypoint(wp: Waypoint): Record<string, unknown> {
+  if (wp.address) return { address: wp.address };
+  return { location: { latLng: { latitude: wp.lat, longitude: wp.lng } } };
+}
+
+/** Routes API v2 durations arrive as strings like "2683s" ("1234.5s" too). */
+function parseRoutesDuration(duration: unknown): number {
+  const seconds = typeof duration === "string" ? parseFloat(duration) : NaN;
+  return Number.isFinite(seconds) ? seconds : 0;
+}
+
 async function getRouteGoogle(
   request: RouteRequest,
   apiKey: string
 ): Promise<RouteResult> {
-  const params = new URLSearchParams({
-    origin: formatWaypoint(request.origin),
-    destination: formatWaypoint(request.destination),
-    key: apiKey,
-    mode: request.travelMode ?? "driving",
-  });
+  const body: Record<string, unknown> = {
+    origin: routesWaypoint(request.origin),
+    destination: routesWaypoint(request.destination),
+    travelMode: routesTravelMode(request.travelMode),
+  };
 
   if (request.waypoints && request.waypoints.length > 0) {
-    const waypointStr = request.waypoints.map(formatWaypoint).join("|");
-    params.set("waypoints", waypointStr);
+    body.intermediates = request.waypoints.map(routesWaypoint);
   }
 
   const response = await fetch(
-    `https://maps.googleapis.com/maps/api/directions/json?${params.toString()}`
+    "https://routes.googleapis.com/directions/v2:computeRoutes",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": apiKey,
+        // Field mask controls the response shape (and billed fields) —
+        // request only what RouteResult needs.
+        "X-Goog-FieldMask":
+          "routes.distanceMeters,routes.duration,routes.polyline.encodedPolyline," +
+          "routes.legs.distanceMeters,routes.legs.duration," +
+          "routes.legs.startLocation.latLng,routes.legs.endLocation.latLng," +
+          "routes.warnings",
+      },
+      body: JSON.stringify(body),
+    }
   );
 
   if (!response.ok) {
@@ -481,26 +533,28 @@ async function getRouteGoogle(
 
   const data = await response.json();
 
-  if (data.status !== "OK" || !data.routes || data.routes.length === 0) {
-    throw new Error(data.error_message ?? `No route found: ${data.status}`);
+  if (!data.routes || data.routes.length === 0) {
+    throw new Error(
+      data.error?.message ?? `No route found: ${data.status ?? "empty response"}`
+    );
   }
 
   const route = data.routes[0];
-  const legs = route.legs.map((leg: any) => ({
-    start: { lat: leg.start_location.lat, lng: leg.start_location.lng },
-    end: { lat: leg.end_location.lat, lng: leg.end_location.lng },
-    distance: leg.distance.value,
-    duration: leg.duration.value,
+  const legs = (route.legs ?? []).map((leg: any) => ({
+    start: {
+      lat: leg.startLocation?.latLng?.latitude ?? request.origin.lat,
+      lng: leg.startLocation?.latLng?.longitude ?? request.origin.lng,
+    },
+    end: {
+      lat: leg.endLocation?.latLng?.latitude ?? request.destination.lat,
+      lng: leg.endLocation?.latLng?.longitude ?? request.destination.lng,
+    },
+    distance: leg.distanceMeters ?? 0,
+    duration: parseRoutesDuration(leg.duration),
   }));
 
-  const totalDistance = legs.reduce(
-    (sum: number, leg: any) => sum + leg.distance,
-    0
-  );
-  const totalDuration = legs.reduce(
-    (sum: number, leg: any) => sum + leg.duration,
-    0
-  );
+  const totalDistance = route.distanceMeters ?? 0;
+  const totalDuration = parseRoutesDuration(route.duration);
 
   return {
     routeId: `gmaps-${Date.now()}`,
@@ -508,10 +562,10 @@ async function getRouteGoogle(
     distance: totalDistance,
     duration: totalDuration,
     eta: Date.now() + totalDuration * 1000,
-    geometry: route.overview_polyline.points,
+    geometry: route.polyline?.encodedPolyline ?? "",
     legs,
     warnings: (route.warnings ?? []).map((w: string) => ({
-      type: "congestion",
+      type: "congestion" as const,
       message: w,
     })),
   };
@@ -576,11 +630,6 @@ async function getRouteOSRM(request: RouteRequest): Promise<RouteResult> {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function formatWaypoint(wp: Waypoint): string {
-  if (wp.address) return wp.address;
-  return `${wp.lat},${wp.lng}`;
-}
 
 function haversineDistance(
   lat1: number,

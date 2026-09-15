@@ -115,10 +115,10 @@
 | | |
 |---|---|
 | **Status** | **PARTIAL** |
-| **Evidence** | Client-side: `src/lib/routing/index.ts` (RoutingService with Google Maps + OSRM fallback, caching, retry), `src/lib/routing/providers/google-maps.ts`, `src/lib/routing/providers/osrm.ts`, `src/lib/routing/cache.ts`, `src/lib/routing/errors.ts`. Server-side: `src/convex/routing/actions.ts` (Convex actions for server-side routing and geocoding with API key). React hooks: `src/hooks/use-routing.ts` (useRoute, useETA, useDistanceMatrix). **Geocoding now integrated** via `geocodeAddress` Convex action (Google Maps Geocoding API with Nominatim fallback). RequestDelivery calls this action before order creation. |
+| **Evidence** | Client-side: `src/lib/routing/index.ts` (RoutingService with Google Maps + OSRM fallback, caching, retry), `src/lib/routing/providers/google-maps.ts`, `src/lib/routing/providers/osrm.ts`, `src/lib/routing/cache.ts`, `src/lib/routing/errors.ts`. Server-side: `src/convex/routing/actions.ts` (Convex actions for server-side routing and geocoding with API key — Places API (New) for geocoding, Routes API v2 for routing). React hooks: `src/hooks/use-routing.ts` (useRoute, useETA, useDistanceMatrix). **Geocoding now integrated** via `geocodeAddress` Convex action (Google Places API (New) with Nominatim fallback). RequestDelivery calls this action before order creation. |
 | **Relevant files** | `src/lib/routing/` (6 files), `src/convex/routing/actions.ts`, `src/hooks/use-routing.ts`, `src/pages/RequestDelivery.tsx` |
 | **What is missing** | No React page uses `useRoute` or `useRouting` hooks for turn-by-turn directions. The routing/direction system is fully implemented but not integrated into any user-facing flow. |
-| **What was repaired** | `src/convex/routing/actions.ts`: Added `geocodeAddress` Convex action (Google Maps Geocoding API + Nominatim fallback). `src/pages/RequestDelivery.tsx`: Replaced `Math.random()` coordinates with real geocoding via the action. Added geocoding loading state ("Resolving addresses...") and error handling for failed geocoding. |
+| **What was repaired** | `src/convex/routing/actions.ts`: Added `geocodeAddress` Convex action (Google Places API (New) + Nominatim fallback). `src/pages/RequestDelivery.tsx`: Replaced `Math.random()` coordinates with real geocoding via the action. Added geocoding loading state ("Resolving addresses...") and error handling for failed geocoding. |
 | **What is incorrect** | None remaining for geocoding. Routing/directions still not used by any page. |
 
 ---
@@ -332,7 +332,7 @@ None. The architecture is sound. The issue is that several subsystems were imple
 
 ### Important Technical Problems
 
-1. ~~**RequestDelivery uses random coordinates**~~ **FIXED** — Now uses `geocodeAddress` Convex action (Google Maps Geocoding API with Nominatim fallback). Both pickup and dropoff addresses are geocoded via server-side Convex action before order creation. Failed geocoding prevents submission with a clear user-facing error. Button shows "Resolving addresses..." during geocoding phase.
+1. ~~**RequestDelivery uses random coordinates**~~ **FIXED** — Now uses `geocodeAddress` Convex action (Google Places API (New) with Nominatim fallback). Both pickup and dropoff addresses are geocoded via server-side Convex action before order creation. Failed geocoding prevents submission with a clear user-facing error. Button shows "Resolving addresses..." during geocoding phase.
 2. ~~**Pricing not called from order creation**~~ **FIXED** — `createOrderAndDelivery` now calls `internal.pricing.service.calculateAndStoreQuote` to calculate price using active pricing rules, then stores the result on the order.
 3. **MakePayment is a no-op** — Users cannot actually add funds.
 4. ~~**Settings is read-only**~~ **FIXED** — Profile mutation exists and both Settings (Customer Portal) and Driver Profile (Driver App) persist through it.
@@ -348,7 +348,7 @@ None. The architecture is sound. The issue is that several subsystems were imple
 
 **Fix the four critical integration gaps, in order of impact:**
 
-1. ~~**Fix RequestDelivery coordinates**~~ **DONE** — Added `geocodeAddress` Convex action to `src/convex/routing/actions.ts` (Google Maps Geocoding API with Nominatim fallback). Updated `src/pages/RequestDelivery.tsx` to call this action via `useAction(api.routing.actions.geocodeAddress)` before creating the order. Removed all `Math.random()` coordinate generation. Added geocoding loading state and error handling.
+1. ~~**Fix RequestDelivery coordinates**~~ **DONE** — Added `geocodeAddress` action to `src/convex/routing/actions.ts` (Google Places API (New) with Nominatim fallback). Updated `src/pages/RequestDelivery.tsx` to call this action via `useAction(api.routing.actions.geocodeAddress)` before creating the order. Removed all `Math.random()` coordinate generation. Added geocoding loading state and error handling.
 2. **Wire pricing into order creation** — `createOrderAndDelivery` should call `pricing.service.calculateQuote` instead of using a default price.
 3. **Fix MakePayment** — Connect to a payment provider (or at minimum a wallet top-up mutation) so users can actually fund their accounts.
 4. **Add profile save mutation** — Add a Convex mutation for updating user profile fields and wire it to the Settings page.
