@@ -120,8 +120,10 @@ export default function TrustedBy() {
           display: flex;
           align-items: center;
           justify-content: center;
-          height: 52px;
-          min-width: 140px;
+          /* Uniform tile: every logo renders at the same visual height (the
+             Welo reference) inside an equal box, so the strip reads evenly. */
+          height: 40px;
+          min-width: 150px;
         }
         /* Grayscale by default, full colour on hover (reference behaviour). */
         .trustedby-tile img,
@@ -136,8 +138,11 @@ export default function TrustedBy() {
           opacity: 1;
         }
         .trustedby-tile img {
-          max-height: 42px;
-          max-width: 160px;
+          /* All logos render at one common visual size: height locked, width
+             free so each mark's true proportions are preserved. */
+          height: 32px;
+          width: auto;
+          max-width: 170px;
           object-fit: contain;
         }
         .trustedby-fallback {

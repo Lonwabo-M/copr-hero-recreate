@@ -55,10 +55,48 @@ export default function WhyLasha() {
           </div>
         </div>
 
+        {/* Fleet band — placed ABOVE the Risk/Scale/Reliability cards (the
+            band and the card row swapped places): the taxi asset anchors the
+            "Scale" story first, then the three operating-edge cards follow. */}
+        <div className="lasha-card why-fleet">
+          <div className="why-fleet-copy">
+            <span className="lasha-label" style={{ display: "block", marginBottom: 16 }}>
+              04 / The Fleet
+            </span>
+            <h3
+              style={{
+                fontSize: "clamp(26px, 2.6vw, 38px)",
+                fontWeight: 700,
+                letterSpacing: "-0.02em",
+                color: "var(--lasha-navy)",
+                marginBottom: 14,
+              }}
+            >
+              Delivery capacity, already on the road.
+            </h3>
+            <p className="lasha-body" style={{ fontSize: 15, lineHeight: 1.7, maxWidth: 460 }}>
+              Every Lasha driver operates a vetted local vehicle — the same
+              taxis that move South Africa every day, now moving your goods
+              with live tracking and proof of delivery.
+            </p>
+          </div>
+          <div className="why-fleet-visual">
+            <img
+              src="/assets/Taxi_image-removebg-preview.png"
+              alt="Lasha delivery taxi"
+              loading="lazy"
+            />
+          </div>
+        </div>
+
         {/* Three benefit cards */}
         <div
           className="lasha-card"
-          style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr" }}
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr 1fr",
+            marginTop: 20,
+          }}
         >
           {benefits.map((b, i) => {
             const Icon = b.icon;
@@ -116,39 +154,6 @@ export default function WhyLasha() {
           })}
         </div>
 
-        {/* Fleet band — the taxi asset anchors the "Scale" story: idle minibus-
-            taxi capacity turned into delivery infrastructure. Composition:
-            copy left, vehicle right, generous whitespace, no collage. */}
-        <div className="lasha-card why-fleet">
-          <div className="why-fleet-copy">
-            <span className="lasha-label" style={{ display: "block", marginBottom: 16 }}>
-              04 / The Fleet
-            </span>
-            <h3
-              style={{
-                fontSize: "clamp(26px, 2.6vw, 38px)",
-                fontWeight: 700,
-                letterSpacing: "-0.02em",
-                color: "var(--lasha-navy)",
-                marginBottom: 14,
-              }}
-            >
-              Delivery capacity, already on the road.
-            </h3>
-            <p className="lasha-body" style={{ fontSize: 15, lineHeight: 1.7, maxWidth: 460 }}>
-              Every Lasha driver operates a vetted local vehicle — the same
-              taxis that move South Africa every day, now moving your goods
-              with live tracking and proof of delivery.
-            </p>
-          </div>
-          <div className="why-fleet-visual">
-            <img
-              src="/assets/Taxi_image-removebg-preview.png"
-              alt="Lasha delivery taxi"
-              loading="lazy"
-            />
-          </div>
-        </div>
       </div>
 
       <style>{`
