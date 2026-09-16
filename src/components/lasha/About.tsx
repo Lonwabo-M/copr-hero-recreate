@@ -6,15 +6,16 @@ export default function About() {
       style={{ padding: "120px 0", backgroundColor: "var(--lasha-navy)" }}
     >
       <div className="lasha-container">
+        {/* Section label — same placement pattern as every other Lasha
+            section ("04 / Sector Intelligence", etc.): first element, top of
+            the container, above the content grid. */}
+        <p className="lasha-label mb-12" style={{ color: "var(--lasha-cyan-light)" }}>
+          About Lasha
+        </p>
+
         <div className="about-grid">
-          {/* Left: sticky-style heading block. `align-self: start` + reduced top
-              offset pulls "About Lasha / Local reach…" up to the top of the
-              section so it sits level with the first lines of the story copy
-              instead of floating mid-section. */}
+          {/* Left: heading block + editorial figure. */}
           <div className="about-left">
-            <p className="lasha-label mb-8" style={{ color: "var(--lasha-cyan-light)" }}>
-              About Lasha
-            </p>
             <h2
               className="lasha-heading lasha-heading-dark"
               style={{ fontSize: "clamp(34px, 3.6vw, 54px)" }}
@@ -26,13 +27,13 @@ export default function About() {
               <span style={{ color: "var(--lasha-cyan)" }}>One delivery network.</span>
             </h2>
 
-            {/* Vehicle image — placed under the heading like an editorial
-                figure: it grounds the "what we already have" story in the
-                actual fleet asset without competing with the copy column. */}
+            {/* Vehicle image — the fleet cutout sits on a light studio panel
+                like a catalog plate: sharp at native resolution, and a
+                deliberate contrast against the navy section. */}
             <div className="about-figure">
               <img
-                src="/assets/van-fleet.jpg"
-                alt="A Lasha minibus taxi loaded with parcels for delivery"
+                src="/assets/Taxi_image-removebg-preview.png"
+                alt="A Lasha delivery taxi"
                 loading="lazy"
               />
             </div>
@@ -99,19 +100,21 @@ export default function About() {
         }
         .about-left {
           align-self: start;
-          position: sticky;
-          top: 120px;
         }
         .about-figure {
           margin-top: 40px;
           border-radius: 16px;
-          overflow: hidden;
           border: 1px solid rgba(255, 255, 255, 0.12);
-          background: rgba(255, 255, 255, 0.04);
+          background: linear-gradient(180deg, #f6f8f9 0%, #e9eef0 100%);
+          padding: 28px 32px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
         }
         .about-figure img {
           display: block;
-          width: 100%;
+          /* Native resolution — never upscaled, so it stays crisp. */
+          width: min(100%, 300px);
           height: auto;
         }
         .about-copy {

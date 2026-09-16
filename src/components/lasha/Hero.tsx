@@ -13,14 +13,14 @@ export default function Hero() {
           src="https://images.unsplash.com/photo-1553413077-190dd305871c?w=1920&q=80"
           alt="Warehouse logistics and distribution operations"
           className="w-full h-full object-cover object-center"
-          style={{ filter: "brightness(0.3) saturate(0.65)" }}
+          style={{ filter: "brightness(0.55) saturate(0.75)" }}
           loading="eager"
         />
         <div
           className="absolute inset-0"
           style={{
             background:
-              "linear-gradient(180deg, rgba(8,38,49,0.88) 0%, rgba(8,38,49,0.72) 40%, rgba(8,38,49,0.92) 100%)",
+              "linear-gradient(180deg, rgba(8,38,49,0.72) 0%, rgba(8,38,49,0.55) 40%, rgba(8,38,49,0.80) 100%)",
           }}
         />
       </div>

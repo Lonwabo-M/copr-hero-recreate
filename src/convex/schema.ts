@@ -695,6 +695,31 @@ const schema = defineSchema(
       .index("by_user", ["userId"])
       .index("by_calculated", ["calculatedAt"]),
 
+    // ─── Email Outbox ─────────────────────────────────────────────────────
+    // Durable outbound email queue (Resend-ready seam — see email/index.ts).
+    // Rows are written when RESEND_API_KEY is absent or delivery fails, so
+    // nothing is silently dropped; a worker can drain the queue once email
+    // is configured.
+    email_outbox: defineTable({
+      to: v.array(v.string()),
+      subject: v.string(),
+      html: v.string(),
+      text: v.string(),
+      status: v.union(
+        v.literal("queued"),
+        v.literal("failed"),
+        v.literal("sent"),
+      ),
+      entityId: v.optional(v.string()),
+      orderId: v.optional(v.string()),
+      attempts: v.number(),
+      sentAt: v.optional(v.number()),
+      lastError: v.optional(v.string()),
+      createdAt: v.number(),
+    })
+      .index("by_status", ["status"])
+      .index("by_order", ["orderId"]),
+
     // ─── Settlements ────────────────────────────────────────────────────────
     // Driver settlement records.
     settlements: defineTable({

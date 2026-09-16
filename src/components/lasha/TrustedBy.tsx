@@ -37,6 +37,8 @@ export default function TrustedBy() {
       style={{
         backgroundColor: "var(--lasha-ivory)",
         borderBottom: "1px solid var(--lasha-border-light)",
+        /* Breathing room between the full-height hero and the logo strip. */
+        marginTop: 56,
         padding: "28px 0",
         overflow: "hidden",
       }}

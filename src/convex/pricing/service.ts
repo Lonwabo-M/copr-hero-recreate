@@ -19,6 +19,7 @@ import {
 import { requireAuth, requirePermission, getCurrentAuthUser } from "../auth/authorization";
 import { AUDIT_ACTIONS } from "../audit/service";
 import { internal } from "../_generated/api";
+import { ensurePricingRules } from "../seed/pricing";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -289,6 +290,9 @@ export const calculateQuote = mutation({
       }
     }
     
+    // Lazily seed default pricing rules (same transaction — atomic).
+    await ensurePricingRules(ctx);
+    
     // Find matching pricing rule
     const rule = await ctx.db
       .query("pricing_rules")
@@ -464,6 +468,10 @@ export const calculateAndStoreQuote = internalMutation({
     // Get the order
     const order = await ctx.db.get(args.orderId);
     if (!order) throw new Error("Order not found");
+
+    // Lazily seed default pricing rules so quoting never hard-fails on an
+    // unpopulated pricing_rules table (same transaction — atomic).
+    await ensurePricingRules(ctx);
 
     // Find matching pricing rule
     const rule = await ctx.db
