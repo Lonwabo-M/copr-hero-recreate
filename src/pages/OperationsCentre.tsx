@@ -149,6 +149,20 @@ const STATUS_COLORS: Record<string, string> = {
   [DELIVERY_STATUS.DELIVERED]: "#0A7C42",
 };
 
+// Tinted pill treatment for status badges: translucent fill of the status
+// colour with a matching readable text colour (replaces solid white-on-colour).
+function statusBadgeStyle(status: string): React.CSSProperties {
+  const c = STATUS_COLORS[status] ?? "#666";
+  return { background: `${c}1a`, color: c, border: `1px solid ${c}38` };
+}
+
+// Accent colour for exception cards by kind (also drives the left edge bar).
+function exceptionKindColor(kind: string): string {
+  if (kind === "failed" || kind === "stale_gps") return "#C62828";
+  if (kind === "reassignment_required") return "#856404";
+  return "#0794B5";
+}
+
 export default function OperationsCentre() {
   return (
     <RoleGate area={APP_AREAS.OPERATIONS}>
@@ -345,6 +359,10 @@ function OperationsCentreInner() {
   return (
     <OperationsShell activeItem="Operations Centre">
       <main className="ops-main">
+        <div className="ops-page-head">
+          <span className="ops-page-eyebrow">Control Room</span>
+          <h1 className="ops-page-title">Operations Centre</h1>
+        </div>
         <div className="ops-tabs">
           {([
             { id: "overview", label: "Overview", icon: <TrendingUp size={18} /> },
@@ -448,8 +466,14 @@ function OverviewTab({
     <div className="ops-overview">
       <div className="ops-stats-grid">
         {stats.map((stat) => (
-          <div key={stat.label} className="ops-stat-card">
-            <div className="ops-stat-icon" style={{ color: stat.color }}>{stat.icon}</div>
+          <div
+            key={stat.label}
+            className="ops-stat-card"
+            style={{ "--stat-accent": stat.color } as React.CSSProperties}
+          >
+            <div className="ops-stat-icon" style={{ color: stat.color, background: `${stat.color}14` }}>
+              {stat.icon}
+            </div>
             <div className="ops-stat-value">{stat.value}</div>
             <div className="ops-stat-label">{stat.label}</div>
           </div>
@@ -568,7 +592,7 @@ function DispatchTab({
               <div key={d._id} className="ops-dispatch-card">
                 <div className="ops-dispatch-header">
                   <span className="ops-delivery-tracking">{d.trackingNumber}</span>
-                  <span className="status-badge" style={{ background: STATUS_COLORS[d.status] ?? "#666", color: "#fff" }}>
+                  <span className="status-badge" style={statusBadgeStyle(d.status)}>
                     {statusLabel(d.status)}
                   </span>
                 </div>
@@ -772,12 +796,11 @@ function LiveTab({
                     <button
                       key={d._id}
                       className={`ops-delivery-card ${selected ? "selected" : ""}`}
-                      style={{ borderColor: selected ? "var(--primary)" : undefined, borderWidth: selected ? 2 : undefined }}
                       onClick={() => onSelectDelivery(d._id as string)}
                     >
                       <div className="ops-delivery-header">
                         <span className="ops-delivery-tracking">{d.trackingNumber}</span>
-                        <span className="status-badge" style={{ background: STATUS_COLORS[d.status] ?? "#666", color: "#fff" }}>
+                        <span className="status-badge" style={statusBadgeStyle(d.status)}>
                           {statusLabel(d.status)}
                         </span>
                       </div>
@@ -785,12 +808,12 @@ function LiveTab({
                       <div className="ops-delivery-route">
                         <div className="ops-route-point">
                           <MapPin size={12} />
-                          <span className="ops-route-label">P</span>
+                          <span className="ops-route-label pickup">P</span>
                           <span>{formatCoordinate(d.pickupLat)}, {formatCoordinate(d.pickupLng)}</span>
                         </div>
                         <div className="ops-route-point">
                           <MapPin size={12} />
-                          <span className="ops-route-label">D</span>
+                          <span className="ops-route-label dropoff">D</span>
                           <span>{formatCoordinate(d.dropoffLat)}, {formatCoordinate(d.dropoffLng)}</span>
                         </div>
                       </div>
@@ -1166,7 +1189,7 @@ function DriversTab({
                   <div className="ops-driver-active">
                     <span className="ops-driver-active-label">Active delivery</span>
                     <span className="ops-driver-active-value">{assignedDelivery.trackingNumber}</span>
-                    <span className="status-badge ops-small" style={{ background: STATUS_COLORS[assignedDelivery.status] ?? "#666", color: "#fff" }}>
+                    <span className="status-badge" style={statusBadgeStyle(assignedDelivery.status)}>
                       {statusLabel(assignedDelivery.status)}
                     </span>
                   </div>
@@ -1222,11 +1245,9 @@ function ExceptionsTab({
       {exceptions.length > 0 ? (
         <div className="ops-exceptions-list">
           {exceptions.map((e, i) => (
-            <div key={i} className="ops-exception-card">
+            <div key={i} className="ops-exception-card" style={{ "--exception-accent": exceptionKindColor(e.kind) } as React.CSSProperties}>
               <div className="ops-exception-kind" style={{
-                color: e.kind === "failed" || e.kind === "stale_gps" ? "#C62828"
-                  : e.kind === "reassignment_required" ? "#856404"
-                  : "#0794B5",
+                color: exceptionKindColor(e.kind),
               }}>
                 {e.kind === "failed" && <XCircle size={16} />}
                 {e.kind === "reassignment_required" && <RefreshCw size={16} />}
@@ -1389,7 +1410,7 @@ function HistoryTab({
                 <tr key={d._id}>
                   <td style={{ fontWeight: 600 }}>{d.trackingNumber}</td>
                   <td>{d._id.slice(-6).toUpperCase()}</td>
-                  <td><span className="status-badge" style={{ background: STATUS_COLORS[d.status] ?? "#666", color: "#fff" }}>{statusLabel(d.status)}</span></td>
+                  <td><span className="status-badge" style={statusBadgeStyle(d.status)}>{statusLabel(d.status)}</span></td>
                   <td>{d.startedAt ? formatDateTime(d.startedAt) : "—"}</td>
                   <td>{d.completedAt ? formatDateTime(d.completedAt) : "—"}</td>
                   <td>{driverName}</td>

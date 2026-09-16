@@ -37,7 +37,14 @@ import {
   XCircle,
   Clock,
   User,
+  Navigation,
+  Box,
+  Calendar,
+  Ruler,
+  Copy,
+  FileCheck2,
 } from "lucide-react";
+import { useState } from "react";
 import "@/styles/dashboard.css";
 import "@/styles/track-delivery.css";
 
@@ -126,7 +133,9 @@ function customerTimeline(status: string): Array<{ label: string; state: "done" 
 
 // ─── Customer-safe status copy ────────────────────────────────────────────────
 
-function statusCopy(status: string): { label: string; tone: "ok" | "active" | "warn" | "bad" } {
+type StatusTone = "ok" | "active" | "warn" | "bad";
+
+function statusCopy(status: string): { label: string; tone: StatusTone } {
   switch (status) {
     case DELIVERY_STATUS.DELIVERED:
       return { label: "Delivered", tone: "ok" };
@@ -143,6 +152,25 @@ function statusCopy(status: string): { label: string; tone: "ok" | "active" | "w
     default:
       return { label: ACTIVE_STATUSES[status] ?? status.replace(/_/g, " "), tone: "active" };
   }
+}
+
+function StatusBadge({ label, tone }: { label: string; tone: StatusTone }) {
+  const toneClass = tone === "bad" ? "is-bad" : tone === "warn" ? "is-warn" : "";
+  return (
+    <div className={`track-status-badge ${toneClass}`}>
+      <span className="track-status-dot" />
+      {label}
+    </div>
+  );
+}
+
+function FreshnessChip({ state }: { state: ReturnType<typeof freshness> }) {
+  return (
+    <span className={`track-freshness ${state}`}>
+      <Radio size={12} className={state === "live" ? "animate-pulse" : ""} />
+      {freshnessLabel(state)}
+    </span>
+  );
 }
 
 // ─── Inline route mini-map (same pattern as the operations SVG map, scoped) ────
@@ -163,9 +191,9 @@ function RouteMap({
 
   if (points.length === 0) return null;
 
-  const W = 320;
-  const H = 180;
-  const pad = 24;
+  const W = 640;
+  const H = 260;
+  const pad = 56;
   const lats = points.map((p) => p.lat);
   const lngs = points.map((p) => p.lng);
   const minLat = Math.min(...lats);
@@ -186,48 +214,66 @@ function RouteMap({
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="track-map-svg" role="img" aria-label="Delivery route map">
+      <defs>
+        <linearGradient id="trackRouteGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#0794B5" stopOpacity="0.9" />
+          <stop offset="100%" stopColor="#0A7C42" stopOpacity="0.9" />
+        </linearGradient>
+      </defs>
       {pickupXY && dropoffXY && (
         <line
           x1={pickupXY[0]} y1={pickupXY[1]}
           x2={dropoffXY[0]} y2={dropoffXY[1]}
-          stroke="#cbd5e1" strokeWidth={1.5} strokeDasharray="4 4"
+          stroke="url(#trackRouteGrad)" strokeWidth={2.5} strokeLinecap="round"
         />
       )}
       {pickupXY && (
         <g>
-          <circle cx={pickupXY[0]} cy={pickupXY[1]} r={6} fill="#0794B5" stroke="#fff" strokeWidth={2} />
-          <text x={pickupXY[0] + 9} y={pickupXY[1] + 4} fontSize={10} fill="#1f2937">Pickup</text>
+          <circle cx={pickupXY[0]} cy={pickupXY[1]} r={13} fill="rgba(7,148,181,0.15)" />
+          <circle cx={pickupXY[0]} cy={pickupXY[1]} r={7} fill="#0794B5" stroke="#fff" strokeWidth={2.5} />
+          <text x={pickupXY[0] - 9} y={pickupXY[1] + 24} fontSize={11} fill="#667" fontWeight={600} textAnchor="start">PICKUP</text>
         </g>
       )}
       {dropoffXY && (
         <g>
-          <circle cx={dropoffXY[0]} cy={dropoffXY[1]} r={6} fill="#0A7C42" stroke="#fff" strokeWidth={2} />
-          <text x={dropoffXY[0] + 9} y={dropoffXY[1] + 4} fontSize={10} fill="#1f2937">Destination</text>
+          <circle cx={dropoffXY[0]} cy={dropoffXY[1]} r={13} fill="rgba(10,124,66,0.15)" />
+          <circle cx={dropoffXY[0]} cy={dropoffXY[1]} r={7} fill="#0A7C42" stroke="#fff" strokeWidth={2.5} />
+          <text x={dropoffXY[0] - 16} y={dropoffXY[1] + 24} fontSize={11} fill="#667" fontWeight={600} textAnchor="start">DROP-OFF</text>
         </g>
       )}
       {driverXY && (
         <g>
-          <circle cx={driverXY[0]} cy={driverXY[1]} r={7} fill="#F59E0B" stroke="#fff" strokeWidth={2} />
-          <text x={driverXY[0] + 10} y={driverXY[1] + 4} fontSize={10} fill="#1f2937" fontWeight={600}>Driver</text>
+          <circle cx={driverXY[0]} cy={driverXY[1]} r={16} fill="rgba(245,158,11,0.18)">
+            <animate attributeName="r" values="12;20;12" dur="2.4s" repeatCount="indefinite" />
+            <animate attributeName="opacity" values="0.55;0.15;0.55" dur="2.4s" repeatCount="indefinite" />
+          </circle>
+          <circle cx={driverXY[0]} cy={driverXY[1]} r={7.5} fill="#F59E0B" stroke="#fff" strokeWidth={2.5} />
+          <text x={driverXY[0] + 12} y={driverXY[1] - 8} fontSize={11} fill="#1f2937" fontWeight={700}>DRIVER</text>
         </g>
       )}
     </svg>
   );
 }
 
-// ─── Page ─────────────────────────────────────────────────────────────────
+// ─── Shared bits ──────────────────────────────────────────────────────────────
 
-function DetailRow({ label, value }: { label: string; value: string }) {
+function DetailRow({ label, value, icon, mono, muted }: { label: string; value: string; icon?: React.ReactNode; mono?: boolean; muted?: boolean }) {
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", gap: 16, fontSize: 13 }}>
-      <span style={{ color: "#888", flexShrink: 0 }}>{label}</span>
-      <span style={{ color: "#1f2937", fontWeight: 500, textAlign: "right" }}>{value}</span>
+    <div className="track-detail-row">
+      <span className="track-detail-label">
+        {icon}
+        {label}
+      </span>
+      <span className={`track-detail-value ${mono ? "mono" : ""} ${muted ? "muted" : ""}`}>{value}</span>
     </div>
   );
 }
 
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
 export default function DeliveryTracking() {
   const { deliveryId } = useParams<{ deliveryId: string }>();
+  const [copied, setCopied] = useState(false);
 
   const delivery = useQuery(
     api.deliveries.state_machine.getDelivery,
@@ -245,6 +291,14 @@ export default function DeliveryTracking() {
   // Sender identity for the shipment-details card: getDelivery's customer
   // branch already proves the session user IS the order's sender, so the
   // sender is always the viewer — no extra query needed.
+
+  const handleCopy = () => {
+    if (delivery?.trackingNumber) {
+      navigator.clipboard.writeText(delivery.trackingNumber);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
 
   // Loading: queries still streaming (incl. the no-route-param case).
   if (delivery === undefined || tracking === undefined) {
@@ -299,28 +353,37 @@ export default function DeliveryTracking() {
     : freshness(dl?.lastUpdate ?? null);
   const driverVisible = !isTerminal && dl?.lat != null && dl?.lng != null;
 
+  const timelineEvents = tracking.routeHistory
+    .filter((e: any) => e.type !== "location_update")
+    .slice(-10)
+    .reverse();
+
   return (
     <CustomerShell activeItem="Track Delivery">
       <main className="track-main">
         <div className="track-container">
-          {/* Header */}
+          {/* Page title */}
           <div className="track-page-title">
-            <h1 className="track-title">Delivery tracking</h1>
+            <div>
+              <span className="track-title-eyebrow">Live tracking</span>
+              <h1 className="track-title">Delivery tracking</h1>
+            </div>
+            <FreshnessChip state={fr} />
           </div>
 
-          {/* Header card */}
+          {/* Hero header */}
           <div className="track-header-card">
             <div className="track-header-content">
               <div>
                 <p className="track-header-label">Tracking shipment</p>
                 <div className="track-header-id-row">
                   <h2 className="track-header-id">{delivery.trackingNumber}</h2>
+                  <button className="track-copy-btn" onClick={handleCopy} title="Copy tracking ID" aria-label="Copy tracking ID">
+                    {copied ? <Check size={15} /> : <Copy size={15} />}
+                  </button>
                 </div>
               </div>
-              <div className="track-status-badge">
-                <span className="track-status-dot" />
-                {sc.label}
-              </div>
+              <StatusBadge label={sc.label} tone={sc.tone} />
             </div>
 
             {/* Customer stepper */}
@@ -329,14 +392,14 @@ export default function DeliveryTracking() {
                 <div key={step.label} className={`track-step ${step.state}`}>
                   <div className="track-step-icon">
                     {step.state === "done" ? (
-                      <CheckCircle2 size={28} />
+                      <CheckCircle2 size={34} />
                     ) : step.state === "active" ? (
                       <div className="track-step-active">
-                        <Circle size={28} />
+                        <Circle size={34} />
                         <div className="track-step-pulse" />
                       </div>
                     ) : (
-                      <Circle size={28} />
+                      <Circle size={34} />
                     )}
                   </div>
                   <p className="track-step-label">{step.label}</p>
@@ -350,13 +413,13 @@ export default function DeliveryTracking() {
 
           {/* Failed / cancelled customer-safe notice */}
           {isFailed && (
-            <div className="track-last-updated" style={{ borderLeft: "3px solid #C62828" }}>
-              <div className="track-updated-icon" style={{ background: "#C62828" }}>
+            <div className="track-notice">
+              <div className="track-notice-icon">
                 <XCircle size={18} />
               </div>
               <div>
-                <p className="track-updated-label">This delivery could not be completed</p>
-                <p className="track-updated-time">
+                <p className="track-notice-label">This delivery could not be completed</p>
+                <p className="track-notice-time">
                   {delivery.completedAt ? formatDateTime(delivery.completedAt) : "—"}
                   {" · "}Please contact support for assistance.
                 </p>
@@ -371,29 +434,29 @@ export default function DeliveryTracking() {
               {/* Live route map — customer's own delivery only */}
               <div className="track-route-card">
                 <div className="track-route-header">
-                  <h3 className="track-route-title">Live route</h3>
+                  <div>
+                    <h3 className="track-route-title">
+                      <Navigation size={16} />
+                      Live route
+                    </h3>
+                    <p className="track-card-sub">
+                      {driverVisible ? "Driver position updates in real time" : "Route overview for this delivery"}
+                    </p>
+                  </div>
                   {!isTerminal && (
-                    <span
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 6,
-                        fontSize: 12,
-                        color: fr === "live" ? "#0A7C42" : fr === "stale" ? "#C62828" : "#666",
-                      }}
-                    >
-                      <Radio size={12} className={fr === "live" ? "animate-pulse" : ""} />
-                      {freshnessLabel(fr)}
-                      {dl?.lastUpdate ? ` · ${formatDateTime(dl.lastUpdate)}` : ""}
-                    </span>
+                    <FreshnessChip state={fr} />
                   )}
                 </div>
 
-                <RouteMap
-                  pickup={tracking.delivery.pickupLat != null ? { lat: tracking.delivery.pickupLat, lng: tracking.delivery.pickupLng } : null}
-                  dropoff={tracking.delivery.dropoffLat != null ? { lat: tracking.delivery.dropoffLat, lng: tracking.delivery.dropoffLng } : null}
-                  driver={driverVisible ? { lat: dl!.lat, lng: dl!.lng } : null}
-                />
+                {(tracking.delivery.pickupLat != null || tracking.delivery.dropoffLat != null) && (
+                  <div className="track-map-wrap">
+                    <RouteMap
+                      pickup={tracking.delivery.pickupLat != null ? { lat: tracking.delivery.pickupLat, lng: tracking.delivery.pickupLng } : null}
+                      dropoff={tracking.delivery.dropoffLat != null ? { lat: tracking.delivery.dropoffLat, lng: tracking.delivery.dropoffLng } : null}
+                      driver={driverVisible ? { lat: dl!.lat, lng: dl!.lng } : null}
+                    />
+                  </div>
+                )}
 
                 {/* Route summary — human-readable addresses resolved
                     server-side; coordinates are never shown to customers. */}
@@ -402,6 +465,7 @@ export default function DeliveryTracking() {
                     <div className="track-route-pin sender"><MapPin size={16} /></div>
                     <div>
                       <p className="track-route-point-label">Pickup</p>
+                      <p className="track-route-name">Collection point</p>
                       <p className="track-route-street">
                         {delivery.details?.pickupAddress ?? "Address on file"}
                       </p>
@@ -411,8 +475,9 @@ export default function DeliveryTracking() {
                       <span className="track-route-dash" />
                       <span className="track-route-dot" />
                     </div>
-                    <div>
+                    <div style={{ textAlign: "right" }}>
                       <p className="track-route-point-label">Drop-off</p>
+                      <p className="track-route-name">Destination</p>
                       <p className="track-route-street">
                         {delivery.details?.dropoffAddress ?? "Address on file"}
                       </p>
@@ -420,108 +485,115 @@ export default function DeliveryTracking() {
                     <div className="track-route-pin receiver"><MapPin size={16} /></div>
                   </div>
                 </div>
+              </div>
 
-                {/* Shipment details — who/what/when, resolved server-side */}
-                <div className="track-route-card" style={{ padding: "20px 22px" }}>
-                  <div className="track-route-header">
-                    <h3 className="track-route-title">Shipment details</h3>
+              {/* Shipment details — who/what/when, resolved server-side */}
+              <div className="track-route-card">
+                <div className="track-route-header">
+                  <div>
+                    <h3 className="track-route-title">
+                      <Box size={16} />
+                      Shipment details
+                    </h3>
+                    <p className="track-card-sub">What is moving, to whom, and how</p>
                   </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                    {delivery.details?.description && (
-                      <DetailRow label="Order" value={delivery.details.description} />
-                    )}
-                    {delivery.details?.recipientName ? (
-                      <DetailRow
-                        label="Recipient"
-                        value={
-                          delivery.details.recipientPhone
-                            ? `${delivery.details.recipientName} · ${delivery.details.recipientPhone}`
-                            : delivery.details.recipientName
-                        }
-                      />
-                    ) : (
-                      <DetailRow label="Recipient" value="Not specified" />
-                    )}
-                    <DetailRow label="Sender" value="You" />
+                </div>
+                <div className="track-detail-list">
+                  {delivery.details?.description && (
+                    <DetailRow label="Order" value={delivery.details.description} icon={<Package size={13} />} />
+                  )}
+                  {delivery.details?.recipientName ? (
                     <DetailRow
-                      label="Requested"
+                      label="Recipient"
+                      icon={<User size={13} />}
                       value={
-                        delivery.details?.scheduledTime
-                          ? formatDateTime(delivery.details.scheduledTime)
-                          : delivery.details?.createdAt
-                            ? formatDateTime(delivery.details.createdAt)
-                            : "—"
+                        delivery.details.recipientPhone
+                          ? `${delivery.details.recipientName} · ${delivery.details.recipientPhone}`
+                          : delivery.details.recipientName
                       }
                     />
-                    {(delivery.details?.expeditionType || delivery.details?.parcelType) && (
-                      <DetailRow
-                        label="Service"
-                        value={[
-                          delivery.details?.expeditionType?.replace(/_/g, "-"),
-                          delivery.details?.parcelType?.replace(/_/g, " "),
-                        ]
-                          .filter(Boolean)
-                          .join(" · ")}
-                      />
-                    )}
+                  ) : (
+                    <DetailRow label="Recipient" value="Not specified" icon={<User size={13} />} muted />
+                  )}
+                  <DetailRow label="Sender" value="You" icon={<User size={13} />} />
+                  <DetailRow
+                    label="Requested"
+                    icon={<Calendar size={13} />}
+                    value={
+                      delivery.details?.scheduledTime
+                        ? formatDateTime(delivery.details.scheduledTime)
+                        : delivery.details?.createdAt
+                          ? formatDateTime(delivery.details.createdAt)
+                          : "—"
+                    }
+                    mono
+                  />
+                  {(delivery.details?.expeditionType || delivery.details?.parcelType) && (
                     <DetailRow
-                      label="Dimensions"
-                      value={
-                        delivery.details?.width != null && delivery.details?.height != null
-                          ? `${delivery.details.width} × ${delivery.details.height} cm${
-                              delivery.details?.weight != null ? ` · ${delivery.details.weight} kg` : ""
-                            }`
-                          : delivery.details?.weight != null
-                            ? `${delivery.details.weight} kg`
-                            : "Not specified"
-                      }
+                      label="Service"
+                      icon={<Clock size={13} />}
+                      value={[
+                        delivery.details?.expeditionType?.replace(/_/g, "-"),
+                        delivery.details?.parcelType?.replace(/_/g, " "),
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
                     />
-                  </div>
+                  )}
+                  <DetailRow
+                    label="Dimensions"
+                    icon={<Ruler size={13} />}
+                    value={
+                      delivery.details?.width != null && delivery.details?.height != null
+                        ? `${delivery.details.width} × ${delivery.details.height} cm${
+                            delivery.details?.weight != null ? ` · ${delivery.details.weight} kg` : ""
+                          }`
+                        : delivery.details?.weight != null
+                          ? `${delivery.details.weight} kg`
+                          : "Not specified"
+                    }
+                    mono
+                    muted={delivery.details?.width == null && delivery.details?.weight == null}
+                  />
                 </div>
               </div>
 
-              {/* Driver (customer-facing identity only) */}
-              {delivery.courierId && !isFailed && (
-                <div className="track-last-updated">
-                  <div className="track-updated-icon"><User size={18} /></div>
-                  <div>
-                    <p className="track-updated-label">Driver assigned</p>
-                    <p className="track-updated-time">
-                      Your driver is on this delivery
-                      {dl?.lastUpdate ? ` · last location update ${formatDateTime(dl.lastUpdate)}` : ""}
-                    </p>
-                  </div>
-                </div>
-              )}
-
               {/* Timeline from real tracking events */}
-              {tracking.routeHistory.length > 0 && (
+              {timelineEvents.length > 0 && (
                 <div className="track-route-card">
                   <div className="track-route-header">
-                    <h3 className="track-route-title">Delivery timeline</h3>
+                    <div>
+                      <h3 className="track-route-title">
+                        <Clock size={16} />
+                        Delivery timeline
+                      </h3>
+                      <p className="track-card-sub">Recorded events from the tracking system</p>
+                    </div>
                   </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                    {tracking.routeHistory
-                      .filter((e: any) => e.type !== "location_update")
-                      .slice(-10)
-                      .reverse()
-                      .map((e: any, i: number) => (
-                        <div key={i} style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
-                          <span style={{ fontSize: 12, fontWeight: 600, color: "#333", minWidth: 130 }}>
-                            {String(e.type ?? "").replace(/_/g, " ")}
-                          </span>
-                          <span style={{ fontSize: 12, color: "#888" }}>{formatDateTime(e.timestamp)}</span>
+                  <div className="track-timeline">
+                    {timelineEvents.map((e: any, i: number) => (
+                      <div key={i} className="track-timeline-item">
+                        <div className="track-timeline-rail">
+                          <span className="track-timeline-dot" />
+                          <span className="track-timeline-line" />
                         </div>
-                      ))}
+                        <div className="track-timeline-body">
+                          <span className="track-timeline-label">
+                            {String(e.type ?? "event").replace(/_/g, " ")}
+                          </span>
+                          <span className="track-timeline-time">{formatDateTime(e.timestamp)}</span>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}
             </div>
 
-            {/* Right column: timestamps + POD */}
+            {/* Right column: status rail + driver + POD */}
             <div className="track-right-col">
               <div className="track-last-updated">
-                <div className="track-updated-icon"><Clock size={18} /></div>
+                <div className="track-updated-icon is-info"><Clock size={18} /></div>
                 <div>
                   <p className="track-updated-label">Started</p>
                   <p className="track-updated-time">{delivery.startedAt ? formatDateTime(delivery.startedAt) : "Not started yet"}</p>
@@ -530,7 +602,7 @@ export default function DeliveryTracking() {
 
               {delivery.completedAt && (
                 <div className="track-last-updated">
-                  <div className="track-updated-icon" style={{ background: isFailed ? "#C62828" : "#0A7C42" }}>
+                  <div className={`track-updated-icon ${isFailed ? "is-bad" : ""}`}>
                     {isFailed ? <XCircle size={18} /> : <Check size={18} />}
                   </div>
                   <div>
@@ -540,11 +612,25 @@ export default function DeliveryTracking() {
                 </div>
               )}
 
+              {/* Driver (customer-facing identity only) */}
+              {delivery.courierId && !isFailed && (
+                <div className="track-last-updated">
+                  <div className="track-updated-icon is-info"><User size={18} /></div>
+                  <div>
+                    <p className="track-updated-label">Driver assigned</p>
+                    <p className="track-updated-time">
+                      Your driver is on this delivery
+                      {dl?.lastUpdate ? ` · last update ${formatDateTime(dl.lastUpdate)}` : ""}
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* POD after successful delivery — existing authorization applies */}
               {status === DELIVERY_STATUS.DELIVERED && (
                 pod === undefined ? (
                   <div className="track-last-updated">
-                    <div className="track-updated-icon"><Loader2 size={18} className="animate-spin" /></div>
+                    <div className="track-updated-icon is-neutral"><Loader2 size={18} className="animate-spin" /></div>
                     <div>
                       <p className="track-updated-label">Proof of delivery</p>
                       <p className="track-updated-time">Loading…</p>
@@ -552,7 +638,7 @@ export default function DeliveryTracking() {
                   </div>
                 ) : pod === null ? (
                   <div className="track-last-updated">
-                    <div className="track-updated-icon"><Clock size={18} /></div>
+                    <div className="track-updated-icon is-neutral"><Clock size={18} /></div>
                     <div>
                       <p className="track-updated-label">Proof of delivery</p>
                       <p className="track-updated-time">Not yet available</p>
@@ -560,9 +646,7 @@ export default function DeliveryTracking() {
                   </div>
                 ) : (
                   <div className="track-last-updated">
-                    <div className="track-updated-icon" style={{ background: "#0A7C42" }}>
-                      <CheckCircle2 size={18} />
-                    </div>
+                    <div className="track-updated-icon"><FileCheck2 size={18} /></div>
                     <div>
                       <p className="track-updated-label">Proof of delivery</p>
                       <p className="track-updated-time">

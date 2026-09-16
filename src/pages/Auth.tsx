@@ -1,7 +1,7 @@
 import { useAuthActions } from "@convex-dev/auth/react";
 import { useEffect, useState } from "react";
 import { useSearchParams, Link, useNavigate } from "react-router";
-import { ArrowRight, ArrowLeft, Eye, EyeOff } from "lucide-react";
+import { ArrowRight, ArrowLeft, Eye, EyeOff, Home } from "lucide-react";
 
 type Mode = "login" | "signup" | "forgot" | "reset";
 
@@ -789,8 +789,44 @@ export default function AuthPage({ redirectAfterAuth = "/post-auth" }: AuthProps
           alignItems: "center",
           padding: 64,
           backgroundColor: "var(--lasha-ivory)",
+          position: "relative",
         }}
       >
+        {/* Abort sign-in → back to the public landing page (same pattern as
+            the onboarding Home button). */}
+        <Link
+          to="/"
+          aria-label="Back to home"
+          style={{
+            position: "absolute",
+            top: 28,
+            left: 32,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 7,
+            padding: "9px 16px",
+            borderRadius: "var(--radius-pill)",
+            background: "var(--lasha-white)",
+            border: "1px solid var(--lasha-border-light)",
+            color: "var(--lasha-navy)",
+            fontFamily: "Inter, sans-serif",
+            fontSize: 13,
+            fontWeight: 600,
+            textDecoration: "none",
+            transition: "border-color 0.2s, color 0.2s",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.borderColor = "var(--lasha-cyan)";
+            e.currentTarget.style.color = "var(--lasha-cyan)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.borderColor = "var(--lasha-border-light)";
+            e.currentTarget.style.color = "var(--lasha-navy)";
+          }}
+        >
+          <Home size={15} />
+          Home
+        </Link>
         <div style={{ width: "100%", maxWidth: 400 }}>{form}</div>
       </div>
 

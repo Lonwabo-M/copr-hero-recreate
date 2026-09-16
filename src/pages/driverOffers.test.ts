@@ -68,12 +68,13 @@ function formatRemaining(expiresAt: number, now: number): string {
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
+/** Mirror of DriverOffers.formatCurrency (deterministic en-ZA, ICU-independent). */
 function formatCurrency(cents: number): string {
-  return new Intl.NumberFormat("en-ZA", {
-    style: "currency",
-    currency: "ZAR",
-    minimumFractionDigits: 2,
-  }).format(cents / 100);
+  const sign = cents < 0 ? "-" : "";
+  const abs = Math.abs(Math.round(cents));
+  const rands = Math.floor(abs / 100).toLocaleString("en-ZA").replace(/\s/g, " ");
+  const centsPart = String(abs % 100).padStart(2, "0");
+  return `${sign}R ${rands},${centsPart}`;
 }
 
 /**
