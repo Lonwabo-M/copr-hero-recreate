@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import { Menu, X } from "lucide-react";
-import LashaLogo from "@/components/branding/LashaLogo";
 
 const navLinks = [
   { label: "Why Lasha", href: "#why-lasha" },
@@ -42,10 +41,8 @@ export default function Navbar() {
       style={{ backgroundColor: "var(--lasha-navy)", height: 76 }}
     >
       <div className="lasha-container flex items-center justify-between h-full">
-        {/* Logo — the actual Lasha mark, edge-to-edge (cropped transparent padding) */}
-        <a href="/" className="flex items-center no-underline" aria-label="Lasha home">
-          <LashaLogo height={44} wordmark dark />
-        </a>
+        {/* No logo on the home page (per design direction) — nav starts with the links */}
+        <span aria-hidden="true" />
 
         {/* Desktop links */}
         <div className="hidden lg:flex items-center gap-8">

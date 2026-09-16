@@ -6,20 +6,24 @@
  * CUSTOMER RoleGate — navigated to straight from Request Delivery after
  * creation, and reachable from the dashboard for any unpaid order.
  *
- * Backend contract — existing authorized queries/actions only, no new backend:
+ * Backend contract — existing authorized queries/actions only:
  *   - deliveries.state_machine.getMyDeliveries → the customer's own deliveries
  *     (server-scoped) with enriched display details; this page finds the
  *     delivery belonging to :orderId in that list.
  *   - pricing.service.getQuoteForOrder → the authoritative fee breakdown
  *     (delivery fee, platform fee, total) for the order.
- *   - payments.actions.initiateOrderPayment → returns a Paystack hosted-
- *     checkout URL; the amount is resolved server-side from the order, the
- *     client never sends one. Card entry happens on Paystack's PCI-compliant
- *     page — this UI intentionally renders NO card fields.
+ *   - payments.actions.chargeOrderPaymentWithCard → inline card charge per the
+ *     approved checkout reference (card fields in the right panel). Card data
+ *     is forwarded straight to Paystack with the SECRET key server-side; it is
+ *     never stored, logged, or audited by Lasha. Bank challenges surface as an
+ *     OTP step handled by payments.actions.submitPaymentOtp.
+ *   - payments.actions.initiateOrderPayment → hosted-checkout fallback: a
+ *     Paystack hosted-checkout URL (PCI page), also used for unsupported
+ *     authorization flows. The amount is always resolved server-side.
  *
  * Design: mirrors the approved checkout reference — left review column
  * (parcel card, deep-teal ETA card, receiver details, payment summary) and a
- * right payment panel with the large cyan "Pay R…" action.
+ * right payment panel with card fields and the large cyan "Pay R…" action.
  */
 
 import { useParams, Link, useNavigate } from "react-router";
@@ -32,13 +36,13 @@ import {
   Package,
   MapPin,
   Navigation,
+  KeyRound,
   User,
   Phone,
   Building2,
   Ruler,
   Calendar,
   Weight,
-  CreditCard,
   Loader2,
   CheckCircle2,
   AlertCircle,
@@ -94,7 +98,19 @@ export default function Checkout() {
   const [paying, setPaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const chargeWithCard = useAction(api.payments.actions.chargeOrderPaymentWithCard);
+  const submitOtp = useAction(api.payments.actions.submitPaymentOtp);
   const initiatePayment = useAction(api.payments.actions.initiateOrderPayment);
+
+  // Inline card fields (per the approved checkout reference design).
+  const [holderName, setHolderName] = useState("");
+  const [cardNumber, setCardNumber] = useState("");
+  const [expiry, setExpiry] = useState("");
+  const [cvv, setCvv] = useState("");
+  // Bank authorization (OTP) follow-up: holds our internal reference while
+  // the challenge is open. Card material is cleared as soon as it's sent.
+  const [otpReference, setOtpReference] = useState<string | null>(null);
+  const [otp, setOtp] = useState("");
 
   // Customer's own deliveries (server-scoped; enriched with display details).
   const myDeliveries = useQuery(
@@ -110,7 +126,118 @@ export default function Checkout() {
 
   const loading = myDeliveries === undefined || quote === undefined;
 
+  // ── Inline-card helpers ──────────────────────────────────────────────────
+
+  // Groups of 4, digits only, max 19 digits (widest common PAN length).
+  const formatCardNumber = (v: string) =>
+    v.replace(/\D/g, "").slice(0, 19).replace(/(\d{4})(?=\d)/g, "$1 ");
+
+  // Expiry as MM/YY.
+  const formatExpiry = (v: string) => {
+    const digits = v.replace(/\D/g, "").slice(0, 4);
+    return digits.length <= 2 ? digits : `${digits.slice(0, 2)}/${digits.slice(2)}`;
+  };
+
+  function validateCardFields(): string | null {
+    if (!holderName.trim()) return "Enter the card holder name.";
+    const digits = cardNumber.replace(/\s/g, "");
+    if (digits.length < 13) return "Enter a valid card number.";
+    const m = expiry.match(/^(\d{2})\/(\d{2})$/);
+    if (!m) return "Expiry must be in MM/YY format.";
+    const month = parseInt(m[1], 10);
+    if (month < 1 || month > 12) return "Expiry month must be between 01 and 12.";
+    const year = 2000 + parseInt(m[2], 10);
+    const now = new Date();
+    if (
+      year < now.getFullYear() ||
+      (year === now.getFullYear() && month < now.getMonth() + 1)
+    ) {
+      return "This card has expired.";
+    }
+    if (cvv.length < 3) return "Enter the card's CVV.";
+    return null;
+  }
+
+  /** Post-success: clear card material and hand over to the delivery page. */
+  const finalizePayment = () => {
+    setHolderName("");
+    setCardNumber("");
+    setExpiry("");
+    setCvv("");
+    setOtp("");
+    setOtpReference(null);
+    const row = myDeliveries?.find((d: { orderId?: string }) => d.orderId === orderId);
+    navigate(row ? `/deliveries/${row._id}` : "/dashboard");
+  };
+
+  const handlePayError = (e: unknown) => {
+    const msg = e instanceof Error ? e.message : "";
+    setError(
+      msg.includes("not configured") || msg.includes("not enabled")
+        ? "Online payments are not enabled yet. Please try again later."
+        : msg.includes("email")
+          ? "Your account needs a verified email address before paying."
+          : msg || "We couldn't start your payment. Please try again.",
+    );
+  };
+
   const handlePay = async () => {
+    if (!orderId) return;
+    setError(null);
+    const problem = validateCardFields();
+    if (problem) {
+      setError(problem);
+      return;
+    }
+    setPaying(true);
+    try {
+      const result = await chargeWithCard({
+        orderId: orderId as never,
+        card: {
+          holderName: holderName.trim(),
+          number: cardNumber.replace(/\s/g, ""),
+          expiryMonth: expiry.slice(0, 2),
+          expiryYear: expiry.slice(3),
+          cvv,
+        },
+      });
+      if (result.status === "already_paid" || result.status === "completed") {
+        finalizePayment();
+        return;
+      }
+      if (result.status === "otp_required") {
+        setOtpReference(result.reference);
+        return;
+      }
+      setError("message" in result ? result.message : "Payment was declined.");
+    } catch (e) {
+      handlePayError(e);
+    } finally {
+      setPaying(false);
+    }
+  };
+
+  const handleOtpSubmit = async () => {
+    if (!otpReference || otp.trim().length < 3) return;
+    setError(null);
+    setPaying(true);
+    try {
+      const result = await submitOtp({ reference: otpReference, otp: otp.trim() });
+      if (result.status === "already_paid" || result.status === "completed") {
+        finalizePayment();
+        return;
+      }
+      setError("message" in result ? result.message : "We couldn't verify that code.");
+    } catch (e) {
+      handlePayError(e);
+    } finally {
+      setPaying(false);
+    }
+  };
+
+  // Hosted-checkout fallback (Paystack's own secure page) — also the escape
+  // hatch for authorization flows the inline charge can't complete.
+  const handleHostedCheckout = async () => {
     if (!orderId) return;
     setError(null);
     setPaying(true);
@@ -120,9 +247,7 @@ export default function Checkout() {
         method: "card",
       });
       if (result.alreadyPaid) {
-        // Order settled earlier — straight to its tracking page.
-        const row = myDeliveries?.find((d: { orderId?: string }) => d.orderId === orderId);
-        navigate(row ? `/deliveries/${row._id}` : "/dashboard");
+        finalizePayment();
         return;
       }
       if (result.authorizationUrl) {
@@ -131,14 +256,7 @@ export default function Checkout() {
       }
       setError("Payment could not be started. Please try again.");
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "";
-      setError(
-        msg.includes("not configured") || msg.includes("not enabled")
-          ? "Online payments are not enabled yet. Please try again later."
-          : msg.includes("email")
-            ? "Your account needs a verified email address before paying."
-            : "We couldn't start your payment. Please try again.",
-      );
+      handlePayError(e);
     } finally {
       setPaying(false);
     }
@@ -356,25 +474,111 @@ export default function Checkout() {
             {/* ─── Right column — payment ───────────────────────────── */}
             <div className="co-right">
               <div className="co-card co-pay-card">
-                <h2 className="co-card-title" style={{ marginBottom: 4 }}>Payment Details</h2>
+                <div className="co-pay-title-row">
+                  <h2 className="co-card-title">Payment Details</h2>
+                  <span className="co-pay-lock">
+                    <Lock size={13} />
+                    Secure
+                  </span>
+                </div>
                 <p className="co-pay-note">
-                  You'll enter card details on our payment provider's secure, PCI-compliant page —
-                  card data never touches Lasha's servers.
+                  Card data is sent directly to our payment provider over a secure connection —
+                  it is never stored on Lasha's servers.
                 </p>
 
-                <div className="co-pay-visual">
-                  <div className="co-pay-cardchip">
-                    <CreditCard size={22} />
-                  </div>
-                  <div className="co-pay-securelines">
-                    <span className="co-pay-line" />
-                    <span className="co-pay-line short" />
-                  </div>
-                  <div className="co-pay-lock">
-                    <Lock size={13} />
-                    Secure checkout
+                <div className="co-pay-fields">
+                  <label className="co-pay-field">
+                    <span className="co-pay-label">Card Holder Name</span>
+                    <input
+                      className="co-pay-input"
+                      type="text"
+                      value={holderName}
+                      onChange={(e) => setHolderName(e.target.value)}
+                      placeholder="Enter card holder name"
+                      autoComplete="cc-name"
+                      disabled={paying || closed}
+                    />
+                  </label>
+                  <label className="co-pay-field">
+                    <span className="co-pay-label">Card Number</span>
+                    <input
+                      className="co-pay-input"
+                      type="text"
+                      inputMode="numeric"
+                      value={cardNumber}
+                      onChange={(e) => setCardNumber(formatCardNumber(e.target.value))}
+                      placeholder="Enter card number"
+                      autoComplete="cc-number"
+                      disabled={paying || closed}
+                    />
+                  </label>
+                  <div className="co-pay-split">
+                    <label className="co-pay-field">
+                      <span className="co-pay-label">Expiry Date</span>
+                      <input
+                        className="co-pay-input"
+                        type="text"
+                        inputMode="numeric"
+                        value={expiry}
+                        onChange={(e) => setExpiry(formatExpiry(e.target.value))}
+                        placeholder="MM/YY"
+                        autoComplete="cc-exp"
+                        disabled={paying || closed}
+                      />
+                    </label>
+                    <label className="co-pay-field">
+                      <span className="co-pay-label">CVV</span>
+                      <input
+                        className="co-pay-input"
+                        type="password"
+                        inputMode="numeric"
+                        value={cvv}
+                        onChange={(e) => setCvv(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                        placeholder="CVV"
+                        autoComplete="cc-csc"
+                        maxLength={4}
+                        disabled={paying || closed}
+                      />
+                    </label>
                   </div>
                 </div>
+
+                {/* Bank authorization step (OTP challenge) */}
+                {otpReference && (
+                  <div className="co-otp-box">
+                    <div className="co-otp-head">
+                      <KeyRound size={15} />
+                      <span>Confirm with your bank</span>
+                    </div>
+                    <p className="co-otp-text">
+                      Enter the one-time code your bank sent you (SMS or banking app) to
+                      authorize this payment.
+                    </p>
+                    <div className="co-otp-row">
+                      <input
+                        className="co-pay-input"
+                        type="text"
+                        inputMode="numeric"
+                        value={otp}
+                        onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 8))}
+                        placeholder="Enter code"
+                        disabled={paying}
+                      />
+                      <button
+                        className="co-otp-submit"
+                        onClick={handleOtpSubmit}
+                        disabled={paying || otp.trim().length < 3}
+                      >
+                        {paying ? (
+                          <Loader2 size={15} className="animate-spin" />
+                        ) : (
+                          <KeyRound size={15} />
+                        )}
+                        Verify
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 <div className="co-trust">
                   <ShieldCheck size={14} />
@@ -389,7 +593,7 @@ export default function Checkout() {
                   {paying ? (
                     <>
                       <Loader2 size={16} className="animate-spin" style={{ marginRight: 8 }} />
-                      Redirecting…
+                      Processing…
                     </>
                   ) : alreadyPaid ? (
                     "Already paid"
@@ -401,6 +605,14 @@ export default function Checkout() {
                 {total <= 0 && !closed && (
                   <p className="co-pay-wait">Finalising your quote… payment unlocks in a moment.</p>
                 )}
+
+                <button
+                  className="co-hosted-link"
+                  onClick={handleHostedCheckout}
+                  disabled={paying || closed}
+                >
+                  Prefer a bank page? Use the secure hosted checkout instead
+                </button>
 
                 <Link to={`/deliveries/${deliveryRow._id}`} className="co-track-link">
                   Pay later — view delivery tracking

@@ -1,9 +1,11 @@
 import { useState, useEffect } from "react";
-import { Link } from "react-router";
-import { useQuery } from "convex/react";
+import { Link, useNavigate } from "react-router";
+import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import { useAuth } from "@/hooks/use-auth";
 import CustomerShell from "@/components/shells/CustomerShell";
-import { Loader2, Package } from "lucide-react";
+import { Loader2, Package, ShieldCheck, RotateCcw } from "lucide-react";
+import { ROLES } from "@/convex/schema";
 import "@/styles/dashboard.css";
 import "@/styles/pages.css";
 
@@ -73,6 +75,57 @@ export default function Dashboard() {
   const [activeDetailTab, setActiveDetailTab] = useState("Vehicle Details");
   const [detailsOpen, setDetailsOpen] = useState(false);
 
+  const navigate = useNavigate();
+  const { user } = useAuth();
+
+  // Testing access point → Operations Centre. Claims a marked, reversible
+  // test elevation (users.testAccess) and navigates only once the reactive
+  // auth state reflects the operations role, so RoleGate admits the route
+  // without a manual refresh and without a redirect race.
+  const claimTestAccess = useMutation(api.users.testAccess.claimTestOperationsAccess);
+  const releaseTestAccess = useMutation(api.users.testAccess.releaseTestOperationsAccess);
+  const testAccessState = useQuery(api.users.testAccess.getTestAccessState, {});
+  const [opsPending, setOpsPending] = useState(false);
+  const [releasing, setReleasing] = useState(false);
+
+  const isTestElevated = testAccessState?.testElevated === true;
+  const isRealStaff =
+    user?.role === ROLES.OPERATIONS ||
+    user?.role === ROLES.FLEET_MANAGER ||
+    user?.role === ROLES.COMPANY_ADMIN ||
+    user?.role === ROLES.SUPER_ADMIN;
+
+  // Wait for the reactive user record to carry the elevated role, then cross
+  // into the guarded area — RoleGate re-evaluates on the same query.
+  useEffect(() => {
+    if (opsPending && (user?.role === ROLES.OPERATIONS || isRealStaff)) {
+      setOpsPending(false);
+      navigate("/operations");
+    }
+  }, [opsPending, user?.role, isRealStaff, navigate]);
+
+  const handleOpenOperations = async () => {
+    if (isRealStaff) {
+      navigate("/operations");
+      return;
+    }
+    setOpsPending(true);
+    try {
+      await claimTestAccess({});
+    } catch {
+      setOpsPending(false);
+    }
+  };
+
+  const handleReleaseTestAccess = async () => {
+    setReleasing(true);
+    try {
+      await releaseTestAccess({});
+    } finally {
+      setReleasing(false);
+    }
+  };
+
   // Fetch deliveries from Convex
   const deliveries = useQuery(api.deliveries.state_machine.getMyDeliveries, {});
 
@@ -116,6 +169,86 @@ export default function Dashboard() {
     <CustomerShell activeItem="Activity Center">
       {/* Workspace */}
       <div className="dash-workspace">
+        {/* Testing access strip → Operations Centre (temporary, reversible) */}
+        <div
+          className="dash-test-access"
+          style={{
+            gridColumn: "1 / -1",
+            display: "flex",
+            alignItems: "center",
+            gap: 14,
+            padding: "12px 16px",
+            borderRadius: 12,
+            border: "1px dashed rgba(7,148,181,0.35)",
+            background: "rgba(7,148,181,0.06)",
+          }}
+        >
+          <ShieldCheck size={18} style={{ color: "#0794b5", flexShrink: 0 }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#1a2733" }}>
+              Testing access — Operations Centre
+            </div>
+            <div style={{ fontSize: 12, color: "#6b7a89", marginTop: 2 }}>
+              {isTestElevated
+                ? "Test elevation active. Open the Operations Centre, or release to restore your customer role."
+                : "Temporarily elevate this account to operations staff for testing. Reversible in one click."}
+            </div>
+          </div>
+          {isTestElevated && (
+            <button
+              onClick={handleReleaseTestAccess}
+              disabled={releasing || opsPending}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 7,
+                fontSize: 12.5,
+                fontWeight: 600,
+                color: "#4a5a68",
+                background: "#fff",
+                border: "1px solid #e3e8ee",
+                borderRadius: 9,
+                padding: "9px 14px",
+                cursor: releasing ? "wait" : "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {releasing ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <RotateCcw size={14} />
+              )}
+              Release
+            </button>
+          )}
+          <button
+            onClick={handleOpenOperations}
+            disabled={opsPending || releasing}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 7,
+              fontSize: 12.5,
+              fontWeight: 700,
+              color: "#fff",
+              background: "linear-gradient(135deg, #29a8c6, #0794b5)",
+              border: "none",
+              borderRadius: 9,
+              padding: "10px 16px",
+              cursor: opsPending ? "wait" : "pointer",
+              boxShadow: "0 4px 12px rgba(7,148,181,0.28)",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {opsPending ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <ShieldCheck size={14} />
+            )}
+            {opsPending ? "Elevating…" : "Open Operations Centre"}
+          </button>
+        </div>
+
         {/* Loading state */}
         {deliveries === undefined ? (
           <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100%", gridColumn: "1 / -1" }}>

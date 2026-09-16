@@ -18,8 +18,13 @@
 
 const FRAME_ASPECT = 417 / 116; // visible mark aspect (from alpha-bbox scan)
 const INNER_SCALE = 625 / 417; // inner img width vs frame width (fills frame)
+// Crop offsets as percentages OF THE INNER IMAGE (the measured alpha bbox):
+// left margin 0–15.68%, top margin 0–40.48%. These MUST be applied with
+// `transform: translate()`, whose % resolves against the element's own box.
+// (`left`/`top` % resolve against the FRAME instead, which under-shifts the
+// crop and clipped the mark's right edge — the partially-visible final "a".)
 const INNER_LEFT = -15.68; // % of inner img width — crops transparent left
-const INNER_TOP = -218.97; // % of inner img height — crops transparent top
+const INNER_TOP = -40.48; // % of inner img height — crops transparent top
 
 export default function LashaLogo({
   height = 84,
@@ -65,8 +70,8 @@ export default function LashaLogo({
             width: `${INNER_SCALE * 100}%`,
             maxWidth: "none",
             height: "auto",
-            left: `${INNER_LEFT}%`,
-            top: `${INNER_TOP}%`,
+            // Image-relative crop — see note on INNER_LEFT/INNER_TOP above.
+            transform: `translate(${INNER_LEFT}%, ${INNER_TOP}%)`,
             userSelect: "none",
           }}
         />

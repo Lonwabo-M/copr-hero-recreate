@@ -372,45 +372,13 @@
   line-height: 1.5;
 }
 
-.co-pay-visual {
+/* ─── Card fields (inline checkout, per the approved reference) ─────────── */
+
+.co-pay-title-row {
   display: flex;
   align-items: center;
-  gap: 14px;
-  background: linear-gradient(135deg, #f4f8fb, #eef4f8);
-  border: 1px solid #e3ecf2;
-  border-radius: 14px;
-  padding: 18px;
-  margin-bottom: 14px;
-}
-
-.co-pay-cardchip {
-  width: 46px;
-  height: 34px;
-  border-radius: 8px;
-  background: linear-gradient(135deg, #0b6a86, #0794b5);
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.co-pay-securelines {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  flex: 1;
-}
-
-.co-pay-line {
-  height: 9px;
-  border-radius: 5px;
-  background: #dde7ee;
-  width: 100%;
-}
-
-.co-pay-line.short {
-  width: 55%;
+  justify-content: space-between;
+  gap: 10px;
 }
 
 .co-pay-lock {
@@ -421,6 +389,146 @@
   font-weight: 600;
   color: #0794b5;
   white-space: nowrap;
+}
+
+.co-pay-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.co-pay-field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+}
+
+.co-pay-label {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #26313c;
+}
+
+.co-pay-input {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 13.5px;
+  color: #1a2733;
+  background: #fff;
+  border: 1px solid #dfe6ed;
+  border-radius: 10px;
+  padding: 12px 14px;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.co-pay-input::placeholder {
+  color: #a6b2be;
+}
+
+.co-pay-input:focus {
+  border-color: #0794b5;
+  box-shadow: 0 0 0 3px rgba(7, 148, 181, 0.12);
+}
+
+.co-pay-input:disabled {
+  background: #f4f7f9;
+  color: #8a97a5;
+  cursor: not-allowed;
+}
+
+.co-pay-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+/* ─── Bank OTP challenge ────────────────────────────────────────────────── */
+
+.co-otp-box {
+  border: 1px solid rgba(7, 148, 181, 0.3);
+  background: rgba(7, 148, 181, 0.06);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+}
+
+.co-otp-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #0b6a86;
+  margin-bottom: 5px;
+}
+
+.co-otp-text {
+  font-size: 12.5px;
+  color: #4a5a68;
+  line-height: 1.5;
+  margin: 0 0 12px;
+}
+
+.co-otp-row {
+  display: flex;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.co-otp-row .co-pay-input {
+  flex: 1;
+}
+
+.co-otp-submit {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(135deg, #29a8c6, #0794b5);
+  border: none;
+  border-radius: 10px;
+  padding: 0 18px;
+  cursor: pointer;
+  transition: filter 0.15s ease;
+  white-space: nowrap;
+}
+
+.co-otp-submit:hover:not(:disabled) {
+  filter: brightness(1.05);
+}
+
+.co-otp-submit:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.co-hosted-link {
+  display: block;
+  width: 100%;
+  text-align: center;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #4a5a68;
+  background: none;
+  border: none;
+  margin-top: 12px;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.co-hosted-link:hover:not(:disabled) {
+  color: #0794b5;
+}
+
+.co-hosted-link:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .co-trust {
@@ -503,5 +611,9 @@
 
   .co-route-addr.to {
     display: none;
+  }
+
+  .co-pay-split {
+    grid-template-columns: 1fr 1fr;
   }
 }

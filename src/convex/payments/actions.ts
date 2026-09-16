@@ -190,6 +190,251 @@ export const initiateOrderPayment = action({
   },
 });
 
+// ─── Direct card charge (inline checkout UI) ────────────────────────────────
+
+/**
+ * Charge an order directly with card details from the inline checkout UI.
+ *
+ * Flow:
+ *  1. Resolve the authenticated customer + authoritative order charge
+ *     server-side — the amount NEVER comes from the client.
+ *  2. Create the pending transaction with a deterministic reference
+ *     (`card-<orderId>` + attempt suffix), idempotent per attempt.
+ *  3. POST the card to Paystack's /charge endpoint with the SECRET key.
+ *  4. Map the provider outcome:
+ *      - "success"   → complete the transaction (provider evidence recorded)
+ *      - "send_otp"  → return otp_required; the client collects the OTP and
+ *                      calls submitPaymentOtp (the OTP check is server-side)
+ *      - "failed"    → fail the transaction and report the reason
+ *      - others (send_phone / send_birthday / open_url …) → unsupported with
+ *        the provider's display text; hosted checkout remains available.
+ *
+ * Security notes: the secret key stays in this action; card data is forwarded
+ * straight to Paystack, never persisted, never logged, never audited. Convex's
+ * function-args viewer is the only place inputs appear — production should
+ * move to Paystack's hosted/inline.js flow (already supported below) to keep
+ * PANs fully out of the stack.
+ */
+export const chargeOrderPaymentWithCard = action({
+  args: {
+    orderId: v.id("orders"),
+    card: v.object({
+      holderName: v.string(),
+      number: v.string(), // digits only (client strips spaces)
+      expiryMonth: v.string(), // "01".."12"
+      expiryYear: v.string(), // "YY" or "YYYY"
+      cvv: v.string(),
+    }),
+  },
+  handler: async (ctx, args) => {
+    const result = await chargeWithPaystack(ctx, args.orderId, {
+      number: args.card.number,
+      cvv: args.card.cvv,
+      month: args.card.expiryMonth,
+      year: args.card.expiryYear,
+    });
+    return result;
+  },
+});
+
+/**
+ * Submit the OTP for a pending direct charge (Paystack /submitOTP).
+ * Only the payer may submit — the transaction is resolved by our own
+ * internal reference and ownership-checked exactly like verification.
+ */
+export const submitPaymentOtp = action({
+  args: {
+    reference: v.string(),
+    otp: v.string(),
+  },
+  handler: async (ctx, args): Promise<ChargeResult> => {
+    const secretKey = process.env.PAYSTACK_SECRET_KEY;
+    if (!secretKey) throw new Error("Payment provider is not configured");
+
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Authentication required");
+
+    const tx = await ctx.runQuery(internal.payments.queries.getPaymentByReference, {
+      reference: args.reference,
+    });
+    if (!tx) throw new Error("Unknown payment reference");
+    if (tx.userId !== userId) {
+      throw new Error("Access denied: not your payment");
+    }
+
+    const response = await fetch(`${PAYSTACK_BASE}/submitOTP`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${secretKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ reference: args.reference, otp: args.otp }),
+    });
+
+    return settlePaystackChargeResponse(ctx, tx._id, response, "OTP");
+  },
+});
+
+// ─── Shared direct-charge internals ──────────────────────────────────────────
+
+type ChargeResult =
+  | { status: "already_paid" }
+  | { status: "completed"; reference: string }
+  | { status: "otp_required"; reference: string; displayText?: string }
+  | { status: "failed"; message: string }
+  | { status: "unsupported"; reference: string; message: string };
+
+async function chargeWithPaystack(
+  ctx: any,
+  orderId: Id<"orders">,
+  card: { number: string; cvv: string; month: string; year: string },
+): Promise<ChargeResult> {
+  const secretKey = process.env.PAYSTACK_SECRET_KEY;
+  if (!secretKey) {
+    throw new Error(
+      "Payment provider is not configured. Add PAYSTACK_SECRET_KEY in the project's API keys settings."
+    );
+  }
+
+  const userId = await getAuthUserId(ctx);
+  if (!userId) throw new Error("Authentication required");
+  const roleCtx = await ctx.runQuery(internal.payments.queries.getUserRoleForPayment, {
+    userId,
+  });
+  if (!roleCtx) throw new Error("User not found");
+  if (
+    roleCtx.role === ROLES.DRIVER ||
+    roleCtx.role === ROLES.FLEET_MANAGER ||
+    roleCtx.role === ROLES.OPERATIONS
+  ) {
+    throw new Error("Access denied: this role cannot initiate customer payments");
+  }
+
+  const orderCtx = await ctx.runQuery(
+    internal.payments.queries.getAuthorizedOrderForPayment,
+    { orderId }
+  );
+
+  if (orderCtx.latestPayment?.status === "completed") {
+    return { status: "already_paid" };
+  }
+  if (!orderCtx.senderEmail) {
+    throw new Error(
+      "Your account has no verified email address — a payment email is required"
+    );
+  }
+
+  const reference =
+    orderCtx.failedAttempts === 0
+      ? `card-${orderCtx.orderId}`
+      : `card-${orderCtx.orderId}-r${orderCtx.failedAttempts}`;
+
+  await ctx.runMutation(internal.payments.mutations.createPaymentTransaction, {
+    orderId: orderCtx.orderId,
+    userId: orderCtx.userId,
+    amount: orderCtx.amount,
+    method: "card",
+    reference,
+    metadata: JSON.stringify({ channel: "inline", attempt: orderCtx.failedAttempts + 1 }),
+  });
+
+  const year = card.year.length <= 2 ? `20${card.year}` : card.year;
+  const response = await fetch(`${PAYSTACK_BASE}/charge`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${secretKey}`, // secret key — server-side only
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      email: orderCtx.senderEmail,
+      amount: orderCtx.amount, // cents == kobo
+      currency: "ZAR",
+      reference,
+      card: {
+        number: card.number,
+        cvv: card.cvv,
+        month: parseInt(card.month, 10),
+        year: parseInt(year, 10),
+      },
+      metadata: { orderId, channel: "inline" },
+    }),
+  });
+
+  const tx = await ctx.runQuery(internal.payments.queries.getPaymentByReference, {
+    reference,
+  });
+  if (!tx) throw new Error("Payment transaction could not be created");
+
+  return settlePaystackChargeResponse(ctx, tx._id, response, "Card charge");
+}
+
+async function settlePaystackChargeResponse(
+  ctx: any,
+  transactionId: string,
+  response: Response,
+  label: string,
+): Promise<ChargeResult> {
+  const raw = await response.text().catch(() => "");
+  let data: {
+    status?: boolean;
+    message?: string;
+    data?: { status?: string; reference?: string; display_text?: string };
+  } = {};
+  try {
+    data = raw ? JSON.parse(raw) : {};
+  } catch {
+    // fall through with empty data
+  }
+
+  if (!response.ok || !data.status || !data.data) {
+    const message =
+      data.message ?? `Payment declined (HTTP ${response.status})`;
+    await ctx.runMutation(internal.payments.mutations.failPaymentTransaction, {
+      transactionId,
+      reason: `${label} failed: ${message}`.slice(0, 300),
+    });
+    return { status: "failed", message };
+  }
+
+  const providerStatus = data.data.status;
+  const reference = data.data.reference ?? "";
+
+  if (providerStatus === "success") {
+    await ctx.runMutation(internal.payments.mutations.completePaymentTransaction, {
+      transactionId,
+      providerTransactionId: reference || transactionId,
+      providerStatus: "success",
+    });
+    return { status: "completed", reference };
+  }
+
+  if (providerStatus === "send_otp") {
+    return {
+      status: "otp_required",
+      reference,
+      displayText: data.data.display_text,
+    };
+  }
+
+  if (providerStatus === "failed" || providerStatus === "declined") {
+    const message = data.data.display_text ?? data.message ?? "Payment declined";
+    await ctx.runMutation(internal.payments.mutations.failPaymentTransaction, {
+      transactionId,
+      reason: message.slice(0, 300),
+    });
+    return { status: "failed", message };
+  }
+
+  // send_phone / send_birthday / open_url / abandoned … — report, don't guess.
+  return {
+    status: "unsupported",
+    reference,
+    message:
+      data.data.display_text ??
+      `Additional authorization required (${providerStatus ?? "unknown"}). Use the secure hosted checkout instead.`,
+  };
+}
+
 // ─── Verification ─────────────────────────────────────────────────────────────
 
 /**
