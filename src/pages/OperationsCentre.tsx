@@ -240,6 +240,10 @@ function OperationsCentreInner() {
   const dispatchDelivery = useMutation(
     api.deliveries.state_machine.dispatchDelivery,
   );
+  // Engine-level dispatch: pending_dispatch → driver offers (maxOffers default 3).
+  const sendDriverOffers = useMutation(
+    api.dispatch.engine.dispatchDelivery,
+  );
   const reassignDelivery = useMutation(
     api.dispatch.engine.reassignDelivery,
   );
@@ -399,6 +403,7 @@ function OperationsCentreInner() {
               onDispatch={(id) => setDispatchTargetId(id)}
               dispatchOffers={dispatchOffers}
               dispatchDelivery={dispatchDelivery}
+              sendDriverOffers={sendDriverOffers}
               reassignDelivery={reassignDelivery}
             />
           )}
@@ -526,6 +531,7 @@ function DispatchTab({
   onDispatch,
   dispatchOffers,
   dispatchDelivery,
+  sendDriverOffers,
   reassignDelivery,
 }: {
   deliveries: Doc<"deliveries">[];
@@ -533,21 +539,25 @@ function DispatchTab({
   onDispatch: (id: string) => void;
   dispatchOffers: any;
   dispatchDelivery: any;
+  sendDriverOffers: any;
   reassignDelivery: any;
 }) {
   const [dispatchingId, setDispatchingId] = useState<string | null>(null);
   const [dispatchError, setDispatchError] = useState<string | null>(null);
   const [dispatchReassigningId, setDispatchReassigningId] = useState<string | null>(null);
-  const dispatchReassignState = dispatchReassigningId ? { id: dispatchReassigningId } : null;
-  const setDispatchReassignState = (id: string | null) =>
-    setDispatchReassigningId(id);
 
+  // Everything pre-assignment lives here now: requested (needs staff release),
+  // pending_dispatch (released — send driver offers), reassignment_required
+  // (previous driver fell through). Each state has its own action.
   const activePending = deliveries.filter(
     (d) =>
+      d.status === DELIVERY_STATUS.REQUESTED ||
       d.status === DELIVERY_STATUS.PENDING_DISPATCH ||
       d.status === DELIVERY_STATUS.REASSIGNMENT_REQUIRED,
   );
 
+  // Release a requested delivery into the dispatch pool
+  // (requested → pending_dispatch; engine offers go out next).
   const handleDispatch = async (id: string) => {
     setDispatchingId(id);
     setDispatchError(null);
@@ -555,6 +565,20 @@ function DispatchTab({
       await dispatchDelivery({ deliveryId: id as any });
     } catch (e) {
       setDispatchError(e instanceof Error ? e.message : "Dispatch failed");
+    } finally {
+      setDispatchingId(null);
+    }
+  };
+
+  // Send driver offers for a released delivery
+  // (pending_dispatch → offers to scored drivers → assigned on accept).
+  const handleSendOffers = async (id: string) => {
+    setDispatchingId(id);
+    setDispatchError(null);
+    try {
+      await sendDriverOffers({ deliveryId: id as any });
+    } catch (e) {
+      setDispatchError(e instanceof Error ? e.message : "Could not send driver offers");
     } finally {
       setDispatchingId(null);
     }
@@ -577,7 +601,7 @@ function DispatchTab({
       <div className="ops-section-header">
         <h2 className="ops-section-title">Dispatch</h2>
         <div className="ops-filter-group">
-          <span className="ops-live-count">{activePending.length} pending dispatch</span>
+          <span className="ops-live-count">{activePending.length} awaiting dispatch</span>
         </div>
       </div>
 
@@ -619,18 +643,40 @@ function DispatchTab({
                 </div>
 
                 <div className="ops-dispatch-actions">
-                  {d.status === DELIVERY_STATUS.PENDING_DISPATCH && (
+                  {d.status === DELIVERY_STATUS.REQUESTED && (
                     <button
                       className="ops-btn ops-btn-primary ops-btn-sm"
                       disabled={dispatchingId === d._id}
                       onClick={() => handleDispatch(d._id)}
                     >
                       {dispatchingId === d._id ? (
-                        <><RefreshCw size={14} className="animate-spin" />Dispatching…</>
+                        <><RefreshCw size={14} className="animate-spin" />Releasing…</>
                       ) : (
-                        <><RefreshCw size={14} />Dispatch</>
+                        <><RefreshCw size={14} />Release to dispatch</>
                       )}
                     </button>
+                  )}
+                  {d.status === DELIVERY_STATUS.PENDING_DISPATCH && (
+                    <>
+                      <button
+                        className="ops-btn ops-btn-primary ops-btn-sm"
+                        disabled={dispatchingId === d._id}
+                        onClick={() => handleSendOffers(d._id)}
+                      >
+                        {dispatchingId === d._id ? (
+                          <><RefreshCw size={14} className="animate-spin" />Sending offers…</>
+                        ) : (
+                          <><Zap size={14} />Send driver offers</>
+                        )}
+                      </button>
+                      <button
+                        className="ops-btn ops-btn-sm"
+                        disabled={dispatchingId === d._id}
+                        onClick={() => onDispatch(d._id)}
+                      >
+                        Offers<ArrowRight size={14} />
+                      </button>
+                    </>
                   )}
                   {d.status === DELIVERY_STATUS.REASSIGNMENT_REQUIRED && (
                     <button
@@ -655,11 +701,10 @@ function DispatchTab({
       ) : (
         <div className="empty-state">
           <div className="empty-state-icon"><Package size={24} /></div>
-          <div className="empty-state-title">No pending dispatches</div>
+          <div className="empty-state-title">Nothing awaiting dispatch</div>
           <div className="empty-state-desc">
-            All deliveries in the current view have moved past pending
-            dispatch. Use the Live Map or Exceptions tab to find work
-            requiring attention.
+            No deliveries are waiting to be released, offered to drivers, or
+            reassigned. New customer requests appear here automatically.
           </div>
         </div>
       )}

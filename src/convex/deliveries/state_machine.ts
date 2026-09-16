@@ -1848,12 +1848,11 @@ export const getMyDeliveries = query({
 // The query filters to operational statuses server-side so the live view only
 // loads in-flight work, not the entire delivery table.
 //
-// Statuses included (exact existing state-machine terminology):
-//   assigned, driver_accepted, en_route_to_pickup, at_pickup, picked_up,
-//   in_transit, at_dropoff
-// Excluded (terminal/completion states): delivered, failed, cancelled,
-//   reassignment_required ( surfaced separately in the exceptions view ),
-//   pending_dispatch ( surfaced in the dispatch view ), requested.
+// Statuses included: every non-terminal state — requested (newly created,
+// awaiting staff release), pending_dispatch (released into the dispatch pool,
+// driver offers in flight), reassignment_required (surfaced in dispatch +
+// exceptions), and the in-flight chain assigned → at_dropoff.
+// Excluded (terminal only): delivered, failed, cancelled.
 
 export const getActiveDeliveries = query({
   args: {
@@ -1872,6 +1871,9 @@ export const getActiveDeliveries = query({
     const limit = Math.max(1, Math.min(args.limit ?? 200, 500));
 
     const activeStatuses = [
+      DELIVERY_STATUS.REQUESTED,
+      DELIVERY_STATUS.PENDING_DISPATCH,
+      DELIVERY_STATUS.REASSIGNMENT_REQUIRED,
       DELIVERY_STATUS.ASSIGNED,
       DELIVERY_STATUS.DRIVER_ACCEPTED,
       DELIVERY_STATUS.EN_ROUTE_TO_PICKUP,
@@ -1892,12 +1894,12 @@ export const getActiveDeliveries = query({
       activeStatuses.includes(d.status as any),
     );
 
-    // Sort by most recent delivery activity for a useful live view.
-    // Delivery-level timestamps only (lastLocationUpdate lives on users, not
-    // deliveries). The live map separately shows driver location freshness.
+    // Sort by most recent activity: started/assigned timestamps for in-flight
+    // work; creation time for not-yet-started requests so fresh requests
+    // surface at the top of the operational view.
     active.sort((a, b) => {
-      const aTime = a.startedAt ?? a.assignedAt ?? 0;
-      const bTime = b.startedAt ?? b.assignedAt ?? 0;
+      const aTime = a.startedAt ?? a.assignedAt ?? a._creationTime;
+      const bTime = b.startedAt ?? b.assignedAt ?? b._creationTime;
       return bTime - aTime;
     });
 
