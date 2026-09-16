@@ -28,13 +28,12 @@ import { useParams, Link } from "react-router";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import CustomerShell from "@/components/shells/CustomerShell";
-import { TrackingHeader, RouteMap, statusCopy, buildSteps, milestonesFromEvents, formatEventTime } from "@/components/tracking/TrackingProgress";
+import { TrackingHeader, RouteMap, FreshnessChip, freshness, statusCopy, buildSteps, milestonesFromEvents, formatEventTime } from "@/components/tracking/TrackingProgress";
 import { DELIVERY_STATUS } from "@/convex/schema";
 import {
   MapPin,
   Loader2,
   Package,
-  Radio,
   XCircle,
   Clock,
   User,
@@ -49,40 +48,6 @@ import {
 import { useState } from "react";
 import "@/styles/dashboard.css";
 import "@/styles/track-delivery.css";
-
-// ─── Tracking freshness (backend MAX_STALENESS_MS from tracking/config.ts) ────
-
-const STALENESS_MS = 60_000;
-
-function freshness(lastUpdate: number | undefined | null): "live" | "recent" | "stale" | "none" {
-  if (lastUpdate === undefined || lastUpdate === null) return "none";
-  const age = Date.now() - lastUpdate;
-  if (age < 10_000) return "live";
-  if (age < STALENESS_MS) return "recent";
-  return "stale";
-}
-
-function freshnessLabel(s: ReturnType<typeof freshness>): string {
-  switch (s) {
-    case "live":
-      return "Live";
-    case "recent":
-      return "Recently updated";
-    case "stale":
-      return "Stale";
-    default:
-      return "Tracking unavailable";
-  }
-}
-
-function FreshnessChip({ state }: { state: ReturnType<typeof freshness> }) {
-  return (
-    <span className={`track-freshness ${state}`}>
-      <Radio size={12} className={state === "live" ? "animate-pulse" : ""} />
-      {freshnessLabel(state)}
-    </span>
-  );
-}
 
 // ─── Shared bits ──────────────────────────────────────────────────────────────
 

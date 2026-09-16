@@ -1,3 +1,22 @@
+/**
+ * Customer Tracking — tracking-number lookup.
+ *
+ * Route: /track-delivery (see src/main.tsx, RoleGate CUSTOMER area)
+ *
+ * Backend contract — the public, session-free lookup query only:
+ *   - deliveries.state_machine.getDeliveryByTracking → case-insensitive
+ *     lookup with server-resolved display details, milestone timestamps,
+ *     and the milestone-adjacent event timeline (location blips excluded).
+ *
+ * UI parity: this page renders the exact same composition as the
+ * activity-centre detail page (/deliveries/:deliveryId) — shared cyan
+ * header tile + stepper, freshness chip, live-route card, shipment details,
+ * event timeline, and the Started/Completed/Driver side cards. Only the
+ * two features the public lookup cannot provide are absent: the driver's
+ * live map blip (position is only visible to the customer's own session)
+ * and proof-of-delivery (authorization-scoped). No duplicate UI system.
+ */
+
 import { useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -5,9 +24,10 @@ import CustomerShell from "@/components/shells/CustomerShell";
 import {
   TrackingHeader,
   RouteMap,
+  FreshnessChip,
+  freshness,
   statusCopy,
   buildSteps,
-  milestonesFromEvents,
   formatEventTime,
 } from "@/components/tracking/TrackingProgress";
 import {
@@ -19,11 +39,11 @@ import {
   Loader2,
   Package,
   User,
-  Phone,
   Calendar,
   Clock,
   Ruler,
-  FileText,
+  Box,
+  XCircle,
 } from "lucide-react";
 import "@/styles/dashboard.css";
 import "@/styles/track-delivery.css";
@@ -54,6 +74,7 @@ export default function TrackDelivery() {
     api.deliveries.state_machine.getDeliveryByTracking,
     searchedTracking ? { trackingNumber: searchedTracking } : "skip"
   );
+
   const handleTrack = () => {
     const upper = trackingInput.toUpperCase().trim();
     if (upper) {
@@ -78,6 +99,18 @@ export default function TrackDelivery() {
     ? trackingResult.details?.scheduledTime ?? trackingResult.estimatedArrival ?? null
     : null;
 
+  // Freshness mirrors the activity-centre page: for an active (non-terminal)
+  // delivery the tracking chip reflects the delivery's own last-activity
+  // signal — here the most recent recorded event; terminal deliveries read
+  // "Tracking unavailable" the same way the detail page's terminal branch does.
+  const timeline: Array<{ type: string; timestamp: number }> = trackingResult?.timeline ?? [];
+  const lastEventTs = timeline.length > 0 ? timeline[timeline.length - 1].timestamp : null;
+  const isTerminal =
+    trackingResult != null &&
+    ["delivered", "failed", "cancelled"].includes(trackingResult.status);
+  const fr = trackingResult ? (isTerminal ? ("none" as const) : freshness(lastEventTs)) : ("none" as const);
+  const isFailed = trackingResult?.status === "failed" || trackingResult?.status === "cancelled";
+
   return (
     <CustomerShell activeItem="Track Delivery">
       <main className="track-main">
@@ -85,6 +118,7 @@ export default function TrackDelivery() {
           {/* Page title */}
           <div className="track-page-title">
             <h1 className="track-title">Delivery Tracking</h1>
+            {trackingResult && <FreshnessChip state={fr} />}
           </div>
 
           {/* Search bar */}
@@ -128,9 +162,25 @@ export default function TrackDelivery() {
                 copied={copied}
               />
 
+              {/* Failed / cancelled customer-safe notice — same as detail page */}
+              {isFailed && (
+                <div className="track-notice">
+                  <div className="track-notice-icon">
+                    <XCircle size={18} />
+                  </div>
+                  <div>
+                    <p className="track-notice-label">This delivery could not be completed</p>
+                    <p className="track-notice-time">
+                      {trackingResult.completedAt ? formatEventTime(trackingResult.completedAt) : "—"}
+                      {" · "}Please contact support for assistance.
+                    </p>
+                  </div>
+                  </div>
+              )}
+
               {/* Content grid */}
               <div className="track-content-grid">
-                {/* Left column */}
+                {/* Left column — mirrors the activity-centre page card-for-card */}
                 <div className="track-left-col">
                   {/* Route card */}
                   <div className="track-route-card">
@@ -138,17 +188,13 @@ export default function TrackDelivery() {
                       <div>
                         <h3 className="track-route-title">
                           <Navigation size={16} />
-                          Shipment route
+                          Live route
                         </h3>
-                        {expectedTs && (
-                          <p className="track-route-estimate">
-                            Expected delivery: {formatEventTime(expectedTs)}
-                          </p>
-                        )}
+                        <p className="track-card-sub">
+                          {expectedTs ? `Expected delivery: ${formatEventTime(expectedTs)}` : "Route overview for this delivery"}
+                        </p>
                       </div>
-                      {sc.tone === "active" && trackingResult.status !== "delivered" && (
-                        <span className="track-freshness recent"><Phone size={12} />{sc.label}</span>
-                      )}
+                      {!isTerminal && <FreshnessChip state={fr} />}
                     </div>
 
                     {(trackingResult.pickupLat != null || trackingResult.dropoffLat != null) && (
@@ -199,16 +245,18 @@ export default function TrackDelivery() {
                       </div>
                     </div>
                   </div>
-                </div>
 
-                {/* Right column */}
-                <div className="track-right-col">
-                  {/* Shipment details — resolved server-side from the order */}
-                  <div className="track-route-card" style={{ padding: "22px 24px" }}>
-                    <h3 className="track-route-title" style={{ marginBottom: 10 }}>
-                      <FileText size={16} />
-                      Shipment details
-                    </h3>
+                  {/* Shipment details — same card as the activity-centre page */}
+                  <div className="track-route-card">
+                    <div className="track-route-header">
+                      <div>
+                        <h3 className="track-route-title">
+                          <Box size={16} />
+                          Shipment details
+                        </h3>
+                        <p className="track-card-sub">What is moving, to whom, and how</p>
+                      </div>
+                    </div>
                     <div className="track-detail-list">
                       {trackingResult.details?.description && (
                         <DetailRow label="Order" value={trackingResult.details.description} icon={<Package size={13} />} />
@@ -274,15 +322,83 @@ export default function TrackDelivery() {
                     </div>
                   </div>
 
-                  {/* Last updated */}
+                  {/* Timeline from the real tracking event log — same card,
+                      same rail/dot/line anatomy as the detail page */}
+                  {timeline.length > 0 && (
+                    <div className="track-route-card">
+                      <div className="track-route-header">
+                        <div>
+                          <h3 className="track-route-title">
+                            <Clock size={16} />
+                            Delivery timeline
+                          </h3>
+                          <p className="track-card-sub">Recorded events from the tracking system</p>
+                        </div>
+                      </div>
+                      <div className="track-timeline">
+                        {/* Newest first — same order the activity-centre
+                            detail page renders its timeline */}
+                        {timeline.slice().reverse().map((e, i) => (
+                          <div key={i} className="track-timeline-item">
+                            <div className="track-timeline-rail">
+                              <span className="track-timeline-dot" />
+                              <span className="track-timeline-line" />
+                            </div>
+                            <div className="track-timeline-body">
+                              <span className="track-timeline-label">
+                                {String(e.type ?? "event").replace(/_/g, " ")}
+                              </span>
+                              <span className="track-timeline-time">{formatEventTime(e.timestamp)}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Right column — Started / Completed / Driver cards */}
+                <div className="track-right-col">
+                  <div className="track-last-updated">
+                    <div className="track-updated-icon is-info"><Clock size={18} /></div>
+                    <div>
+                      <p className="track-updated-label">Started</p>
+                      <p className="track-updated-time">{trackingResult.startedAt ? formatEventTime(trackingResult.startedAt) : "Not started yet"}</p>
+                    </div>
+                  </div>
+
                   {trackingResult.completedAt && (
                     <div className="track-last-updated">
-                      <div className="track-updated-icon">
-                        <Check size={18} />
+                      <div className={`track-updated-icon ${isFailed ? "is-bad" : ""}`}>
+                        {isFailed ? <XCircle size={18} /> : <Check size={18} />}
                       </div>
                       <div>
-                        <p className="track-updated-label">Completed</p>
+                        <p className="track-updated-label">{isFailed ? "Closed" : "Completed"}</p>
                         <p className="track-updated-time">{formatEventTime(trackingResult.completedAt)}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {trackingResult.courierId && !isFailed && (
+                    <div className="track-last-updated">
+                      <div className="track-updated-icon is-info"><User size={18} /></div>
+                      <div>
+                        <p className="track-updated-label">Driver assigned</p>
+                        <p className="track-updated-time">Your driver is on this delivery</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Delivered — delivered confirmation mirrors the POD row
+                      (evidence itself is session-authorized, lookup page is public) */}
+                  {trackingResult.status === "delivered" && (
+                    <div className="track-last-updated">
+                      <div className="track-updated-icon"><Check size={18} /></div>
+                      <div>
+                        <p className="track-updated-label">Proof of delivery</p>
+                        <p className="track-updated-time">
+                          Delivered{" · "}{formatEventTime(trackingResult.completedAt)}
+                        </p>
                       </div>
                     </div>
                   )}

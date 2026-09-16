@@ -18,8 +18,48 @@
  * recorded event stays pending. No timestamps are fabricated.
  */
 
-import { Check, Copy } from "lucide-react";
+import { Check, Copy, Radio } from "lucide-react";
 import { DELIVERY_STATUS, TRACKING_EVENT_TYPES } from "@/convex/schema";
+
+// ─── Tracking freshness (mirrors tracking/config.ts MAX_STALENESS_MS) ─────────
+
+const STALENESS_MS = 60_000;
+
+export type Freshness = "live" | "recent" | "stale" | "none";
+
+export function freshness(lastUpdate: number | undefined | null): Freshness {
+  if (lastUpdate === undefined || lastUpdate === null) return "none";
+  const age = Date.now() - lastUpdate;
+  if (age < 10_000) return "live";
+  if (age < STALENESS_MS) return "recent";
+  return "stale";
+}
+
+export function freshnessLabel(s: Freshness): string {
+  switch (s) {
+    case "live":
+      return "Live";
+    case "recent":
+      return "Recently updated";
+    case "stale":
+      return "Stale";
+    default:
+      return "Tracking unavailable";
+  }
+}
+
+/**
+ * Freshness chip — "Live / Recently updated / Stale / Tracking unavailable".
+ * Shared by both tracking entry points so the pages label states identically.
+ */
+export function FreshnessChip({ state }: { state: Freshness }) {
+  return (
+    <span className={`track-freshness ${state}`}>
+      <Radio size={12} className={state === "live" ? "animate-pulse" : ""} />
+      {freshnessLabel(state)}
+    </span>
+  );
+}
 
 // ─── Status copy (shared so both pages label states identically) ─────────────
 

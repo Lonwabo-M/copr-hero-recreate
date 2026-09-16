@@ -1733,11 +1733,18 @@ export const getDeliveryByTracking = query({
       estimatedArrival: delivery.estimatedArrival,
       startedAt: delivery.startedAt,
       completedAt: delivery.completedAt,
+      // Milestone-adjacent timeline (location blips excluded) so the
+      // tracking-number lookup renders the same event timeline card as the
+      // activity-centre view. Same fields, same order — asc by time.
       pickupLat: delivery.pickupLat,
       pickupLng: delivery.pickupLng,
       dropoffLat: delivery.dropoffLat,
       dropoffLng: delivery.dropoffLng,
       courierId: delivery.courierId ?? null,
+      timeline: events
+        .filter((e) => e.type !== "location_update")
+        .slice(-10)
+        .map((e) => ({ type: e.type, timestamp: e.timestamp })),
       milestones: {
         placed: latestTime("order_placed"),
         pickedUp: pickupEvents.length > 0 ? pickupEvents[pickupEvents.length - 1].timestamp : null,
