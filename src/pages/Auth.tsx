@@ -799,8 +799,8 @@ export default function AuthPage({ redirectAfterAuth = "/post-auth" }: AuthProps
           aria-label="Back to home"
           className="auth-home-link"
         >
+          <ArrowLeft size={15} strokeWidth={2} />
           Home
-          <ArrowRight size={15} strokeWidth={2} />
         </Link>
         <div style={{ width: "100%", maxWidth: 400 }}>{form}</div>
       </div>

@@ -5,9 +5,11 @@ interface OrderCardProps {
   order: Order;
   isActive: boolean;
   onClick: () => void;
+  /** Track Order action — opens the delivery's tracking view. */
+  onTrack: () => void;
 }
 
-export default function OrderCard({ order, isActive, onClick }: OrderCardProps) {
+export default function OrderCard({ order, isActive, onClick, onTrack }: OrderCardProps) {
   return (
     <div
       className={`dash-order-card ${isActive ? "active" : ""}`}
@@ -86,7 +88,10 @@ export default function OrderCard({ order, isActive, onClick }: OrderCardProps) 
       {/* Track Order button */}
       <button
         className={`dash-track-btn ${isActive ? "active" : "inactive"}`}
-        onClick={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation();
+          onTrack();
+        }}
       >
         Track Order
       </button>

@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Doc, Id } from "@/convex/_generated/dataModel";
 import OperationsShell from "@/components/shells/OperationsShell";
+import WaybillButton from "@/components/operations/WaybillButton";
 import { RoleGate, APP_AREAS } from "@/components/shells/RoleGate";
 import {
   Package,
@@ -60,6 +61,30 @@ import "@/styles/operations.css";
 // drop-off, it does not generate GPS from the operations browser.
 
 type OpsTab = "overview" | "dispatch" | "live" | "drivers" | "exceptions" | "history";
+
+// One row of the operational active-deliveries list: the raw delivery record
+// plus the server-resolved display details (addresses, recipient, parcel).
+type OpsDeliveryRow = Doc<"deliveries"> & {
+  details?: {
+    description: string | null;
+    businessName: string | null;
+    packageSize: string | null;
+    parcelType: string | null;
+    expeditionType: string | null;
+    width: number | null;
+    height: number | null;
+    weight: number | null;
+    price: number | null;
+    scheduledTime: number | null;
+    createdAt: number | null;
+    recipientName: string | null;
+    recipientPhone: string | null;
+    pickupAddress: string | null;
+    pickupCity: string | null;
+    dropoffAddress: string | null;
+    dropoffCity: string | null;
+  };
+};
 
 interface DriverLocationEntry {
   driverId: Id<"users">;
@@ -259,8 +284,8 @@ function OperationsCentreInner() {
 
   // ── Derived views ──────────────────────────────────────────────────────────
 
-  // getActiveDeliveries returns Doc<"deliveries">[] directly.
-  const activeList: Doc<"deliveries">[] = activeDeliveries ?? [];
+  // getActiveDeliveries returns OpsDeliveryRow[] directly.
+  const activeList: OpsDeliveryRow[] = activeDeliveries ?? [];
 
   const drivers: DriverLocationEntry[] = (driverLocations ?? []) as DriverLocationEntry[];
 
@@ -315,7 +340,7 @@ function OperationsCentreInner() {
   const exceptions = useMemo(() => {
     const items: Array<{
       kind: string;
-      delivery: Doc<"deliveries">;
+      delivery: OpsDeliveryRow;
       driverLoc?: DriverLocationEntry;
       message: string;
     }> = [];
@@ -450,9 +475,9 @@ function OverviewTab({
   drivers,
   exceptions,
 }: {
-  activeDeliveries: Doc<"deliveries">[];
+  activeDeliveries: OpsDeliveryRow[];
   drivers: DriverLocationEntry[];
-  exceptions: Array<{ kind: string; delivery: Doc<"deliveries">; driverLoc?: DriverLocationEntry; message: string }>;
+  exceptions: Array<{ kind: string; delivery: OpsDeliveryRow; driverLoc?: DriverLocationEntry; message: string }>;
 }) {
   const activeCount = activeDeliveries.length;
   const driverCount = drivers.length;
@@ -534,7 +559,7 @@ function DispatchTab({
   sendDriverOffers,
   reassignDelivery,
 }: {
-  deliveries: Doc<"deliveries">[];
+  deliveries: OpsDeliveryRow[];
   dispatchTargetId: string | null;
   onDispatch: (id: string) => void;
   dispatchOffers: any;
@@ -624,11 +649,11 @@ function DispatchTab({
                 <div className="ops-dispatch-route">
                   <div className="ops-route-point">
                     <MapPin size={13} />
-                    <span>Pickup: {formatCoordinate(d.pickupLat)}, {formatCoordinate(d.pickupLng)}</span>
+                    <span>Pickup: {d.details?.pickupAddress ?? "Address on file"}{d.details?.pickupCity ? `, ${d.details.pickupCity}` : ""}</span>
                   </div>
                   <div className="ops-route-point">
                     <MapPin size={13} />
-                    <span>Dropoff: {formatCoordinate(d.dropoffLat)}, {formatCoordinate(d.dropoffLng)}</span>
+                    <span>Dropoff: {d.details?.dropoffAddress ?? "Address on file"}{d.details?.dropoffCity ? `, ${d.details.dropoffCity}` : ""}</span>
                   </div>
                 </div>
 
@@ -643,6 +668,7 @@ function DispatchTab({
                 </div>
 
                 <div className="ops-dispatch-actions">
+                  <WaybillButton deliveryId={d._id as string} />
                   {d.status === DELIVERY_STATUS.REQUESTED && (
                     <button
                       className="ops-btn ops-btn-primary ops-btn-sm"
@@ -743,7 +769,7 @@ function LiveTab({
   onSelectDelivery,
   tracking,
 }: {
-  activeDeliveries: Doc<"deliveries">[];
+  activeDeliveries: OpsDeliveryRow[];
   drivers: DriverLocationEntry[];
   mapBounds: { minLat: number; maxLat: number; minLng: number; maxLng: number; hasData: boolean };
   selectedDeliveryId: string | null;
@@ -854,12 +880,12 @@ function LiveTab({
                         <div className="ops-route-point">
                           <MapPin size={12} />
                           <span className="ops-route-label pickup">P</span>
-                          <span>{formatCoordinate(d.pickupLat)}, {formatCoordinate(d.pickupLng)}</span>
+                          <span>{d.details?.pickupAddress ?? "Address on file"}</span>
                         </div>
                         <div className="ops-route-point">
                           <MapPin size={12} />
                           <span className="ops-route-label dropoff">D</span>
-                          <span>{formatCoordinate(d.dropoffLat)}, {formatCoordinate(d.dropoffLng)}</span>
+                          <span>{d.details?.dropoffAddress ?? "Address on file"}</span>
                         </div>
                       </div>
 
@@ -907,6 +933,11 @@ function LiveTab({
                 </div>
 
                 <div className="ops-detail-row">
+                  <span className="ops-detail-label">Waybill</span>
+                  <span className="ops-detail-value"><WaybillButton deliveryId={selectedDelivery._id as string} /></span>
+                </div>
+
+                <div className="ops-detail-row">
                   <span className="ops-detail-label">Assigned driver</span>
                   <span className="ops-detail-value">
                     {tracking?.driverLocation ? (
@@ -931,14 +962,20 @@ function LiveTab({
                 {selectedDelivery.pickupLat !== undefined && (
                   <div className="ops-detail-row">
                     <span className="ops-detail-label">Pickup</span>
-                    <span className="ops-detail-value ops-small">{formatCoordinate(selectedDelivery.pickupLat)}, {formatCoordinate(selectedDelivery.pickupLng)}</span>
+                    <span className="ops-detail-value ops-small">
+                      {selectedDelivery.details?.pickupAddress ?? "Address on file"}
+                      {selectedDelivery.details?.pickupCity ? `, ${selectedDelivery.details.pickupCity}` : ""}
+                    </span>
                   </div>
                 )}
 
                 {selectedDelivery.dropoffLat !== undefined && (
                   <div className="ops-detail-row">
                     <span className="ops-detail-label">Dropoff</span>
-                    <span className="ops-detail-value ops-small">{formatCoordinate(selectedDelivery.dropoffLat)}, {formatCoordinate(selectedDelivery.dropoffLng)}</span>
+                    <span className="ops-detail-value ops-small">
+                      {selectedDelivery.details?.dropoffAddress ?? "Address on file"}
+                      {selectedDelivery.details?.dropoffCity ? `, ${selectedDelivery.details.dropoffCity}` : ""}
+                    </span>
                   </div>
                 )}
 
@@ -1045,9 +1082,9 @@ function SvgMap({
   onDropoffClick,
 }: {
   bounds: { minLat: number; maxLat: number; minLng: number; maxLng: number; hasData: boolean };
-  drivers: Array<{ driver: DriverLocationEntry; delivery: Doc<"deliveries"> | null; lat: number; lng: number }>;
-  pickups: Array<{ type: "pickup"; lat: number; lng: number; delivery: Doc<"deliveries"> }>;
-  dropoffs: Array<{ type: "dropoff"; lat: number; lng: number; delivery: Doc<"deliveries"> }>;
+  drivers: Array<{ driver: DriverLocationEntry; delivery: OpsDeliveryRow | null; lat: number; lng: number }>;
+  pickups: Array<{ type: "pickup"; lat: number; lng: number; delivery: OpsDeliveryRow }>;
+  dropoffs: Array<{ type: "dropoff"; lat: number; lng: number; delivery: OpsDeliveryRow }>;
   selectedDeliveryId: string | null;
   onDriverClick: (dr: any) => void;
   onPickupClick: (d: any) => void;
@@ -1176,7 +1213,7 @@ function DriversTab({
   activeDeliveries,
 }: {
   drivers: DriverLocationEntry[];
-  activeDeliveries: Doc<"deliveries">[];
+  activeDeliveries: OpsDeliveryRow[];
 }) {
   return (
     <div className="ops-drivers">
@@ -1273,7 +1310,7 @@ function ExceptionsTab({
   onFail,
   onCancel,
 }: {
-  exceptions: Array<{ kind: string; delivery: Doc<"deliveries">; driverLoc?: DriverLocationEntry; message: string }>;
+  exceptions: Array<{ kind: string; delivery: OpsDeliveryRow; driverLoc?: DriverLocationEntry; message: string }>;
   reassigningId: string | null;
   onReassign: (id: string) => void;
   onCompleteWithPOD: (id: string) => void;
@@ -1446,6 +1483,7 @@ function HistoryTab({
               <th>Started</th>
               <th>Completed</th>
               <th>Driver</th>
+              <th>Waybill</th>
             </tr>
           </thead>
           <tbody>
@@ -1459,6 +1497,7 @@ function HistoryTab({
                   <td>{d.startedAt ? formatDateTime(d.startedAt) : "—"}</td>
                   <td>{d.completedAt ? formatDateTime(d.completedAt) : "—"}</td>
                   <td>{driverName}</td>
+                  <td><WaybillButton deliveryId={d._id as string} /></td>
                 </tr>
               );
             })}

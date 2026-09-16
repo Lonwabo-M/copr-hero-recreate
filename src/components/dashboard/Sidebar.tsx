@@ -34,6 +34,7 @@ interface SidebarProps {
 // (pure data) to lucide-react.
 const ICONS: Record<string, LucideIcon> = {
   "Activity Center": LayoutDashboard,
+  Dashboard: LayoutDashboard,
   "Past Deliveries": History,
   "Request Delivery": Package,
   "Track Delivery": MapPin,

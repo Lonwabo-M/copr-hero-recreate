@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
-import { Menu } from "lucide-react";
+import { Menu, ShieldCheck, Loader2 } from "lucide-react";
 import { useAuthActions } from "@convex-dev/auth/react";
-import { useQuery } from "convex/react";
+import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { clearAllOfflineData } from "@/lib/offline/db";
 import { useNavigate } from "react-router";
 import Sidebar from "@/components/dashboard/Sidebar";
 import LashaLogo from "@/components/branding/LashaLogo";
+import { useAuth } from "@/hooks/use-auth";
+import { ROLES } from "@/convex/schema";
 import {
   AREA_LABELS,
   AREA_NAVIGATION,
@@ -46,6 +48,55 @@ export default function AppShell({
 
   const navItems: NavItem[] = AREA_NAVIGATION[area];
 
+  // ── Operations Centre access point (customer area) / return path (ops area)
+  // Customers claim a marked, reversible test elevation (users.testAccess) and
+  // are navigated only once the reactive user record carries the operations
+  // role, so RoleGate admits the route without a refresh. Real staff navigate
+  // straight through. Inside the Operations area, test-elevated accounts get a
+  // one-click release that restores their customer role.
+  const { user } = useAuth();
+  const claimTestAccess = useMutation(api.users.testAccess.claimTestOperationsAccess);
+  const releaseTestAccess = useMutation(api.users.testAccess.releaseTestOperationsAccess);
+  const testAccessState = useQuery(api.users.testAccess.getTestAccessState, {});
+  const [opsPending, setOpsPending] = useState(false);
+  const [releasing, setReleasing] = useState(false);
+
+  const isRealStaff =
+    user?.role === ROLES.OPERATIONS ||
+    user?.role === ROLES.FLEET_MANAGER ||
+    user?.role === ROLES.COMPANY_ADMIN ||
+    user?.role === ROLES.SUPER_ADMIN;
+  const isTestElevated = testAccessState?.testElevated === true;
+
+  useEffect(() => {
+    if (opsPending && (user?.role === ROLES.OPERATIONS || isRealStaff)) {
+      setOpsPending(false);
+      navigate("/operations");
+    }
+  }, [opsPending, user?.role, isRealStaff, navigate]);
+
+  const handleOpenOperations = async () => {
+    if (isRealStaff) {
+      navigate("/operations");
+      return;
+    }
+    setOpsPending(true);
+    try {
+      await claimTestAccess({});
+    } catch {
+      setOpsPending(false);
+    }
+  };
+
+  const handleReleaseTestAccess = async () => {
+    setReleasing(true);
+    try {
+      await releaseTestAccess({});
+    } finally {
+      setReleasing(false);
+    }
+  };
+
   // Reactive unread count — the notification indicator reflects the user's
   // actual unread notifications via the existing session-scoped Convex query
   // (getUnreadCount). Convex push updates it live; it is never decorative.
@@ -64,6 +115,12 @@ export default function AppShell({
   }, []);
 
   const handleNav = (item: NavItem) => {
+    // The sidebar's Operations Centre entry is the access point: customers
+    // claim test elevation first, staff navigate directly.
+    if (item.route === "/operations" && area !== "operations") {
+      void handleOpenOperations();
+      return;
+    }
     navigate(item.route);
   };
 
@@ -105,6 +162,25 @@ export default function AppShell({
         </div>
 
         <div className="dash-topnav-right">
+          {/* Test-elevation release — only while operating under a claimed
+              (reversible) elevation, never for real staff. */}
+          {area === "operations" && isTestElevated && !isRealStaff && (
+            <button
+              className="dash-topnav-profile"
+              onClick={handleReleaseTestAccess}
+              disabled={releasing}
+              aria-label="Release test access and return to customer portal"
+              title="Release test access"
+              style={{ width: "auto", padding: "0 14px", gap: 7, fontSize: 12.5, fontWeight: 600 }}
+            >
+              {releasing ? (
+                <Loader2 size={15} className="animate-spin" />
+              ) : (
+                <ShieldCheck size={15} />
+              )}
+              Release test access
+            </button>
+          )}
           <button
             className="dash-topnav-profile"
             aria-label={AREA_LABELS[area]}

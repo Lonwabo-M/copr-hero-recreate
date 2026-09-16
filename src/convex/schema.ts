@@ -473,6 +473,9 @@ const schema = defineSchema(
       vehicleId: v.optional(v.id("vehicles")),
       status: deliveryStatusValidator,
       trackingNumber: v.string(),
+      // Waybill document number, assigned automatically at delivery creation
+      // (WB-<tracking number>). Downloadable from the Operations Centre.
+      waybillNumber: v.optional(v.string()),
       pickupLat: v.optional(v.number()),
       pickupLng: v.optional(v.number()),
       dropoffLat: v.optional(v.number()),

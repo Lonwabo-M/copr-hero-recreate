@@ -30,6 +30,7 @@ import {
   AuthUser,
 } from "../auth/authorization";
 import { PERMISSIONS, ROLES } from "../schema";
+import { waybillNumberFor } from "./waybills";
 import { AUDIT_ACTIONS } from "../audit/service";
 import { internal } from "../_generated/api";
 import { createLogger, LOG_CATEGORIES, generateCorrelationId } from "../logging/service";
@@ -320,6 +321,7 @@ export const createOrderAndDelivery = mutation({
       orderId,
       status: DELIVERY_STATUS.REQUESTED,
       trackingNumber,
+      waybillNumber: waybillNumberFor(trackingNumber),
       pickupLat: args.pickupLat,
       pickupLng: args.pickupLng,
       dropoffLat: args.dropoffLat,
@@ -415,6 +417,7 @@ export const createDelivery = mutation({
       orderId: args.orderId,
       status: DELIVERY_STATUS.REQUESTED,
       trackingNumber,
+      waybillNumber: waybillNumberFor(trackingNumber),
       pickupLat: args.pickupLat,
       pickupLng: args.pickupLng,
       dropoffLat: args.dropoffLat,
@@ -1903,7 +1906,16 @@ export const getActiveDeliveries = query({
       return bTime - aTime;
     });
 
-    return active.slice(0, limit);
+    const opsPage = active.slice(0, limit);
+    // Enrich each row with display details (route addresses, recipient, parcel
+    // info) resolved server-side from the order's authoritative address
+    // records — operations shows human-readable addresses, never coordinates.
+    return await Promise.all(
+      opsPage.map(async (d) => ({
+        ...d,
+        details: await resolveDeliveryDetails(ctx, d),
+      })),
+    );
   },
 });
 

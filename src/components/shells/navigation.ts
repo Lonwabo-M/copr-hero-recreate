@@ -25,6 +25,7 @@ export const customerNavigation: NavItem[] = [
   { label: "Past Deliveries", route: "/past-deliveries" },
   { label: "Request Delivery", route: "/request-delivery" },
   { label: "Track Delivery", route: "/track-delivery" },
+  { label: "Operations Centre", route: "/operations" },
   { label: "Invoices", route: "/invoices" },
   { label: "Wallet", route: "/wallet" },
   { label: "Make Payment", route: "/make-payment" },
@@ -48,9 +49,12 @@ export const driverNavigation: NavItem[] = [
 ];
 
 // ─── Operations Centre Navigation ────────────────────────────────────────────
-// Operations/dispatch functionality only.
+// Operations/dispatch functionality, plus the return path into the Customer
+// Portal (the customer area admits every authenticated role, so operations
+// staff — including test-elevated accounts — can always get back).
 export const operationsNavigation: NavItem[] = [
   { label: "Operations Centre", route: "/operations" },
+  { label: "Dashboard", route: "/dashboard" },
 ];
 
 // ─── Admin Navigation ────────────────────────────────────────────────────────
