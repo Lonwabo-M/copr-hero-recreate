@@ -20,19 +20,26 @@ interface DashboardOrder {
 }
 
 function transformDeliveryToOrder(delivery: any, order: any): DashboardOrder {
+  // Human-readable addresses come from the server-resolved `details` (order +
+  // address records). Coordinates are never shown to customers.
+  const details = delivery.details ?? {};
   return {
     id: `#${delivery.trackingNumber}`,
     deliveryId: delivery._id,
     status: delivery.status === "in_transit" ? "In Transit" : "Pending",
     pickup: {
       name: "Pickup Location",
-      address: delivery.pickupLat ? `${delivery.pickupLat.toFixed(4)}, ${delivery.pickupLng?.toFixed(4)}` : "N/A",
-      date: delivery.assignedAt ? new Date(delivery.assignedAt).toLocaleDateString("en-ZA", { day: "2-digit", month: "short" }) : "N/A",
-      time: delivery.assignedAt ? new Date(delivery.assignedAt).toLocaleTimeString("en-ZA", { hour: "2-digit", minute: "2-digit" }) : "N/A",
+      address: details.pickupAddress ?? "Address on file",
+      date: (details.scheduledTime ?? details.createdAt ?? delivery.assignedAt)
+        ? new Date(details.scheduledTime ?? details.createdAt ?? delivery.assignedAt).toLocaleDateString("en-ZA", { day: "2-digit", month: "short" })
+        : "N/A",
+      time: (details.scheduledTime ?? details.createdAt ?? delivery.assignedAt)
+        ? new Date(details.scheduledTime ?? details.createdAt ?? delivery.assignedAt).toLocaleTimeString("en-ZA", { hour: "2-digit", minute: "2-digit" })
+        : "N/A",
     },
     dropoff: {
       name: "Dropoff Location",
-      address: delivery.dropoffLat ? `${delivery.dropoffLat.toFixed(4)}, ${delivery.dropoffLng?.toFixed(4)}` : "N/A",
+      address: details.dropoffAddress ?? "Address on file",
     },
     vehicle: {
       registration: "N/A",
@@ -51,10 +58,10 @@ function transformDeliveryToOrder(delivery: any, order: any): DashboardOrder {
       trips: "N/A",
     },
     customer: {
-      name: "Customer",
-      company: "N/A",
-      email: "N/A",
-      phone: "N/A",
+      name: details.recipientName ?? "Not specified",
+      company: details.description ?? "—",
+      email: details.expeditionType?.replace(/_/g, "-") ?? "standard",
+      phone: details.recipientPhone ?? "N/A",
     },
   };
 }
@@ -199,6 +206,20 @@ export default function Dashboard() {
                   <p style={{ fontSize: 13, color: "#666", marginTop: 8 }}>Pickup: {selectedOrderData.pickup.address}</p>
                   <p style={{ fontSize: 13, color: "#666" }}>Dropoff: {selectedOrderData.dropoff.address}</p>
                   <p style={{ fontSize: 13, color: "#666", marginTop: 8 }}>Driver: {selectedOrderData.driver.name}</p>
+                  {selectedOrderData.customer.company !== "—" && (
+                    <p style={{ fontSize: 13, color: "#666", marginTop: 8 }}>Order: {selectedOrderData.customer.company}</p>
+                  )}
+                  {selectedOrderData.customer.name !== "Not specified" && (
+                    <p style={{ fontSize: 13, color: "#666" }}>Recipient: {selectedOrderData.customer.name}{selectedOrderData.customer.phone !== "N/A" ? ` · ${selectedOrderData.customer.phone}` : ""}</p>
+                  )}
+                  {selectedOrderData.pickup.date !== "N/A" && (
+                    <p style={{ fontSize: 13, color: "#666", marginTop: 8 }}>
+                      Scheduled: {selectedOrderData.pickup.date} at {selectedOrderData.pickup.time}
+                    </p>
+                  )}
+                  <p style={{ fontSize: 13, color: "#666", marginTop: 8 }}>
+                    Service: {selectedOrderData.customer.email}
+                  </p>
                 </div>
               </div>
             )}

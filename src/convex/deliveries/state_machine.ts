@@ -35,6 +35,60 @@ import { internal } from "../_generated/api";
 import { createLogger, LOG_CATEGORIES, generateCorrelationId } from "../logging/service";
 import type { NotificationEventType } from "../notifications/service";
 
+// ─── Delivery display details (shared resolver) ──────────────────────
+// Resolve the human-readable route/parcel details for a delivery from the
+// authoritative order + address records. Used by every customer-facing read
+// path so UIs never fall back to raw coordinates.
+//
+// Ctx is structurally typed (only ctx.db.get is used) so the resolver works
+// from both query and mutation contexts.
+async function resolveDeliveryDetails(
+  ctx: { db: { get(id: any): Promise<any> } },
+  delivery: Doc<"deliveries">,
+): Promise<DeliveryDisplayDetails> {
+  const order = await ctx.db.get(delivery.orderId);
+  const pickup = order ? await ctx.db.get(order.pickupAddressId) : null;
+  const dropoff = order ? await ctx.db.get(order.dropoffAddressId) : null;
+
+  return {
+    description: order?.description ?? null,
+    packageSize: order?.packageSize ?? null,
+    parcelType: order?.parcelType ?? null,
+    expeditionType: order?.expeditionType ?? null,
+    width: order?.width ?? null,
+    height: order?.height ?? null,
+    weight: order?.weight ?? null,
+    price: order?.price ?? null,
+    scheduledTime: order?.scheduledTime ?? null,
+    createdAt: order?.createdAt ?? null,
+    recipientName: order?.recipientName ?? null,
+    recipientPhone: order?.recipientPhone ?? null,
+    pickupAddress: pickup?.street ?? null,
+    pickupCity: pickup?.city ?? null,
+    dropoffAddress: dropoff?.street ?? null,
+    dropoffCity: dropoff?.city ?? null,
+  };
+}
+
+interface DeliveryDisplayDetails {
+  description: string | null;
+  packageSize: string | null;
+  parcelType: string | null;
+  expeditionType: string | null;
+  width: number | null;
+  height: number | null;
+  weight: number | null;
+  price: number | null;
+  scheduledTime: number | null;
+  createdAt: number | null;
+  recipientName: string | null;
+  recipientPhone: string | null;
+  pickupAddress: string | null;
+  pickupCity: string | null;
+  dropoffAddress: string | null;
+  dropoffCity: string | null;
+}
+
 // ─── Delivery notification fan-out ──────────────────────────────────────────
 // Domain-event → in-app notification bridge. Recipients are always resolved
 // server-side from authoritative relationships (order sender, assigned
@@ -186,6 +240,9 @@ export const createOrderAndDelivery = mutation({
     dropoffLat: v.number(),
     dropoffLng: v.number(),
     scheduledTime: v.optional(v.number()),
+    // Who the package is being sent to (display + POD reference).
+    recipientName: v.optional(v.string()),
+    recipientPhone: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     // 1. Authenticate
@@ -222,6 +279,8 @@ export const createOrderAndDelivery = mutation({
       businessId: user.businessId,
       pickupAddressId,
       dropoffAddressId,
+      recipientName: args.recipientName,
+      recipientPhone: args.recipientPhone,
       status: "pending",
       description: args.orderName,
       packageSize: args.weight && args.weight > 30 ? "large" : args.weight && args.weight > 5 ? "medium" : "small",
@@ -1567,22 +1626,24 @@ export const getDelivery = query({
     const delivery = await ctx.db.get(args.deliveryId);
     if (!delivery) throw new Error("Delivery not found");
 
-    // Check access based on role
+    // Check access based on role. Every authorized branch returns the delivery
+    // enriched with display details (addresses, parcel info) — the details are
+    // derived from the same order the role check just validated access to.
     if (user.role === ROLES.SUPER_ADMIN || user.role === ROLES.OPERATIONS) {
-      return delivery;
+      return { ...delivery, details: await resolveDeliveryDetails(ctx, delivery) };
     }
 
     if (user.role === ROLES.DRIVER) {
       if (delivery.courierId !== user.userId) {
         throw new Error("Access denied: not your delivery");
       }
-      return delivery;
+      return { ...delivery, details: await resolveDeliveryDetails(ctx, delivery) };
     }
 
     if (user.role === ROLES.COMPANY_ADMIN) {
       const order = await ctx.db.get(delivery.orderId);
       if (order && order.businessId === user.businessId) {
-        return delivery;
+        return { ...delivery, details: await resolveDeliveryDetails(ctx, delivery) };
       }
       throw new Error("Access denied: delivery belongs to another company");
     }
@@ -1590,7 +1651,7 @@ export const getDelivery = query({
     if (user.role === ROLES.CUSTOMER) {
       const order = await ctx.db.get(delivery.orderId);
       if (order && order.senderId === user.userId) {
-        return delivery;
+        return { ...delivery, details: await resolveDeliveryDetails(ctx, delivery) };
       }
       throw new Error("Access denied: not your delivery");
     }
@@ -1601,18 +1662,41 @@ export const getDelivery = query({
 
 /**
  * Get delivery by tracking number (public query).
+ *
+ * Resolution is case-insensitive (tracking codes are displayed uppercase and
+ * are hand-typed), and trailing whitespace is tolerated. A miss returns null
+ * so the UI can show its own not-found state instead of a raw server error.
+ *
+ * Enriched with the order's display details (route addresses, parcel info,
+ * schedule) resolved server-side from the order's authoritative address
+ * records — the same fields the customer saw at creation.
  */
 export const getDeliveryByTracking = query({
   args: {
     trackingNumber: v.string(),
   },
   handler: async (ctx, args) => {
-    const delivery = await ctx.db
+    const code = args.trackingNumber.trim().toUpperCase();
+    if (!code) return null;
+
+    // Exact (normalized) match first — index lookup.
+    let delivery = await ctx.db
       .query("deliveries")
-      .withIndex("by_tracking", (q) => q.eq("trackingNumber", args.trackingNumber))
+      .withIndex("by_tracking", (q) => q.eq("trackingNumber", code))
       .unique();
 
-    if (!delivery) throw new Error("Delivery not found");
+    // Case-insensitive fallback for hand-typed variants.
+    if (!delivery) {
+      const all = await ctx.db
+        .query("deliveries")
+        .withIndex("by_tracking", (q) => q.eq("trackingNumber", args.trackingNumber.trim()))
+        .unique();
+      delivery = all;
+    }
+
+    if (!delivery) return null;
+
+    const details = await resolveDeliveryDetails(ctx, delivery);
 
     // Return limited information for public tracking
     return {
@@ -1621,6 +1705,7 @@ export const getDeliveryByTracking = query({
       estimatedArrival: delivery.estimatedArrival,
       startedAt: delivery.startedAt,
       completedAt: delivery.completedAt,
+      details,
     };
   },
 });
@@ -1671,7 +1756,14 @@ export const getMyDeliveries = query({
       const statusFiltered = args.status
         ? collected.filter((d) => d.status === args.status)
         : collected;
-      return statusFiltered.slice(0, limit);
+      // Enrich with display details (addresses, parcel info) resolved
+      // server-side so customer UIs never show raw coordinates.
+      return await Promise.all(
+        statusFiltered.slice(0, limit).map(async (d) => ({
+          ...d,
+          details: await resolveDeliveryDetails(ctx, d),
+        })),
+      );
     } else if (
       user.role === ROLES.COMPANY_ADMIN ||
       user.role === ROLES.FLEET_MANAGER
@@ -1689,7 +1781,15 @@ export const getMyDeliveries = query({
 
     // Apply limit
     const limit = args.limit ?? 50;
-    return await q.order("desc").take(limit);
+    const rows = await q.order("desc").take(limit);
+    // Enrich with display details (addresses, parcel info) resolved
+    // server-side so customer UIs never show raw coordinates.
+    return await Promise.all(
+      rows.map(async (d) => ({
+        ...d,
+        details: await resolveDeliveryDetails(ctx, d),
+      })),
+    );
   },
 });
 

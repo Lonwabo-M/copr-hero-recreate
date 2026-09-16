@@ -14,6 +14,8 @@ import {
   Loader2,
   CheckCircle2,
   AlertCircle,
+  User,
+  Phone,
 } from "lucide-react";
 import "@/styles/dashboard.css";
 import "@/styles/request-delivery.css";
@@ -39,6 +41,8 @@ export default function RequestDelivery() {
   const [scheduleDate, setScheduleDate] = useState("");
   const [timeFrom, setTimeFrom] = useState("00:00");
   const [timeTo, setTimeTo] = useState("00:00");
+  const [recipientName, setRecipientName] = useState("");
+  const [recipientPhone, setRecipientPhone] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -105,6 +109,8 @@ export default function RequestDelivery() {
         dropoffLat: dropoffCoords.lat,
         dropoffLng: dropoffCoords.lng,
         scheduledTime,
+        recipientName: recipientName.trim() || undefined,
+        recipientPhone: recipientPhone.trim() || undefined,
       });
 
       setSuccess({ trackingNumber: result.trackingNumber });
@@ -121,6 +127,8 @@ export default function RequestDelivery() {
       setScheduleDate("");
       setTimeFrom("00:00");
       setTimeTo("00:00");
+      setRecipientName("");
+      setRecipientPhone("");
     } catch {
       // Application-level copy only — never surface raw Convex error output.
       setError("We couldn't create your delivery. Please try again.");
@@ -339,6 +347,36 @@ export default function RequestDelivery() {
                           onChange={(e) => setDropoffLocation(e.target.value)}
                         />
                       </div>
+                    </div>
+                  </div>
+
+                  {/* Recipient — who the package is being sent to */}
+                  <div className="form-field">
+                    <label className="form-label">Recipient Name</label>
+                    <div className="form-input-wrapper">
+                      <User className="form-input-icon" size={18} />
+                      <input
+                        type="text"
+                        className="form-input"
+                        placeholder="Who is receiving this delivery?"
+                        value={recipientName}
+                        onChange={(e) => setRecipientName(e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Recipient Phone */}
+                  <div className="form-field">
+                    <label className="form-label">Recipient Phone</label>
+                    <div className="form-input-wrapper">
+                      <Phone className="form-input-icon" size={18} />
+                      <input
+                        type="tel"
+                        className="form-input"
+                        placeholder="Contact number at drop-off"
+                        value={recipientPhone}
+                        onChange={(e) => setRecipientPhone(e.target.value)}
+                      />
                     </div>
                   </div>
 

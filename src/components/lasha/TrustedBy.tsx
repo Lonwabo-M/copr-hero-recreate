@@ -36,8 +36,12 @@ export default function TrustedBy() {
       aria-label="Trusted by leading organisations"
       style={{
         backgroundColor: "var(--lasha-ivory)",
+        /* Hairline rules top AND bottom — the strip reads as a banded row. */
+        borderTop: "1px solid var(--lasha-border-light)",
         borderBottom: "1px solid var(--lasha-border-light)",
-        /* Breathing room between the full-height hero and the logo strip. */
+        /* Breathing room between the full-height hero and the logo strip.
+           WhyLasha below uses a matching 56px top padding, so the whitespace
+           above and below the strip is identical. */
         marginTop: 56,
         padding: "28px 0",
         overflow: "hidden",

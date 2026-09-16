@@ -425,6 +425,9 @@ const schema = defineSchema(
       businessId: v.optional(v.id("businesses")),
       pickupAddressId: v.id("addresses"),
       dropoffAddressId: v.id("addresses"),
+      // Recipient (who the package is sent to) — captured at creation.
+      recipientName: v.optional(v.string()),
+      recipientPhone: v.optional(v.string()),
       status: orderStatusValidator,
       description: v.optional(v.string()),
       packageSize: packageSizeValidator,

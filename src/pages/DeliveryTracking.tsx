@@ -215,7 +215,16 @@ function RouteMap({
   );
 }
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
+// ─── Page ─────────────────────────────────────────────────────────────────
+
+function DetailRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", gap: 16, fontSize: 13 }}>
+      <span style={{ color: "#888", flexShrink: 0 }}>{label}</span>
+      <span style={{ color: "#1f2937", fontWeight: 500, textAlign: "right" }}>{value}</span>
+    </div>
+  );
+}
 
 export default function DeliveryTracking() {
   const { deliveryId } = useParams<{ deliveryId: string }>();
@@ -232,6 +241,10 @@ export default function DeliveryTracking() {
     api.pod.service.getPODForDelivery,
     deliveryId ? { deliveryId: deliveryId as any } : "skip",
   );
+
+  // Sender identity for the shipment-details card: getDelivery's customer
+  // branch already proves the session user IS the order's sender, so the
+  // sender is always the viewer — no extra query needed.
 
   // Loading: queries still streaming (incl. the no-route-param case).
   if (delivery === undefined || tracking === undefined) {
@@ -382,16 +395,15 @@ export default function DeliveryTracking() {
                   driver={driverVisible ? { lat: dl!.lat, lng: dl!.lng } : null}
                 />
 
-                {/* Route summary */}
+                {/* Route summary — human-readable addresses resolved
+                    server-side; coordinates are never shown to customers. */}
                 <div className="track-route-visual">
                   <div className="track-route-point">
                     <div className="track-route-pin sender"><MapPin size={16} /></div>
                     <div>
                       <p className="track-route-point-label">Pickup</p>
                       <p className="track-route-street">
-                        {tracking.delivery.pickupLat != null
-                          ? `${tracking.delivery.pickupLat.toFixed(4)}, ${tracking.delivery.pickupLng?.toFixed(4)}`
-                          : "Pending coordinates"}
+                        {delivery.details?.pickupAddress ?? "Address on file"}
                       </p>
                     </div>
                     <div className="track-route-dot-line">
@@ -402,12 +414,68 @@ export default function DeliveryTracking() {
                     <div>
                       <p className="track-route-point-label">Drop-off</p>
                       <p className="track-route-street">
-                        {tracking.delivery.dropoffLat != null
-                          ? `${tracking.delivery.dropoffLat.toFixed(4)}, ${tracking.delivery.dropoffLng?.toFixed(4)}`
-                          : "Pending coordinates"}
+                        {delivery.details?.dropoffAddress ?? "Address on file"}
                       </p>
                     </div>
                     <div className="track-route-pin receiver"><MapPin size={16} /></div>
+                  </div>
+                </div>
+
+                {/* Shipment details — who/what/when, resolved server-side */}
+                <div className="track-route-card" style={{ padding: "20px 22px" }}>
+                  <div className="track-route-header">
+                    <h3 className="track-route-title">Shipment details</h3>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    {delivery.details?.description && (
+                      <DetailRow label="Order" value={delivery.details.description} />
+                    )}
+                    {delivery.details?.recipientName ? (
+                      <DetailRow
+                        label="Recipient"
+                        value={
+                          delivery.details.recipientPhone
+                            ? `${delivery.details.recipientName} · ${delivery.details.recipientPhone}`
+                            : delivery.details.recipientName
+                        }
+                      />
+                    ) : (
+                      <DetailRow label="Recipient" value="Not specified" />
+                    )}
+                    <DetailRow label="Sender" value="You" />
+                    <DetailRow
+                      label="Requested"
+                      value={
+                        delivery.details?.scheduledTime
+                          ? formatDateTime(delivery.details.scheduledTime)
+                          : delivery.details?.createdAt
+                            ? formatDateTime(delivery.details.createdAt)
+                            : "—"
+                      }
+                    />
+                    {(delivery.details?.expeditionType || delivery.details?.parcelType) && (
+                      <DetailRow
+                        label="Service"
+                        value={[
+                          delivery.details?.expeditionType?.replace(/_/g, "-"),
+                          delivery.details?.parcelType?.replace(/_/g, " "),
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      />
+                    )}
+                    <DetailRow
+                      label="Dimensions"
+                      value={
+                        delivery.details?.width != null && delivery.details?.height != null
+                          ? `${delivery.details.width} × ${delivery.details.height} cm${
+                              delivery.details?.weight != null ? ` · ${delivery.details.weight} kg` : ""
+                            }`
+                          : delivery.details?.weight != null
+                            ? `${delivery.details.weight} kg`
+                            : "Not specified"
+                      }
+                    />
                   </div>
                 </div>
               </div>

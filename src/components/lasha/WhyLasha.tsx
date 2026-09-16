@@ -25,7 +25,12 @@ export default function WhyLasha() {
   return (
     <section
       id="why-lasha"
-      style={{ backgroundColor: "var(--lasha-ivory)", padding: "120px 0" }}
+      style={{
+        backgroundColor: "var(--lasha-ivory)",
+        /* 56px top padding mirrors the carousel's marginTop above, so the
+           whitespace above and below the logo strip is exactly equal. */
+        padding: "56px 0 120px",
+      }}
     >
       <div className="lasha-container">
         {/* Technical label */}
@@ -82,8 +87,8 @@ export default function WhyLasha() {
           </div>
           <div className="why-fleet-visual">
             <img
-              src="/assets/van-fleet.jpg"
-              alt="A Lasha minibus taxi loaded with parcels ready for delivery"
+              src="/assets/Taxi_image-removebg-preview.png"
+              alt="Lasha delivery taxi"
               loading="lazy"
             />
           </div>
@@ -161,30 +166,45 @@ export default function WhyLasha() {
           margin-top: 20px;
           display: grid;
           grid-template-columns: 1.2fr 1fr;
-          align-items: stretch;
+          align-items: center;
           overflow: hidden;
         }
         .why-fleet-copy { padding: 48px 56px; }
         .why-fleet-visual {
           position: relative;
           align-self: stretch;
-          min-height: 260px;
-          overflow: hidden;
+          min-height: 220px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
         }
-        /* High-resolution fleet photograph fills the panel; a tight crop on
-           the loaded vehicle keeps the detail sharp at any panel size. */
-        .why-fleet-visual img {
+        /* Cyan wash grounds the cut-out vehicle so it reads as intentional
+           composition, not a floating sticker. */
+        .why-fleet-visual::before {
+          content: "";
           position: absolute;
           inset: 0;
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
-          object-position: 28% 62%;
+          background: radial-gradient(
+            120% 90% at 70% 30%,
+            rgba(7, 148, 181, 0.10) 0%,
+            rgba(7, 148, 181, 0) 70%
+          );
+        }
+        .why-fleet-visual img {
+          position: relative;
+          width: min(100%, 420px);
+          height: auto;
+          transform: translateY(14%); /* let the vehicle sit into the card base */
+          /* Slight sharpening counteracts the asset's low native resolution
+             (275×183) when the browser upscales it — crisper edges without
+             altering the artwork itself. */
+          image-rendering: -webkit-optimize-contrast;
         }
         @media (max-width: 1024px) {
           .why-fleet { grid-template-columns: 1fr !important; }
-          .why-fleet-copy { padding: 36px 28px 24px; }
-          .why-fleet-visual { min-height: 220px; }
+          .why-fleet-copy { padding: 36px 28px 8px; }
+          .why-fleet-visual { min-height: 180px; }
+          .why-fleet-visual img { width: min(70%, 320px); }
         }
         @media (max-width: 1024px) {
           #why-lasha .lasha-card {

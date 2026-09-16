@@ -21,6 +21,15 @@ interface TrackingStep {
   status: "completed" | "active" | "pending";
 }
 
+function DetailRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", gap: 16, fontSize: 13 }}>
+      <span style={{ color: "#888", flexShrink: 0 }}>{label}</span>
+      <span style={{ color: "#1f2937", fontWeight: 500, textAlign: "right" }}>{value}</span>
+    </div>
+  );
+}
+
 function getTrackingSteps(status: string): TrackingStep[] {
   const statusOrder = [
     "requested",
@@ -59,7 +68,6 @@ export default function TrackDelivery() {
     api.deliveries.state_machine.getDeliveryByTracking,
     searchedTracking ? { trackingNumber: searchedTracking } : "skip"
   );
-
   const handleTrack = () => {
     const upper = trackingInput.toUpperCase().trim();
     if (upper) {
@@ -208,12 +216,16 @@ export default function TrackDelivery() {
 
                       <div className="track-route-addresses">
                         <div className="track-route-address">
-                          <p className="track-route-name">Pickup Location</p>
-                          <p className="track-route-street">Awaiting assignment</p>
+                          <p className="track-route-name">Pickup</p>
+                          <p className="track-route-street">
+                            {trackingResult.details?.pickupAddress ?? "Address on file"}
+                          </p>
                         </div>
                         <div className="track-route-address" style={{ textAlign: "right" }}>
-                          <p className="track-route-name">Dropoff Location</p>
-                          <p className="track-route-street">Awaiting assignment</p>
+                          <p className="track-route-name">Drop-off</p>
+                          <p className="track-route-street">
+                            {trackingResult.details?.dropoffAddress ?? "Address on file"}
+                          </p>
                         </div>
                       </div>
                     </div>
@@ -222,6 +234,61 @@ export default function TrackDelivery() {
 
                 {/* Right column */}
                 <div className="track-right-col">
+                  {/* Shipment details — resolved server-side from the order */}
+                  {trackingResult.details && (
+                    <div className="track-route-card" style={{ padding: "20px 22px" }}>
+                      <h3 className="track-route-title" style={{ marginBottom: 14 }}>
+                        Shipment details
+                      </h3>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                        {trackingResult.details.description && (
+                          <DetailRow label="Order" value={trackingResult.details.description} />
+                        )}
+                        {trackingResult.details.recipientName && (
+                          <DetailRow label="Recipient" value={trackingResult.details.recipientName} />
+                        )}
+                        {trackingResult.details.recipientPhone && (
+                          <DetailRow label="Contact" value={trackingResult.details.recipientPhone} />
+                        )}
+                        <DetailRow
+                          label="Requested"
+                          value={new Date(
+                            trackingResult.details.scheduledTime ?? trackingResult.details.createdAt ?? Date.now(),
+                          ).toLocaleString("en-ZA", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                        />
+                        {(trackingResult.details.expeditionType || trackingResult.details.parcelType) && (
+                          <DetailRow
+                            label="Service"
+                            value={[
+                              trackingResult.details.expeditionType?.replace(/_/g, "-"),
+                              trackingResult.details.parcelType?.replace(/_/g, " "),
+                            ]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          />
+                        )}
+                        <DetailRow
+                          label="Dimensions"
+                          value={
+                            trackingResult.details.width != null && trackingResult.details.height != null
+                              ? `${trackingResult.details.width} × ${trackingResult.details.height} cm${
+                                  trackingResult.details.weight != null ? ` · ${trackingResult.details.weight} kg` : ""
+                                }`
+                              : trackingResult.details.weight != null
+                                ? `${trackingResult.details.weight} kg`
+                                : "Not specified"
+                          }
+                        />
+                        {trackingResult.details.price != null && trackingResult.details.price > 0 && (
+                          <DetailRow
+                            label="Delivery fee"
+                            value={`R${(trackingResult.details.price / 100).toFixed(2)}`}
+                          />
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Last updated */}
                   {trackingResult.completedAt && (
                     <div className="track-last-updated">
