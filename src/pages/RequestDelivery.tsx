@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useAction } from "convex/react";
+import { useNavigate } from "react-router";
 import { api } from "@/convex/_generated/api";
 import CustomerShell from "@/components/shells/CustomerShell";
 import { useCreateOrderAndDelivery } from "@/hooks/use-lasha";
@@ -12,7 +13,6 @@ import {
   ChevronDown,
   Weight,
   Loader2,
-  CheckCircle2,
   AlertCircle,
   User,
   Phone,
@@ -21,9 +21,9 @@ import "@/styles/dashboard.css";
 import "@/styles/request-delivery.css";
 
 export default function RequestDelivery() {
+  const navigate = useNavigate();
   const [submitting, setSubmitting] = useState(false);
   const [geocoding, setGeocoding] = useState(false);
-  const [success, setSuccess] = useState<{ trackingNumber: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const createOrderAndDelivery = useCreateOrderAndDelivery();
@@ -47,7 +47,6 @@ export default function RequestDelivery() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    setSuccess(null);
 
     // Basic validation
     if (!orderName.trim()) {
@@ -113,7 +112,9 @@ export default function RequestDelivery() {
         recipientPhone: recipientPhone.trim() || undefined,
       });
 
-      setSuccess({ trackingNumber: result.trackingNumber });
+      // Continue to checkout: review the order and pay (Paystack hosted
+      // checkout). Tracking remains reachable from there via "Pay later".
+      navigate(`/checkout/${result.orderId}`);
 
       // Reset form
       setOrderName("");
@@ -150,30 +151,6 @@ export default function RequestDelivery() {
                 No matter the size—small packages or large pallets—we've got your delivery needs covered. With Lasha, you can get an instant delivery quote for your local and regional shipments. Enter your delivery details below, explore your options, and book with confidence when you're ready. Your logistics, simplified.
               </p>
             </div>
-
-            {/* Success message */}
-            {success && (
-              <div style={{
-                padding: "16px 20px",
-                borderRadius: 10,
-                background: "#f0fdf4",
-                border: "1px solid #bbf7d0",
-                marginBottom: 24,
-                display: "flex",
-                alignItems: "center",
-                gap: 12,
-              }}>
-                <CheckCircle2 size={20} style={{ color: "#16a34a", flexShrink: 0 }} />
-                <div>
-                  <p style={{ fontSize: 14, fontWeight: 600, color: "#166534" }}>
-                    Delivery created successfully!
-                  </p>
-                  <p style={{ fontSize: 13, color: "#15803d", marginTop: 2 }}>
-                    Tracking number: <strong>{success.trackingNumber}</strong>
-                  </p>
-                </div>
-              </div>
-            )}
 
             {/* Error message */}
             {error && (

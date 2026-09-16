@@ -3,60 +3,46 @@ import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import CustomerShell from "@/components/shells/CustomerShell";
 import {
+  TrackingHeader,
+  RouteMap,
+  statusCopy,
+  buildSteps,
+  milestonesFromEvents,
+  formatEventTime,
+} from "@/components/tracking/TrackingProgress";
+import {
   Search,
   Copy,
   Check,
   MapPin,
-  CheckCircle2,
-  Circle,
+  Navigation,
   Loader2,
   Package,
+  User,
+  Phone,
+  Calendar,
+  Clock,
+  Ruler,
+  FileText,
 } from "lucide-react";
 import "@/styles/dashboard.css";
 import "@/styles/track-delivery.css";
 
-interface TrackingStep {
-  label: string;
-  time: string;
-  status: "completed" | "active" | "pending";
-}
-
-function DetailRow({ label, value }: { label: string; value: string }) {
+function DetailRow({ label, value, icon, mono, muted }: { label: string; value: string; icon?: React.ReactNode; mono?: boolean; muted?: boolean }) {
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", gap: 16, fontSize: 13 }}>
-      <span style={{ color: "#888", flexShrink: 0 }}>{label}</span>
-      <span style={{ color: "#1f2937", fontWeight: 500, textAlign: "right" }}>{value}</span>
+    <div className="track-detail-row">
+      <span className="track-detail-label">
+        {icon}
+        {label}
+      </span>
+      <span className={`track-detail-value ${mono ? "mono" : ""} ${muted ? "muted" : ""}`}>{value}</span>
     </div>
   );
 }
 
-function getTrackingSteps(status: string): TrackingStep[] {
-  const statusOrder = [
-    "requested",
-    "pending_dispatch",
-    "assigned",
-    "driver_accepted",
-    "en_route_to_pickup",
-    "at_pickup",
-    "picked_up",
-    "in_transit",
-    "at_dropoff",
-    "delivered",
-  ];
-
-  const currentIndex = statusOrder.indexOf(status);
-  if (currentIndex === -1) {
-    return [{ label: "Order placed", time: "Unknown", status: "active" }];
-  }
-
-  return [
-    { label: "Order placed", time: currentIndex >= 0 ? "Completed" : "Pending", status: currentIndex >= 0 ? "completed" : "pending" },
-    { label: "Dispatched", time: currentIndex >= 1 ? "Completed" : "Pending", status: currentIndex >= 1 ? "completed" : "pending" },
-    { label: "Driver assigned", time: currentIndex >= 3 ? "Completed" : "Pending", status: currentIndex >= 3 ? "completed" : "pending" },
-    { label: "Picked up", time: currentIndex >= 6 ? "Completed" : "Pending", status: currentIndex >= 6 ? "completed" : "pending" },
-    { label: "In transit", time: currentIndex === 7 ? "Currently here" : currentIndex > 7 ? "Completed" : "Pending", status: currentIndex === 7 ? "active" : currentIndex > 7 ? "completed" : "pending" },
-    { label: "Delivered", time: currentIndex >= 9 ? "Completed" : "Expected", status: currentIndex >= 9 ? "completed" : "pending" },
-  ];
+/** Delivery-fee display in rands (prices are stored in cents). */
+function formatRands(cents: number): string {
+  return `R ${(cents / 100).toFixed(2)}`;
 }
 
 export default function TrackDelivery() {
@@ -83,11 +69,17 @@ export default function TrackDelivery() {
     }
   };
 
-  const steps = trackingResult ? getTrackingSteps(trackingResult.status) : [];
+  const sc = trackingResult ? statusCopy(trackingResult.status) : null;
+  const milestones = trackingResult?.milestones ?? null;
+  const steps = trackingResult && milestones
+    ? buildSteps(trackingResult.status, milestones, trackingResult.details?.scheduledTime ?? trackingResult.estimatedArrival)
+    : [];
+  const expectedTs = trackingResult
+    ? trackingResult.details?.scheduledTime ?? trackingResult.estimatedArrival ?? null
+    : null;
 
   return (
     <CustomerShell activeItem="Track Delivery">
-      {/* Main content */}
       <main className="track-main">
         <div className="track-container">
           {/* Page title */}
@@ -125,74 +117,58 @@ export default function TrackDelivery() {
             </div>
           )}
 
-          {trackingResult && (
+          {trackingResult && milestones && sc && (
             <>
-              {/* Tracking header card */}
-              <div className="track-header-card">
-                <div className="track-header-content">
-                  <div>
-                    <p className="track-header-label">Tracking shipment</p>
-                    <div className="track-header-id-row">
-                      <h2 className="track-header-id">{trackingResult.trackingNumber}</h2>
-                      <button className="track-copy-btn" onClick={handleCopy} title="Copy tracking ID">
-                        {copied ? <Check size={16} /> : <Copy size={16} />}
-                      </button>
-                    </div>
-                  </div>
-                  <div className="track-status-badge">
-                    <span className="track-status-dot" />
-                    {trackingResult.status.replace(/_/g, " ")}
-                  </div>
-                </div>
-
-                {/* Progress stepper */}
-                <div className="track-stepper">
-                  {steps.map((step, i) => (
-                    <div key={step.label} className={`track-step ${step.status}`}>
-                      <div className="track-step-icon">
-                        {step.status === "completed" ? (
-                          <CheckCircle2 size={28} />
-                        ) : step.status === "active" ? (
-                          <div className="track-step-active">
-                            <Circle size={28} />
-                            <div className="track-step-pulse" />
-                          </div>
-                        ) : (
-                          <Circle size={28} />
-                        )}
-                      </div>
-                      <p className="track-step-label">{step.label}</p>
-                      <p className="track-step-time">{step.time}</p>
-                      {i < steps.length - 1 && (
-                        <div
-                          className={`track-step-line ${
-                            step.status === "completed" ? "completed" : ""
-                          }`}
-                        />
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
+              {/* Shared header tile — identical to the activity-centre view */}
+              <TrackingHeader
+                trackingNumber={trackingResult.trackingNumber}
+                status={trackingResult.status}
+                steps={steps}
+                onCopy={handleCopy}
+                copied={copied}
+              />
 
               {/* Content grid */}
               <div className="track-content-grid">
                 {/* Left column */}
                 <div className="track-left-col">
-                  {/* Shipment route card */}
+                  {/* Route card */}
                   <div className="track-route-card">
                     <div className="track-route-header">
                       <div>
-                        <h3 className="track-route-title">Shipment route</h3>
-                        {trackingResult.estimatedArrival && (
+                        <h3 className="track-route-title">
+                          <Navigation size={16} />
+                          Shipment route
+                        </h3>
+                        {expectedTs && (
                           <p className="track-route-estimate">
-                            Estimated arrival: {new Date(trackingResult.estimatedArrival).toLocaleDateString("en-ZA")}
+                            Expected delivery: {formatEventTime(expectedTs)}
                           </p>
                         )}
                       </div>
+                      {sc.tone === "active" && trackingResult.status !== "delivered" && (
+                        <span className="track-freshness recent"><Phone size={12} />{sc.label}</span>
+                      )}
                     </div>
 
-                    {/* Route visualization */}
+                    {(trackingResult.pickupLat != null || trackingResult.dropoffLat != null) && (
+                      <div className="track-map-wrap">
+                        <RouteMap
+                          pickup={
+                            trackingResult.pickupLat != null
+                              ? { lat: trackingResult.pickupLat, lng: trackingResult.pickupLng }
+                              : null
+                          }
+                          dropoff={
+                            trackingResult.dropoffLat != null
+                              ? { lat: trackingResult.dropoffLat, lng: trackingResult.dropoffLng }
+                              : null
+                          }
+                        />
+                      </div>
+                    )}
+
+                    {/* Route strip — server-resolved addresses */}
                     <div className="track-route-visual">
                       <div className="track-route-point">
                         <div className="track-route-pin sender">
@@ -200,32 +176,25 @@ export default function TrackDelivery() {
                         </div>
                         <div>
                           <p className="track-route-point-label">Pickup</p>
+                          <p className="track-route-name">Collection point</p>
+                          <p className="track-route-street">
+                            {trackingResult.details?.pickupAddress ?? "Address on file"}
+                          </p>
                         </div>
                         <div className="track-route-dot-line">
                           <span className="track-route-dot" />
                           <span className="track-route-dash" />
                           <span className="track-route-dot" />
                         </div>
-                        <div>
-                          <p className="track-route-point-label">Dropoff</p>
-                        </div>
-                        <div className="track-route-pin receiver">
-                          <MapPin size={16} />
-                        </div>
-                      </div>
-
-                      <div className="track-route-addresses">
-                        <div className="track-route-address">
-                          <p className="track-route-name">Pickup</p>
-                          <p className="track-route-street">
-                            {trackingResult.details?.pickupAddress ?? "Address on file"}
-                          </p>
-                        </div>
-                        <div className="track-route-address" style={{ textAlign: "right" }}>
-                          <p className="track-route-name">Drop-off</p>
+                        <div style={{ textAlign: "right" }}>
+                          <p className="track-route-point-label">Drop-off</p>
+                          <p className="track-route-name">Destination</p>
                           <p className="track-route-street">
                             {trackingResult.details?.dropoffAddress ?? "Address on file"}
                           </p>
+                        </div>
+                        <div className="track-route-pin receiver">
+                          <MapPin size={16} />
                         </div>
                       </div>
                     </div>
@@ -235,59 +204,75 @@ export default function TrackDelivery() {
                 {/* Right column */}
                 <div className="track-right-col">
                   {/* Shipment details — resolved server-side from the order */}
-                  {trackingResult.details && (
-                    <div className="track-route-card" style={{ padding: "20px 22px" }}>
-                      <h3 className="track-route-title" style={{ marginBottom: 14 }}>
-                        Shipment details
-                      </h3>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                        {trackingResult.details.description && (
-                          <DetailRow label="Order" value={trackingResult.details.description} />
-                        )}
-                        {trackingResult.details.recipientName && (
-                          <DetailRow label="Recipient" value={trackingResult.details.recipientName} />
-                        )}
-                        {trackingResult.details.recipientPhone && (
-                          <DetailRow label="Contact" value={trackingResult.details.recipientPhone} />
-                        )}
+                  <div className="track-route-card" style={{ padding: "22px 24px" }}>
+                    <h3 className="track-route-title" style={{ marginBottom: 10 }}>
+                      <FileText size={16} />
+                      Shipment details
+                    </h3>
+                    <div className="track-detail-list">
+                      {trackingResult.details?.description && (
+                        <DetailRow label="Order" value={trackingResult.details.description} icon={<Package size={13} />} />
+                      )}
+                      {trackingResult.details?.businessName && (
+                        <DetailRow label="Business" value={trackingResult.details.businessName} icon={<User size={13} />} />
+                      )}
+                      {trackingResult.details?.recipientName ? (
                         <DetailRow
-                          label="Requested"
-                          value={new Date(
-                            trackingResult.details.scheduledTime ?? trackingResult.details.createdAt ?? Date.now(),
-                          ).toLocaleString("en-ZA", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
-                        />
-                        {(trackingResult.details.expeditionType || trackingResult.details.parcelType) && (
-                          <DetailRow
-                            label="Service"
-                            value={[
-                              trackingResult.details.expeditionType?.replace(/_/g, "-"),
-                              trackingResult.details.parcelType?.replace(/_/g, " "),
-                            ]
-                              .filter(Boolean)
-                              .join(" · ")}
-                          />
-                        )}
-                        <DetailRow
-                          label="Dimensions"
+                          label="Recipient"
+                          icon={<User size={13} />}
                           value={
-                            trackingResult.details.width != null && trackingResult.details.height != null
-                              ? `${trackingResult.details.width} × ${trackingResult.details.height} cm${
-                                  trackingResult.details.weight != null ? ` · ${trackingResult.details.weight} kg` : ""
-                                }`
-                              : trackingResult.details.weight != null
-                                ? `${trackingResult.details.weight} kg`
-                                : "Not specified"
+                            trackingResult.details.recipientPhone
+                              ? `${trackingResult.details.recipientName} · ${trackingResult.details.recipientPhone}`
+                              : trackingResult.details.recipientName
                           }
                         />
-                        {trackingResult.details.price != null && trackingResult.details.price > 0 && (
-                          <DetailRow
-                            label="Delivery fee"
-                            value={`R${(trackingResult.details.price / 100).toFixed(2)}`}
-                          />
+                      ) : (
+                        <DetailRow label="Recipient" value="Not specified" icon={<User size={13} />} muted />
+                      )}
+                      <DetailRow
+                        label="Requested"
+                        icon={<Calendar size={13} />}
+                        value={formatEventTime(
+                          trackingResult.details?.scheduledTime ?? trackingResult.details?.createdAt,
                         )}
-                      </div>
+                        mono
+                      />
+                      {(trackingResult.details?.expeditionType || trackingResult.details?.parcelType) && (
+                        <DetailRow
+                          label="Service"
+                          icon={<Clock size={13} />}
+                          value={[
+                            trackingResult.details.expeditionType?.replace(/_/g, "-"),
+                            trackingResult.details.parcelType?.replace(/_/g, " "),
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        />
+                      )}
+                      <DetailRow
+                        label="Dimensions"
+                        icon={<Ruler size={13} />}
+                        value={
+                          trackingResult.details?.width != null && trackingResult.details?.height != null
+                            ? `${trackingResult.details.width} × ${trackingResult.details.height} cm${
+                                trackingResult.details?.weight != null ? ` · ${trackingResult.details.weight} kg` : ""
+                              }`
+                            : trackingResult.details?.weight != null
+                              ? `${trackingResult.details.weight} kg`
+                              : "Not specified"
+                        }
+                        mono
+                        muted={trackingResult.details?.width == null && trackingResult.details?.weight == null}
+                      />
+                      {trackingResult.details?.price != null && trackingResult.details.price > 0 && (
+                        <DetailRow
+                          label="Delivery fee"
+                          value={formatRands(trackingResult.details.price)}
+                          mono
+                        />
+                      )}
                     </div>
-                  )}
+                  </div>
 
                   {/* Last updated */}
                   {trackingResult.completedAt && (
@@ -297,9 +282,7 @@ export default function TrackDelivery() {
                       </div>
                       <div>
                         <p className="track-updated-label">Completed</p>
-                        <p className="track-updated-time">
-                          {new Date(trackingResult.completedAt).toLocaleString("en-ZA")}
-                        </p>
+                        <p className="track-updated-time">{formatEventTime(trackingResult.completedAt)}</p>
                       </div>
                     </div>
                   )}

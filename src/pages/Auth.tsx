@@ -1,7 +1,7 @@
 import { useAuthActions } from "@convex-dev/auth/react";
 import { useEffect, useState } from "react";
 import { useSearchParams, Link, useNavigate } from "react-router";
-import { ArrowRight, ArrowLeft, Eye, EyeOff, Home } from "lucide-react";
+import { ArrowRight, ArrowLeft, Eye, EyeOff } from "lucide-react";
 
 type Mode = "login" | "signup" | "forgot" | "reset";
 
@@ -792,45 +792,41 @@ export default function AuthPage({ redirectAfterAuth = "/post-auth" }: AuthProps
           position: "relative",
         }}
       >
-        {/* Abort sign-in → back to the public landing page (same pattern as
-            the onboarding Home button). */}
+        {/* Abort sign-in → back to the public landing page. Quiet text link:
+            the word "Home" with an arrow, no pill/button chrome. */}
         <Link
           to="/"
           aria-label="Back to home"
-          style={{
-            position: "absolute",
-            top: 28,
-            left: 32,
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 7,
-            padding: "9px 16px",
-            borderRadius: "var(--radius-pill)",
-            background: "var(--lasha-white)",
-            border: "1px solid var(--lasha-border-light)",
-            color: "var(--lasha-navy)",
-            fontFamily: "Inter, sans-serif",
-            fontSize: 13,
-            fontWeight: 600,
-            textDecoration: "none",
-            transition: "border-color 0.2s, color 0.2s",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.borderColor = "var(--lasha-cyan)";
-            e.currentTarget.style.color = "var(--lasha-cyan)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.borderColor = "var(--lasha-border-light)";
-            e.currentTarget.style.color = "var(--lasha-navy)";
-          }}
+          className="auth-home-link"
         >
-          <Home size={15} />
           Home
+          <ArrowRight size={15} strokeWidth={2} />
         </Link>
         <div style={{ width: "100%", maxWidth: 400 }}>{form}</div>
       </div>
 
       <style>{`
+        .auth-home-link {
+          position: absolute;
+          top: 30px;
+          left: 34px;
+          display: inline-flex;
+          align-items: center;
+          gap: 7px;
+          background: none;
+          border: none;
+          color: var(--lasha-navy);
+          font-family: Inter, sans-serif;
+          font-size: 13.5px;
+          font-weight: 500;
+          letter-spacing: 0.01em;
+          text-decoration: none;
+          transition: color 0.2s ease, gap 0.2s ease;
+        }
+        .auth-home-link:hover {
+          color: var(--lasha-cyan);
+          gap: 10px;
+        }
         @media (max-width: 768px) {
           .auth-left {
             display: none !important;

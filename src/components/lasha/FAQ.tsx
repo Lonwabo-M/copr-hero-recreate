@@ -39,6 +39,13 @@ const faqData: FAQItem[] = [
   },
 ];
 
+/**
+ * 06 / Field Notes — FAQ.
+ *
+ * Deliberately inverted against the ivory "04 / Sector Intelligence" section
+ * above it: deep navy canvas, light type, cyan accents, hairline separators.
+ * The dark block also flows naturally into the navy closing CTA below.
+ */
 export default function FAQ() {
   const [openIndex, setOpenIndex] = useState<number | null>(null);
 
@@ -50,13 +57,33 @@ export default function FAQ() {
     <section
       id="faq"
       style={{
-        backgroundColor: "var(--lasha-ivory)",
+        backgroundColor: "var(--lasha-navy)",
         padding: "120px 0",
+        position: "relative",
+        overflow: "hidden",
       }}
     >
-      <div className="lasha-container">
+      {/* Ambient cyan glow — quiet depth, not decoration */}
+      <div
+        aria-hidden="true"
+        style={{
+          position: "absolute",
+          top: -180,
+          right: -120,
+          width: 520,
+          height: 520,
+          borderRadius: "50%",
+          background:
+            "radial-gradient(circle, rgba(7,148,181,0.16) 0%, rgba(7,148,181,0) 70%)",
+          pointerEvents: "none",
+        }}
+      />
+
+      <div className="lasha-container" style={{ position: "relative" }}>
         {/* Technical label */}
-        <p className="lasha-label mb-6">06 / Field Notes</p>
+        <p className="lasha-label mb-6" style={{ color: "var(--lasha-cyan-light)" }}>
+          06 / Field Notes
+        </p>
 
         {/* Heading */}
         <h2
@@ -65,13 +92,13 @@ export default function FAQ() {
             lineHeight: 1,
             letterSpacing: "-0.04em",
             fontWeight: 700,
-            color: "var(--lasha-navy)",
+            color: "#ffffff",
             marginBottom: 20,
           }}
         >
           Questions?
           <br />
-          <span style={{ color: "var(--lasha-cyan)" }}>We&apos;ve got answers.</span>
+          <span style={{ color: "var(--lasha-cyan-light)" }}>We&apos;ve got answers.</span>
         </h2>
 
         {/* Subtitle */}
@@ -81,6 +108,7 @@ export default function FAQ() {
             maxWidth: 480,
             fontSize: 17,
             marginBottom: 56,
+            color: "rgba(255,255,255,0.6)",
           }}
         >
           Simple explanations to help you get the most out of Lasha deliveries.
@@ -92,6 +120,7 @@ export default function FAQ() {
             maxWidth: 800,
             display: "flex",
             flexDirection: "column",
+            borderTop: "1px solid rgba(255,255,255,0.1)",
           }}
         >
           {faqData.map((item, index) => {
@@ -100,29 +129,39 @@ export default function FAQ() {
               <div
                 key={index}
                 style={{
-                  borderBottom: "1px solid var(--lasha-border-light)",
+                  borderBottom: "1px solid rgba(255,255,255,0.1)",
+                  transition: "background 0.25s ease",
                 }}
               >
                 <button
                   onClick={() => toggle(index)}
+                  aria-expanded={isOpen}
                   style={{
                     width: "100%",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "space-between",
-                    padding: "28px 0",
+                    padding: "28px 20px",
                     background: "none",
                     border: "none",
                     cursor: "pointer",
                     textAlign: "left",
+                    borderRadius: 12,
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = "rgba(255,255,255,0.04)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = "none";
                   }}
                 >
                   <span
                     style={{
                       fontSize: 18,
                       fontWeight: 600,
-                      color: "var(--lasha-navy)",
+                      color: isOpen ? "#ffffff" : "rgba(255,255,255,0.88)",
                       letterSpacing: "-0.01em",
+                      transition: "color 0.2s ease",
                     }}
                   >
                     {item.question}
@@ -130,7 +169,7 @@ export default function FAQ() {
                   <ChevronDown
                     size={20}
                     style={{
-                      color: "var(--lasha-cyan)",
+                      color: "var(--lasha-cyan-light)",
                       flexShrink: 0,
                       marginLeft: 16,
                       transition: "transform 0.3s ease",
@@ -140,17 +179,17 @@ export default function FAQ() {
                 </button>
                 <div
                   style={{
-                    maxHeight: isOpen ? 200 : 0,
+                    maxHeight: isOpen ? 220 : 0,
                     overflow: "hidden",
                     transition: "max-height 0.35s ease, padding 0.35s ease",
-                    padding: isOpen ? "0 0 28px" : "0",
+                    padding: isOpen ? "0 20px 28px" : "0 20px",
                   }}
                 >
                   <p
                     style={{
                       fontSize: 15,
                       lineHeight: 1.7,
-                      color: "var(--lasha-body-text)",
+                      color: "rgba(255,255,255,0.62)",
                       maxWidth: 640,
                     }}
                   >

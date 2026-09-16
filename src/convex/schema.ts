@@ -361,6 +361,16 @@ export const trackingEventTypeValidator = v.union(
   v.literal("location_update"),
 );
 
+// Named access to tracking event types for UI code (avoids hardcoded status
+// literals in pages, which the contract tests forbid).
+export const TRACKING_EVENT_TYPES = {
+  ORDER_PLACED: "order_placed",
+  PICKED_UP: "picked_up",
+  IN_TRANSIT: "in_transit",
+  DELIVERED: "delivered",
+  LOCATION_UPDATE: "location_update",
+} as const;
+
 // ─── Schema ───────────────────────────────────────────────────────────────────
 
 const schema = defineSchema(

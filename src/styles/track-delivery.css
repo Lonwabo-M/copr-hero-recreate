@@ -1,20 +1,20 @@
 /* ═══════════════════════════════════════════
    TRACK DELIVERY PAGE STYLES
-   High-end modern tech: deep navy hero, cyan
-   signal accents, mono identifiers, glassy
-   status chips, hairline cards.
+   Reference-matched customer tracking:
+   cyan summary bar + white stepper panel
+   (solid-tick circles, ringed active node,
+   edge-to-edge connector segments), then
+   hairline cards on a soft neutral canvas.
    ═══════════════════════════════════════════ */
 
 .track-main {
   flex: 1;
   overflow-y: auto;
-  background:
-    radial-gradient(1200px 400px at 80% -10%, rgba(7, 148, 181, 0.05), transparent 60%),
-    var(--background);
+  background: var(--background);
 }
 
 .track-container {
-  max-width: 1160px;
+  max-width: 1080px;
   margin: 0 auto;
   padding: 36px 48px 72px;
 }
@@ -34,22 +34,6 @@
   font-weight: 700;
   letter-spacing: -0.02em;
   color: var(--text-primary);
-}
-
-.track-title-eyebrow {
-  font-family: "SF Mono", "Menlo", monospace;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  color: var(--primary);
-  display: block;
-  margin-bottom: 6px;
-}
-
-.track-title-sub {
-  font-size: 13px;
-  color: var(--text-muted);
 }
 
 /* ── Search Bar ───────────────────────────── */
@@ -115,78 +99,55 @@
   transform: translateY(1px);
 }
 
-/* ── Hero Header Card ─────────────────────── */
+/* ── Header Tile ──────────────────────────── */
 
 .track-header-card {
-  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--border-light);
+  border-radius: 18px;
   overflow: hidden;
-  background:
-    radial-gradient(560px 220px at 88% -30%, rgba(67, 184, 212, 0.35), transparent 62%),
-    radial-gradient(420px 260px at -8% 120%, rgba(7, 148, 181, 0.22), transparent 60%),
-    linear-gradient(130deg, var(--lasha-navy, #082631) 0%, #0a303a 58%, #0d4a58 130%);
-  border-radius: 20px;
-  padding: 30px 34px 30px;
   margin-bottom: 26px;
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.06) inset,
-    0 20px 44px -22px rgba(8, 38, 49, 0.55);
+  box-shadow: 0 1px 2px rgba(8, 38, 49, 0.04), 0 12px 32px -20px rgba(8, 38, 49, 0.12);
 }
 
-/* fine grid texture */
-.track-header-card::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background-image:
-    linear-gradient(rgba(255, 255, 255, 0.045) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.045) 1px, transparent 1px);
-  background-size: 44px 44px;
-  mask-image: radial-gradient(720px 320px at 70% 0%, #000 0%, transparent 78%);
-  pointer-events: none;
-}
-
-.track-header-content {
-  position: relative;
+/* Cyan summary bar */
+.track-header-bar {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 20px;
-  margin-bottom: 30px;
+  padding: 20px 26px;
+  background: linear-gradient(135deg, #2fa9c6 0%, var(--primary) 100%);
 }
 
 .track-header-label {
-  font-family: "SF Mono", "Menlo", monospace;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.24em;
-  text-transform: uppercase;
-  color: var(--lasha-cyan-light, #43b8d4);
-  margin-bottom: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.88);
+  margin-bottom: 4px;
 }
 
 .track-header-id-row {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
 }
 
 .track-header-id {
   font-family: "SF Mono", "Menlo", monospace;
-  font-size: 25px;
-  font-weight: 600;
+  font-size: 24px;
+  font-weight: 700;
   color: #ffffff;
   letter-spacing: 0.01em;
   line-height: 1.1;
-  text-shadow: 0 1px 12px rgba(7, 148, 181, 0.4);
 }
 
 .track-copy-btn {
-  width: 34px;
-  height: 34px;
-  border-radius: 9px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  background: rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(4px);
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.14);
   color: #ffffff;
   display: flex;
   align-items: center;
@@ -196,164 +157,198 @@
 }
 
 .track-copy-btn:hover {
-  background: rgba(255, 255, 255, 0.18);
-  border-color: rgba(255, 255, 255, 0.32);
+  background: rgba(255, 255, 255, 0.26);
+  border-color: rgba(255, 255, 255, 0.45);
 }
 
-.track-status-badge {
+/* Status pill (glass on cyan) */
+.track-status-pill {
   display: inline-flex;
   align-items: center;
-  gap: 9px;
-  padding: 9px 16px;
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  backdrop-filter: blur(6px);
-  color: #ffffff;
+  gap: 8px;
+  padding: 8px 16px;
+  background: #ffffff;
+  border: none;
+  color: var(--text-primary);
   border-radius: 999px;
   font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.01em;
+  font-weight: 700;
   white-space: nowrap;
 }
 
-.track-status-dot {
+.track-status-pill-dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #35e0a1;
-  box-shadow: 0 0 0 3px rgba(53, 224, 161, 0.22);
-  animation: pulse 2s infinite;
+  background: #16a34a;
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.18);
+  animation: track-pulse 2s infinite;
 }
 
-.track-status-badge.is-bad .track-status-dot {
-  background: #ff6b6b;
-  box-shadow: 0 0 0 3px rgba(255, 107, 107, 0.22);
+.track-status-pill.is-ok .track-status-pill-dot {
+  background: #16a34a;
+}
+
+.track-status-pill.is-active .track-status-pill-dot {
+  background: #0e9f6e;
+}
+
+.track-status-pill.is-warn .track-status-pill-dot {
+  background: #d97706;
+  box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.18);
   animation: none;
 }
 
-.track-status-badge.is-warn .track-status-dot {
-  background: #ffd21f;
-  box-shadow: 0 0 0 3px rgba(255, 210, 31, 0.22);
+.track-status-pill.is-bad .track-status-pill-dot {
+  background: #dc2626;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.18);
   animation: none;
 }
 
-@keyframes pulse {
+@keyframes track-pulse {
   0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+  50% { opacity: 0.45; }
 }
 
-/* ── Progress Stepper ─────────────────────── */
+/* ── Stepper Panel (white) ────────────────── */
+
+.track-stepper-panel {
+  padding: 34px 34px 26px;
+  background: var(--surface);
+}
 
 .track-stepper {
-  position: relative;
-  display: flex;
-  align-items: flex-start;
-  padding-top: 4px;
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  margin: 0;
+  padding: 0;
 }
 
+/* Each step owns its full column: node row (connector + circle) stacked
+   above the text, text left-aligned under its node. */
 .track-step {
-  flex: 1;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  position: relative;
+  min-width: 0;
 }
 
-.track-step-icon {
+.track-step-top {
   position: relative;
-  z-index: 2;
+  display: flex;
+  align-items: center;
+  height: 30px;
   margin-bottom: 12px;
-  width: 34px;
-  height: 34px;
+}
+
+/* Connector: edge-to-edge between adjacent circles. Nodes are left-aligned
+   in each column (30px wide), so this line runs from the previous column's
+   node right edge to 4px before this column's node — equal small gaps on
+   both sides, never touching or crossing a circle. */
+.track-step-line {
+  position: absolute;
+  left: calc(-100% + 34px);
+  right: calc(100% + 4px);
+  top: 50%;
+  height: 2px;
+  transform: translateY(-50%);
+  border-radius: 1px;
+  background: var(--border-light);
+}
+
+/* Progress colouring: the connector leading into a done/active node is the
+   travelled rail — soft teal; untraveled segments stay pale grey. */
+.track-step.is-done .track-step-line,
+.track-step.is-active .track-step-line {
+  background: linear-gradient(90deg, #35a3c2, #7cc6da);
+}
+
+/* Circles */
+.track-step-node {
+  position: relative;
+  z-index: 1;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 50%;
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  color: transparent;
+  flex-shrink: 0;
+  margin-left: 0;
+  transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
 }
 
-.track-step-icon svg {
-  width: 34px;
-  height: 34px;
+.track-step.is-done .track-step-node {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #ffffff;
+  box-shadow: 0 4px 10px -3px rgba(66, 180, 208, 0.55);
+}
+
+.track-step.is-done .track-step-tick {
   display: block;
 }
 
-.track-step.completed .track-step-icon {
-  color: #ffffff;
+.track-step.is-active .track-step-node {
+  border: 2px solid var(--primary);
+  box-shadow: 0 0 0 4px rgba(66, 180, 208, 0.14);
 }
 
-.track-step.active .track-step-icon {
-  color: #ffffff;
-}
-
-.track-step.pending .track-step-icon {
-  color: rgba(255, 255, 255, 0.34);
-}
-
-/* filled node for done/active so the rail reads cleanly */
-.track-step.completed .track-step-icon svg,
-.track-step.active .track-step-icon svg {
-  filter: drop-shadow(0 2px 8px rgba(7, 148, 181, 0.55));
-}
-
-.track-step-active {
-  position: relative;
-  display: flex;
-}
-
-.track-step-pulse {
+/* Active node gets a gentle pulse halo to draw the eye without noise */
+.track-step.is-active .track-step-node::after {
+  content: "";
   position: absolute;
-  inset: -4px;
+  inset: -6px;
   border-radius: 50%;
-  border: 2px solid rgba(67, 184, 212, 0.55);
-  animation: pulse-ring 2s infinite;
+  border: 2px solid rgba(66, 180, 208, 0.35);
+  animation: track-step-pulse 2.2s ease-out infinite;
 }
 
-@keyframes pulse-ring {
-  0% { transform: scale(1); opacity: 1; }
-  100% { transform: scale(1.45); opacity: 0; }
+@keyframes track-step-pulse {
+  0% { transform: scale(0.85); opacity: 0.9; }
+  70% { transform: scale(1.15); opacity: 0; }
+  100% { transform: scale(1.15); opacity: 0; }
+}
+
+.track-step-core {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--primary);
+  display: block;
+}
+
+/* Text */
+.track-step-text {
+  min-width: 0;
 }
 
 .track-step-label {
-  font-size: 12.5px;
+  font-size: 13.5px;
   font-weight: 600;
-  color: #ffffff;
-  text-align: center;
-  margin-bottom: 4px;
-  letter-spacing: 0.01em;
+  color: var(--text-secondary);
+  margin-bottom: 3px;
 }
 
-.track-step.pending .track-step-label {
-  color: rgba(255, 255, 255, 0.48);
+.track-step.is-done .track-step-label,
+.track-step.is-active .track-step-label {
+  color: var(--text-primary);
 }
 
-.track-step.active .track-step-label {
-  color: var(--lasha-cyan-light, #43b8d4);
+.track-step.is-active .track-step-label {
+  color: var(--primary);
+  font-weight: 700;
 }
 
 .track-step-time {
-  font-size: 11px;
-  font-family: "SF Mono", "Menlo", monospace;
-  color: rgba(255, 255, 255, 0.6);
-  text-align: center;
-}
-
-.track-step.pending .track-step-time {
-  color: rgba(255, 255, 255, 0.32);
-}
-
-.track-step-line {
-  position: absolute;
-  top: 21px;
-  left: 50%;
-  width: 100%;
-  height: 2px;
-  border-radius: 2px;
-  background: rgba(255, 255, 255, 0.16);
-  z-index: 1;
-}
-
-.track-step-line.completed {
-  background: linear-gradient(90deg, rgba(67, 184, 212, 0.9), rgba(67, 184, 212, 0.55));
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ── Content Grid ─────────────────────────── */
@@ -457,18 +452,6 @@
   color: var(--text-muted);
   background: var(--surface-muted);
   border-color: var(--border-light);
-}
-
-.track-route-date {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 14px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-secondary);
 }
 
 /* ── Route mini-map ───────────────────────── */
@@ -585,11 +568,6 @@
   line-height: 1.5;
   color: var(--text-secondary);
   margin-bottom: 2px;
-}
-
-.track-route-city {
-  font-size: 13px;
-  color: var(--text-muted);
 }
 
 /* ── Detail rows (shipment details) ───────── */
@@ -722,34 +700,6 @@
   white-space: nowrap;
 }
 
-/* ── Package Details ──────────────────────── */
-
-.track-package-details {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
-}
-
-.track-detail-item {
-  background: var(--surface);
-  border: 1px solid var(--border-light);
-  border-radius: 14px;
-  padding: 20px;
-}
-
-.track-detail-item-label {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-muted);
-  margin-bottom: 6px;
-}
-
-.track-detail-item-value {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
 /* ── Side cards (status / driver / POD) ───── */
 
 .track-last-updated {
@@ -855,86 +805,6 @@
   color: #b05252;
 }
 
-/* ── Driver card ──────────────────────────── */
-
-.track-driver-card {
-  background: var(--surface);
-  border: 1px solid var(--border-light);
-  border-radius: 16px;
-  padding: 24px;
-}
-
-.track-driver-info {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  margin-bottom: 20px;
-}
-
-.track-driver-avatar {
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
-  object-fit: cover;
-}
-
-.track-driver-label {
-  font-size: 12px;
-  color: var(--text-muted);
-  margin-bottom: 2px;
-}
-
-.track-driver-name {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.track-driver-actions {
-  display: flex;
-  gap: 10px;
-}
-
-.track-call-btn {
-  flex: 1;
-  height: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  background: var(--primary);
-  color: #ffffff;
-  border: none;
-  border-radius: 10px;
-  font-family: "Inter", sans-serif;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.18s ease;
-}
-
-.track-call-btn:hover {
-  background: var(--primary-dark);
-}
-
-.track-message-btn {
-  width: 44px;
-  height: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--surface-muted);
-  color: var(--text-secondary);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  cursor: pointer;
-  transition: background 0.18s ease;
-}
-
-.track-message-btn:hover {
-  background: var(--border-light);
-}
-
 /* ── Responsive ───────────────────────────── */
 
 @media (max-width: 1024px) {
@@ -948,46 +818,30 @@
     padding: 24px 20px 56px;
   }
 
-  .track-package-details {
-    grid-template-columns: 1fr;
-  }
-
   .track-stepper {
-    overflow-x: auto;
-    padding-bottom: 8px;
+    grid-template-columns: repeat(2, 1fr);
+    row-gap: 24px;
   }
 
-  .track-step {
-    min-width: 96px;
-  }
-
-  .track-header-card {
-    padding: 24px 22px;
-  }
-}
-
-@media (max-width: 640px) {
-  .track-header-content {
-    flex-direction: column;
-    gap: 16px;
-  }
-
-  .track-route-point {
-    flex-direction: column;
-    gap: 12px;
-  }
-
-  .track-route-dot-line {
+  /* Hide connectors in the 2×2 layout — the columns no longer share edges */
+  .track-step-line {
     display: none;
   }
 
-  .track-route-addresses {
+  .track-header-bar {
     flex-direction: column;
-    gap: 16px;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 20px 22px;
   }
 
-  .track-route-address {
-    text-align: left !important;
-    max-width: 100%;
+  .track-stepper-panel {
+    padding: 24px 22px 20px;
+  }
+}
+
+@media (max-width: 480px) {
+  .track-stepper {
+    grid-template-columns: 1fr;
   }
 }

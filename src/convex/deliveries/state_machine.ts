@@ -49,9 +49,11 @@ async function resolveDeliveryDetails(
   const order = await ctx.db.get(delivery.orderId);
   const pickup = order ? await ctx.db.get(order.pickupAddressId) : null;
   const dropoff = order ? await ctx.db.get(order.dropoffAddressId) : null;
+  const business = order?.businessId ? await ctx.db.get(order.businessId) : null;
 
   return {
     description: order?.description ?? null,
+    businessName: business?.name ?? null,
     packageSize: order?.packageSize ?? null,
     parcelType: order?.parcelType ?? null,
     expeditionType: order?.expeditionType ?? null,
@@ -72,6 +74,7 @@ async function resolveDeliveryDetails(
 
 interface DeliveryDisplayDetails {
   description: string | null;
+  businessName: string | null;
   packageSize: string | null;
   parcelType: string | null;
   expeditionType: string | null;
@@ -1698,6 +1701,31 @@ export const getDeliveryByTracking = query({
 
     const details = await resolveDeliveryDetails(ctx, delivery);
 
+    // Milestone timestamps for the tracking stepper, derived from the real
+    // tracking event log (order_placed / picked_up / in_transit / delivered).
+    // A milestone with no event stays pending — nothing is fabricated.
+    const events = await ctx.db
+      .query("tracking_events")
+      .withIndex("by_delivery_time", (q) => q.eq("deliveryId", delivery._id))
+      .collect();
+
+    const latestTime = (type: string): number | null => {
+      const matches = events.filter((e) => e.type === type);
+      return matches.length > 0 ? matches[matches.length - 1].timestamp : null;
+    };
+
+    // Several transitions reuse the "picked_up" event type (dispatch, accept,
+    // en-route, at-pickup); the actual pickup milestone is the one whose
+    // metadata records toStatus = PICKED_UP.
+    const isPickupMilestone = (e: (typeof events)[number]): boolean => {
+      try {
+        return JSON.parse(e.metadata ?? "{}").toStatus === DELIVERY_STATUS.PICKED_UP;
+      } catch {
+        return false;
+      }
+    };
+    const pickupEvents = events.filter((e) => e.type === "picked_up" && isPickupMilestone(e));
+
     // Return limited information for public tracking
     return {
       trackingNumber: delivery.trackingNumber,
@@ -1705,6 +1733,17 @@ export const getDeliveryByTracking = query({
       estimatedArrival: delivery.estimatedArrival,
       startedAt: delivery.startedAt,
       completedAt: delivery.completedAt,
+      pickupLat: delivery.pickupLat,
+      pickupLng: delivery.pickupLng,
+      dropoffLat: delivery.dropoffLat,
+      dropoffLng: delivery.dropoffLng,
+      courierId: delivery.courierId ?? null,
+      milestones: {
+        placed: latestTime("order_placed"),
+        pickedUp: pickupEvents.length > 0 ? pickupEvents[pickupEvents.length - 1].timestamp : null,
+        inTransit: latestTime("in_transit"),
+        delivered: latestTime("delivered"),
+      },
       details,
     };
   },

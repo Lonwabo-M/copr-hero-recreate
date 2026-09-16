@@ -187,12 +187,14 @@ export const getDeliveryTracking = query({
       .order("desc")
       .take(MAX_ROUTE_HISTORY);
 
-    // Reverse to get chronological order
+    // Reverse to get chronological order (metadata included so the UI can
+    // distinguish the real pickup milestone from other picked_up-typed events).
     const routeHistory = trackingEvents.reverse().map((event) => ({
       lat: event.lat,
       lng: event.lng,
       timestamp: event.timestamp,
       type: event.type,
+      metadata: event.metadata ?? null,
     }));
 
     // Get order for additional context
