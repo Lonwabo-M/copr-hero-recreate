@@ -38,6 +38,13 @@ export interface AuthUser {
   role: Role;
   businessId?: Id<"businesses">;
   isAnonymous?: boolean;
+  /**
+   * Marked, reversible elevation claimed through users.testAccess. Used ONLY
+   * to let a tester traverse role-scoped workspaces (e.g. the Driver App)
+   * end-to-end — never as a substitute for a real staff role in production
+   * data decisions.
+   */
+  testElevated?: boolean;
 }
 
 export interface OwnershipCheck {
@@ -83,6 +90,7 @@ export async function getCurrentAuthUser(ctx: Ctx): Promise<AuthUser | null> {
     role: (userDoc.role as Role) ?? ROLES.CUSTOMER,
     businessId: userDoc.businessId,
     isAnonymous: userDoc.isAnonymous,
+    testElevated: userDoc.testElevated === true,
   };
 }
 
@@ -115,6 +123,7 @@ export async function requireRole(
     role: userRole,
     businessId: userDoc.businessId,
     isAnonymous: userDoc.isAnonymous,
+    testElevated: userDoc.testElevated === true,
   };
 }
 

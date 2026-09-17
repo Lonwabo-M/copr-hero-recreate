@@ -236,7 +236,11 @@ export const getMyCurrentDelivery = query({
     const user = await getCurrentAuthUser(ctx);
     if (!user) throw new Error("Authentication required");
 
-    if (user.role !== ROLES.DRIVER) {
+    // Driver-only, plus a marked reversible test elevation (users.testAccess)
+    // so the Driver App can be exercised end-to-end from a test account. The
+    // delivery is still resolved from the session user — a tester only ever
+    // sees their own assignments.
+    if (user.role !== ROLES.DRIVER && user.testElevated !== true) {
       throw new Error("Only drivers can access this query");
     }
 
