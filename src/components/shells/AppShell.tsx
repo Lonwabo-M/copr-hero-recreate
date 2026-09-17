@@ -62,13 +62,12 @@ export default function AppShell({
   const [pendingArea, setPendingArea] = useState<AppArea | null>(null);
   const [releasing, setReleasing] = useState(false);
 
-  const isRealStaff =
-    user?.role === ROLES.OPERATIONS ||
-    user?.role === ROLES.FLEET_MANAGER ||
-    user?.role === ROLES.COMPANY_ADMIN ||
-    user?.role === ROLES.SUPER_ADMIN ||
-    user?.role === ROLES.DRIVER;
   const isTestElevated = testAccessState?.testElevated === true;
+  // The backend testElevated marker is authoritative: real staff are never
+  // marked, and test-elevated accounts always carry a staff role while inside
+  // an elevated area — so the role must NOT gate the release affordance
+  // (otherwise the button vanishes the moment elevation lands and the tester
+  // is trapped in the area).
 
   const ROLE_FOR_AREA: Record<AppArea, string> = {
     customer: ROLES.CUSTOMER,
@@ -126,13 +125,17 @@ export default function AppShell({
   const handleNav = (item: NavItem) => {
     // Cross-area sidebar entries are the access points: navigate directly when
     // the role already admits the area, claim reversible test elevation
-    // otherwise, and always land once the reactive role arrives.
+    // otherwise, and always land once the reactive role arrives. Every
+    // cross-area route MUST be mapped here — an unmapped route navigates raw
+    // and RoleGate silently bounces the user back to their home area (the
+    // "Admin Portal does nothing" bug).
     const crossArea: Partial<Record<string, AppArea>> = {
       "/operations": "operations",
       "/driver": "driver",
+      "/admin/driver-approvals": "admin",
       "/dashboard": "customer",
     };
-    const targetArea = crossArea[item.route];
+    const targetArea = crossArea[item.route] ?? (item.route.startsWith("/admin") ? "admin" : undefined);
     if (targetArea) {
       void handleOpenArea(targetArea);
       return;
@@ -179,8 +182,8 @@ export default function AppShell({
 
         <div className="dash-topnav-right">
           {/* Test-elevation release — only while operating under a claimed
-              (reversible) elevation, never for real staff. */}
-          {isTestElevated && !isRealStaff && (
+              (reversible) elevation. */}
+          {isTestElevated && (
             <button
               className="dash-topnav-profile"
               onClick={handleReleaseTestAccess}

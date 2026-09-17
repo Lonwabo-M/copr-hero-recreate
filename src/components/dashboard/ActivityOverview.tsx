@@ -3,10 +3,6 @@ import {
   Truck,
   Clock,
   CheckCircle2,
-  User,
-  Mail,
-  Phone,
-  Building2,
   ChevronRight,
 } from "lucide-react";
 import type { Order } from "@/types/dashboard";
@@ -14,16 +10,11 @@ import type { Order } from "@/types/dashboard";
 // ─── Activity Overview ───────────────────────────────────────────────────────
 // The Activity Centre's default (no-order-selected) view. Mirrors the
 // Operations Centre overview grammar — stat cards on top, summary list below —
-// but centred on the customer: their shipment stats, their account details,
-// and their recent orders. Selecting an order swaps this panel for the
-// four-tab details view.
+// scoped to the customer's shipments. Selecting an order swaps this panel for
+// the four-tab details view.
 
 interface ActivityOverviewProps {
   orders: Order[];
-  customerName: string;
-  customerCompany: string;
-  customerEmail: string;
-  customerPhone: string;
   onSelectOrder: (id: string) => void;
   onRequestDelivery: () => void;
 }
@@ -35,10 +26,6 @@ function overviewStatus(order: Order): { label: string; tone: "active" | "pendin
 
 export default function ActivityOverview({
   orders,
-  customerName,
-  customerCompany,
-  customerEmail,
-  customerPhone,
   onSelectOrder,
   onRequestDelivery,
 }: ActivityOverviewProps) {
@@ -73,33 +60,6 @@ export default function ActivityOverview({
             <div className="dash-stat-label">{stat.label}</div>
           </div>
         ))}
-      </div>
-
-      {/* Customer account summary */}
-      <div className="dash-overview-section">
-        <h2 className="dash-overview-title">Account</h2>
-        <div className="dash-customer-card">
-          <div className="dash-customer-avatar">
-            <User size={22} />
-          </div>
-          <div className="dash-customer-main">
-            <div className="dash-customer-name">{customerName}</div>
-            <div className="dash-customer-org">
-              <Building2 size={13} />
-              {customerCompany}
-            </div>
-          </div>
-          <div className="dash-customer-contacts">
-            <span className="dash-customer-contact">
-              <Mail size={13} />
-              {customerEmail}
-            </span>
-            <span className="dash-customer-contact">
-              <Phone size={13} />
-              {customerPhone}
-            </span>
-          </div>
-        </div>
       </div>
 
       {/* Recent orders */}

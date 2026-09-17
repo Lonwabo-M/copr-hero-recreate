@@ -80,6 +80,12 @@ export const getWaybillForOps = query({
             email: sender.email ?? null,
           }
         : null,
+      // The account's business (orders always carry the creator's businessId):
+      // B2B consignments show the company as the consignor, B2C shows the
+      // individual sender.
+      businessName: order?.businessId
+        ? (await ctx.db.get(order.businessId))?.name ?? null
+        : null,
       recipient: {
         name: order?.recipientName ?? null,
         phone: order?.recipientPhone ?? null,

@@ -2170,4 +2170,56 @@ export const getOperationalDeliveryHistory = query({
   },
 });
 
+// ─── Orders Tab (Operations Centre): aggregate all orders ────────────────────
+//
+// Every delivery regardless of state — requested through delivered — enriched
+// with the shared display details (route addresses, business name, recipient,
+// parcel, order reference). Powers the Operations Centre "Orders" tab search:
+// tracking number, order reference, business, recipient, addresses, driver.
+// Server-side search on the fields operations searches by; the client narrows
+// further within the fetched page.
+
+export const getAllDeliveriesForOps = query({
+  args: {
+    /** Server-side substring match on tracking number / order reference (case-insensitive). */
+    search: v.optional(v.string()),
+    /** Page size (default 200, max 500). */
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const user = await getCurrentAuthUser(ctx);
+    if (!user) throw new Error("Authentication required");
+
+    if (user.role !== ROLES.OPERATIONS && user.role !== ROLES.SUPER_ADMIN) {
+      throw new Error("Access denied: operations only");
+    }
+
+    const limit = Math.min(Math.max(args.limit ?? 200, 1), 500);
+    const needle = args.search?.trim().toLowerCase() ?? "";
+
+    // Aggregate across the whole lifecycle, newest first.
+    const all = await ctx.db.query("deliveries").order("desc").take(1000);
+
+    const matches = needle
+      ? all.filter((d) => {
+          const t = d.trackingNumber?.toLowerCase() ?? "";
+          if (t.includes(needle)) return true;
+          // Order reference — operations quote the last-6 display form.
+          if (d.orderId.toLowerCase().includes(needle)) return true;
+          return false;
+        })
+      : all;
+
+    const page = matches.slice(0, limit);
+
+    // Enrich with the shared display details, same resolver as the active list.
+    return await Promise.all(
+      page.map(async (d) => ({
+        ...d,
+        details: await resolveDeliveryDetails(ctx, d),
+      })),
+    );
+  },
+});
+
 

@@ -38,6 +38,8 @@ export interface WaybillPayload {
     lng: number | null;
   };
   sender: { name: string; phone: string | null; email: string | null } | null;
+  /** The account's business name (B2B consignor). Null for B2C individuals. */
+  businessName: string | null;
   recipient: { name: string | null; phone: string | null };
   courier: { name: string; phone: string | null } | null;
   parcel: {
@@ -234,12 +236,13 @@ export function downloadWaybillPdf(p: WaybillPayload): void {
   };
 
   const sender = p.sender;
+  const businessLine = p.businessName ? [p.businessName] : [];
   const leftBottom = drawPartyPanel(
     M,
     "Ship From",
     sender?.name ?? "—",
     sender?.email ?? null,
-    sender?.phone ? [`Tel: ${sender.phone}`] : [],
+    [...businessLine, ...(sender?.phone ? [`Tel: ${sender.phone}`] : [])],
     [`Collection: ${p.pickup.label}`, ...fmtAddress(p.pickup)],
   );
 

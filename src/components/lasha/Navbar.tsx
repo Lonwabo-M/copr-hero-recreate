@@ -42,9 +42,9 @@ export default function Navbar() {
       style={{ backgroundColor: "var(--lasha-navy)", height: 76 }}
     >
       <div className="lasha-container flex items-center justify-between h-full">
-        {/* Logo — the real Lasha mark (from the brand asset) on the landing page */}
+        {/* Logo — the landing-page brand asset, cropped to its visible mark */}
         <a href="/" aria-label="Lasha home" style={{ lineHeight: 0 }}>
-          <LashaLogo height={30} />
+          <LashaLogo height={30} asset="landing" />
         </a>
 
         {/* Desktop links */}
