@@ -8,7 +8,6 @@ import DetailsPanel from "@/components/dashboard/DetailsPanel";
 import ActivityOverview from "@/components/dashboard/ActivityOverview";
 import { Loader2 } from "lucide-react";
 import type { Order } from "@/types/dashboard";
-import { useAuth } from "@/hooks/use-auth";
 import "@/styles/dashboard.css";
 import "@/styles/pages.css";
 
@@ -23,7 +22,7 @@ import "@/styles/pages.css";
 // used by the Track Order action.
 type ActivityOrder = Order & { deliveryId: string };
 
-function transformDeliveryToOrder(delivery: any): ActivityOrder {
+function transformDeliveryToOrder(delivery: any, accountBusinessName?: string): ActivityOrder {
   // Human-readable addresses come from the server-resolved `details` (order +
   // address records). Coordinates are never shown to customers.
   const details = delivery.details ?? {};
@@ -62,7 +61,9 @@ function transformDeliveryToOrder(delivery: any): ActivityOrder {
     },
     customer: {
       name: details.senderName ?? "—",
-      company: details.businessName ?? "Private customer",
+      // The account holder is a BUSINESS (B2B or B2C): prefer the order's own
+      // business record, then the signed-in account's business name.
+      company: details.businessName ?? accountBusinessName ?? "Business account",
       email: details.senderEmail ?? "N/A",
       phone: details.senderPhone ?? "N/A",
     },
@@ -80,12 +81,18 @@ export default function Dashboard() {
   const [detailsOpen, setDetailsOpen] = useState(false);
 
   const navigate = useNavigate();
-  const { user } = useAuth();
+
+  // The signed-in account's business — every customer account belongs to a
+  // business, so deliveries without their own business record still present the
+  // account's business name rather than a placeholder.
+  const business = useQuery(api.users.businessProfile.getMyBusiness);
 
   // Fetch deliveries from Convex (server-resolved details included)
   const deliveries = useQuery(api.deliveries.state_machine.getMyDeliveries, {});
 
-  const orders: ActivityOrder[] = deliveries?.map(transformDeliveryToOrder) ?? [];
+  const orders: ActivityOrder[] = deliveries?.map((d) =>
+    transformDeliveryToOrder(d, business?.name),
+  ) ?? [];
 
   const selectedOrderData = orders.find((o) => o.id === selectedOrder);
   const isDetailOpen = selectedOrder !== "" && selectedOrderData != null;
@@ -153,13 +160,11 @@ export default function Dashboard() {
             />
           </>
         ) : (
-          /* Default view — the overview (stats + account + recent orders) */
+          /* Default view — the overview (stat cards + recent orders). The
+             personal "Account" banner was removed: the business identity lives
+             in the shell header, and this view stays focused on shipments. */
           <ActivityOverview
             orders={orders}
-            customerName={user?.name ?? "Customer"}
-            customerCompany={"Private customer"}
-            customerEmail={user?.email ?? "N/A"}
-            customerPhone={user?.phone ?? "N/A"}
             onSelectOrder={handleSelectOrder}
             onRequestDelivery={() => navigate("/request-delivery")}
           />

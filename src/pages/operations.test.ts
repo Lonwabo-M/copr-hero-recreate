@@ -568,9 +568,60 @@ test("history tab shows delivered / failed / cancelled counts", () => {
   assertContains(opsPage, "CANCELLED", "history tab shows cancelled");
 });
 
-// ─── 14. CSS / design ──────────────────────────────────────────────────────────
+// ─── 14. Orders tab ────────────────────────────────────────────────────────────
 
-console.log("\n14. CSS / design");
+console.log("\n14. Orders tab");
+
+test("orders tab aggregates every order via the operations-scoped query", () => {
+  assertContains(
+    opsPage,
+    "api.deliveries.state_machine.getAllDeliveriesForOps",
+    "orders tab uses the operations orders aggregate",
+  );
+  const block = stateMachine.slice(
+    stateMachine.indexOf("export const getAllDeliveriesForOps = query"),
+  );
+  assertContains(block, "ROLES.OPERATIONS", "getAllDeliveriesForOps is operations-gated server-side");
+  assertContains(block, "resolveDeliveryDetails", "order rows carry resolved display details");
+});
+
+test("orders tab is searchable across order, business, recipient, route and driver", () => {
+  assertContains(opsPage, "function orderSearchText", "orders search helper exists");
+  const fields = [
+    "trackingNumber",
+    "waybillNumber",
+    "businessName",
+    "recipientName",
+    "recipientPhone",
+    "senderName",
+    "pickupAddress",
+    "dropoffCity",
+    "driverName",
+  ];
+  for (const field of fields) {
+    assertContains(opsPage, field, `orders search covers ${field}`);
+  }
+});
+
+test("orders tab covers the whole lifecycle, not just in-flight work", () => {
+  for (const s of [
+    "DELIVERY_STATUS.REQUESTED",
+    "DELIVERY_STATUS.DELIVERED",
+    "DELIVERY_STATUS.FAILED",
+    "DELIVERY_STATUS.CANCELLED",
+  ]) {
+    assertContains(opsPage, s, `orders tab references ${s}`);
+  }
+  assertContains(opsPage, "const OPEN_STATUSES", "orders tab distinguishes open from closed orders");
+});
+
+test("orders tab offers the waybill download per order", () => {
+  assertContains(opsPage, "<WaybillButton deliveryId=", "order rows download their waybill");
+});
+
+// ─── 15. CSS / design ──────────────────────────────────────────────────────────
+
+console.log("\n15. CSS / design");
 
 test("operations.css includes live map styles", () => {
   assertContains(operationsCss, ".ops-map {", "ops css has map styles");
@@ -593,6 +644,12 @@ test("operations.css includes dispatch card styles", () => {
 test("operations.css includes exceptions styles", () => {
   assertContains(operationsCss, ".ops-exception-card", "ops css has exception card");
   assertContains(operationsCss, ".ops-exception-kind", "ops css has exception kind");
+});
+
+test("operations.css styles the Orders / History tables", () => {
+  assertContains(operationsCss, ".ops-table-wrap", "ops css has the scrollable table shell");
+  assertContains(operationsCss, ".ops-table th", "ops css has table heads");
+  assertContains(operationsCss, ".ops-history .data-table", "history table shares the ops table grammar");
 });
 
 // ─── Summary ────────────────────────────────────────────────────────────────────

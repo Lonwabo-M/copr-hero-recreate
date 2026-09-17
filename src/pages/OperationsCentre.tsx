@@ -26,6 +26,8 @@ import {
   CheckSquare,
   Phone,
   Loader2,
+  ClipboardList,
+  Search,
 } from "lucide-react";
 import { DELIVERY_STATUS, ROLES } from "@/convex/schema";
 import "@/styles/dashboard.css";
@@ -62,7 +64,7 @@ import "@/styles/operations.css";
 // records — it visualizes driver positions relative to their delivery's pickup/
 // drop-off, it does not generate GPS from the operations browser.
 
-type OpsTab = "overview" | "dispatch" | "live" | "drivers" | "exceptions" | "history";
+type OpsTab = "overview" | "orders" | "dispatch" | "live" | "drivers" | "exceptions" | "history";
 
 // One row of the operational active-deliveries list: the raw delivery record
 // plus the server-resolved display details (addresses, recipient, parcel).
@@ -81,6 +83,9 @@ type OpsDeliveryRow = Doc<"deliveries"> & {
     createdAt: number | null;
     recipientName: string | null;
     recipientPhone: string | null;
+    senderName: string | null;
+    senderPhone: string | null;
+    driverName: string | null;
     pickupAddress: string | null;
     pickupCity: string | null;
     dropoffAddress: string | null;
@@ -421,6 +426,7 @@ function OperationsCentreInner() {
         <div className="ops-tabs">
           {([
             { id: "overview", label: "Overview", icon: <TrendingUp size={18} /> },
+            { id: "orders", label: "Orders", icon: <ClipboardList size={18} /> },
             { id: "dispatch", label: "Dispatch", icon: <Package size={18} /> },
             { id: "live", label: "Live Map", icon: <Navigation size={18} /> },
             { id: "drivers", label: "Drivers", icon: <Users size={18} /> },
@@ -445,6 +451,10 @@ function OperationsCentreInner() {
               drivers={drivers}
               exceptions={exceptions}
             />
+          )}
+
+          {activeTab === "orders" && (
+            <OrdersTab />
           )}
 
           {activeTab === "dispatch" && (
@@ -574,6 +584,251 @@ function OverviewTab({
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ─── Orders Tab ───────────────────────────────────────────────────────────────
+// Every order placed on the platform in one searchable aggregate: the whole
+// lifecycle (requested → in transit → delivered / failed / cancelled) enriched
+// with the shared server-resolved display details — business, recipient,
+// route, parcel, assigned driver, waybill. Operations use it to answer
+// "where is order X?" and "what has this business sent?" without leaving the
+// control room.
+
+const OPEN_STATUSES: readonly string[] = [
+  DELIVERY_STATUS.REQUESTED,
+  DELIVERY_STATUS.PENDING_DISPATCH,
+  DELIVERY_STATUS.REASSIGNMENT_REQUIRED,
+  ...ACTIVE_STATUSES,
+];
+
+const ORDER_STATUS_FILTERS = [
+  { id: "all", label: "All" },
+  { id: "open", label: "Open" },
+  { id: "delivered", label: "Delivered" },
+  { id: "failed", label: "Failed" },
+  { id: "cancelled", label: "Cancelled" },
+] as const;
+
+type OrderStatusFilter = (typeof ORDER_STATUS_FILTERS)[number]["id"];
+
+function formatCurrency(cents?: number | null): string {
+  if (cents === undefined || cents === null) return "—";
+  return `R ${(cents / 100).toLocaleString("en-ZA", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
+function parcelSummary(details?: OpsDeliveryRow["details"]): string {
+  if (!details) return "—";
+  const parts: string[] = [];
+  if (details.packageSize) parts.push(statusLabel(details.packageSize));
+  if (details.parcelType) parts.push(statusLabel(details.parcelType));
+  if (details.weight != null) parts.push(`${details.weight} kg`);
+  if (details.width != null && details.height != null) {
+    parts.push(`${details.width}×${details.height} cm`);
+  }
+  if (details.expeditionType) parts.push(statusLabel(details.expeditionType));
+  return parts.length > 0 ? parts.join(" · ") : "—";
+}
+
+function routeSummary(details?: OpsDeliveryRow["details"]): string {
+  if (!details) return "—";
+  const pickup = [details.pickupAddress, details.pickupCity].filter(Boolean).join(", ");
+  const dropoff = [details.dropoffAddress, details.dropoffCity].filter(Boolean).join(", ");
+  if (!pickup && !dropoff) return "—";
+  return `${pickup || "Pickup on file"} → ${dropoff || "Drop-off on file"}`;
+}
+
+/** Everything in a row operations might search by, lower-cased once. */
+function orderSearchText(d: OpsDeliveryRow): string {
+  const details = d.details;
+  return [
+    d.trackingNumber,
+    d.waybillNumber,
+    d.orderId,
+    d.status,
+    statusLabel(d.status),
+    details?.businessName,
+    details?.recipientName,
+    details?.recipientPhone,
+    details?.senderName,
+    details?.senderPhone,
+    details?.description,
+    details?.parcelType,
+    details?.pickupAddress,
+    details?.pickupCity,
+    details?.dropoffAddress,
+    details?.dropoffCity,
+    details?.driverName,
+  ]
+    .filter((v): v is string => typeof v === "string" && v.length > 0)
+    .join(" ")
+    .toLowerCase();
+}
+
+function OrdersTab() {
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<OrderStatusFilter>("all");
+
+  const orders = useQuery(api.deliveries.state_machine.getAllDeliveriesForOps, {
+    limit: 500,
+  });
+  const rows: OpsDeliveryRow[] = (orders ?? []) as OpsDeliveryRow[];
+
+  const needle = search.trim().toLowerCase();
+
+  const filtered = useMemo(
+    () =>
+      rows.filter((d) => {
+        if (statusFilter === "open" && !OPEN_STATUSES.includes(d.status)) return false;
+        if (statusFilter === "delivered" && d.status !== DELIVERY_STATUS.DELIVERED) return false;
+        if (statusFilter === "failed" && d.status !== DELIVERY_STATUS.FAILED) return false;
+        if (statusFilter === "cancelled" && d.status !== DELIVERY_STATUS.CANCELLED) return false;
+        if (needle && !orderSearchText(d).includes(needle)) return false;
+        return true;
+      }),
+    [rows, needle, statusFilter],
+  );
+
+  const openCount = rows.filter((d) => OPEN_STATUSES.includes(d.status)).length;
+  const deliveredCount = rows.filter((d) => d.status === DELIVERY_STATUS.DELIVERED).length;
+  const closedCount = rows.length - openCount;
+
+  return (
+    <div className="ops-orders">
+      <div className="ops-section-header">
+        <h2 className="ops-section-title">Orders</h2>
+        <div className="ops-filter-group">
+          <span className="ops-live-count">
+            {filtered.length} of {rows.length} orders
+          </span>
+        </div>
+      </div>
+
+      {/* Search — tracking number, order reference, business, recipient,
+          sender, addresses, driver or status. */}
+      <div className="dash-search-wrapper" style={{ maxWidth: 520 }}>
+        <span className="dash-search-icon">
+          <Search size={18} />
+        </span>
+        <input
+          className="dash-search"
+          type="search"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search orders — tracking #, business, recipient, address…"
+          aria-label="Search orders"
+        />
+      </div>
+
+      <div className="ops-tabs" style={{ marginBottom: 18 }}>
+        {ORDER_STATUS_FILTERS.map((f) => (
+          <button
+            key={f.id}
+            className={`ops-tab ${statusFilter === f.id ? "active" : ""}`}
+            onClick={() => setStatusFilter(f.id)}
+          >
+            <span>{f.label}</span>
+          </button>
+        ))}
+      </div>
+
+      <div className="ops-history-summary" style={{ marginBottom: 16 }}>
+        <div className="ops-history-summary-item">
+          <Clock size={16} style={{ color: "#856404" }} />
+          <span>{openCount} open</span>
+        </div>
+        <div className="ops-history-summary-item">
+          <CheckCircle size={16} style={{ color: "#0A7C42" }} />
+          <span>{deliveredCount} delivered</span>
+        </div>
+        <div className="ops-history-summary-item">
+          <ClipboardList size={16} style={{ color: "#666" }} />
+          <span>{closedCount} closed otherwise</span>
+        </div>
+      </div>
+
+      {orders === undefined ? (
+        <div style={{ display: "flex", justifyContent: "center", padding: 48 }}>
+          <Loader2 size={22} className="animate-spin" style={{ color: "#999" }} />
+        </div>
+      ) : filtered.length > 0 ? (
+        <div className="ops-table-wrap">
+          <table className="ops-table">
+            <thead>
+              <tr>
+                <th>Order</th>
+                <th>Tracking #</th>
+                <th>Status</th>
+                <th>Business</th>
+                <th>Recipient</th>
+                <th>Route</th>
+                <th>Parcel</th>
+                <th>Value</th>
+                <th>Driver</th>
+                <th>Created</th>
+                <th>Waybill</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((d) => (
+                <tr key={d._id}>
+                  <td style={{ fontWeight: 600, whiteSpace: "nowrap" }}>
+                    #{d.orderId.slice(-6).toUpperCase()}
+                  </td>
+                  <td style={{ whiteSpace: "nowrap" }}>{d.trackingNumber}</td>
+                  <td>
+                    <span className="status-badge" style={statusBadgeStyle(d.status)}>
+                      {statusLabel(d.status)}
+                    </span>
+                  </td>
+                  <td>{d.details?.businessName ?? "—"}</td>
+                  <td>
+                    <div>{d.details?.recipientName ?? "—"}</div>
+                    {d.details?.recipientPhone && (
+                      <div className="ops-small ops-muted">{d.details.recipientPhone}</div>
+                    )}
+                  </td>
+                  <td style={{ minWidth: 260 }}>
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
+                      <MapPin size={13} style={{ marginTop: 3, flexShrink: 0 }} />
+                      <span className="ops-small">{routeSummary(d.details)}</span>
+                    </div>
+                  </td>
+                  <td>
+                    <span className="ops-small">{parcelSummary(d.details)}</span>
+                  </td>
+                  <td style={{ whiteSpace: "nowrap" }}>{formatCurrency(d.details?.price)}</td>
+                  <td>{d.details?.driverName ?? (d.courierId ? "Assigned" : "—")}</td>
+                  <td style={{ whiteSpace: "nowrap" }}>
+                    {formatDateTime(d.details?.createdAt ?? d._creationTime)}
+                  </td>
+                  <td>
+                    <WaybillButton deliveryId={d._id as string} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="empty-state">
+          <div className="empty-state-icon">
+            <ClipboardList size={24} />
+          </div>
+          <div className="empty-state-title">
+            {rows.length === 0 ? "No orders yet" : "No matching orders"}
+          </div>
+          <div className="empty-state-desc">
+            {rows.length === 0
+              ? "Orders placed by customer accounts appear here as soon as they are created."
+              : "No order matches this search or status filter. Try a tracking number, business name or recipient."}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

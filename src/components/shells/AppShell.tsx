@@ -8,7 +8,6 @@ import { useNavigate } from "react-router";
 import Sidebar from "@/components/dashboard/Sidebar";
 import LashaLogo from "@/components/branding/LashaLogo";
 import { useAuth } from "@/hooks/use-auth";
-import { ROLES } from "@/convex/schema";
 import { canAccessArea, AREA_HOME } from "./roleAccess";
 import {
   AREA_LABELS,
@@ -61,6 +60,7 @@ export default function AppShell({
   const testAccessState = useQuery(api.users.testAccess.getTestAccessState, {});
   const [pendingArea, setPendingArea] = useState<AppArea | null>(null);
   const [releasing, setReleasing] = useState(false);
+  const [accessError, setAccessError] = useState<string | null>(null);
 
   const isTestElevated = testAccessState?.testElevated === true;
   // The backend testElevated marker is authoritative: real staff are never
@@ -69,21 +69,31 @@ export default function AppShell({
   // (otherwise the button vanishes the moment elevation lands and the tester
   // is trapped in the area).
 
-  const ROLE_FOR_AREA: Record<AppArea, string> = {
-    customer: ROLES.CUSTOMER,
-    driver: ROLES.DRIVER,
-    operations: ROLES.OPERATIONS,
-    admin: ROLES.SUPER_ADMIN,
-  };
-
+  // Complete the area switch as soon as the reactive role admits the target
+  // area. Checking the AREA ACCESS RULE (not role equality) also covers users
+  // whose real role already admits the area (e.g. an admin moving into the
+  // Operations Centre).
   useEffect(() => {
-    if (pendingArea && user?.role === ROLE_FOR_AREA[pendingArea]) {
+    if (pendingArea && canAccessArea(user?.role as string | undefined, pendingArea)) {
       setPendingArea(null);
       navigate(AREA_HOME[pendingArea]);
     }
   }, [pendingArea, user?.role, navigate]);
 
+  // Safety net: the elevated role is already committed server-side by the time
+  // the claim mutation resolves, so if the reactive role never arrives (dropped
+  // subscription / stale cache) a full document load still lands the user in
+  // the target area instead of silently doing nothing on click.
+  useEffect(() => {
+    if (!pendingArea) return;
+    const timer = window.setTimeout(() => {
+      window.location.assign(AREA_HOME[pendingArea]);
+    }, 1500);
+    return () => window.clearTimeout(timer);
+  }, [pendingArea]);
+
   const handleOpenArea = async (target: AppArea) => {
+    setAccessError(null);
     if (canAccessArea(user?.role as string | undefined, target)) {
       navigate(AREA_HOME[target]);
       return;
@@ -91,8 +101,14 @@ export default function AppShell({
     setPendingArea(target);
     try {
       await claimTestAccess({ area: target as "driver" | "operations" | "admin" });
-    } catch {
+    } catch (err) {
+      // Never fail silently: a swallowed error is indistinguishable from a
+      // dead sidebar entry.
       setPendingArea(null);
+      const message =
+        err instanceof Error ? err.message : `Could not open the ${target} area`;
+      setAccessError(message);
+      console.error(`[access] opening the ${target} area failed:`, message);
     }
   };
 
@@ -112,6 +128,18 @@ export default function AppShell({
   // unauthenticated placeholder — the dot simply stays hidden until it lands.
   const unreadCount = useQuery(api.notifications.service.getUnreadCount);
   const hasUnread = (unreadCount ?? 0) > 0;
+
+  // ── Business identity (Customer Portal) ───────────────────────────────────
+  // Every customer account belongs to a business (B2B and B2C alike — the
+  // business is the account holder, the person is its contact). The header
+  // therefore names the BUSINESS, not the individual. Subscribed only once the
+  // session user is resolved so an early unauthenticated call can never poison
+  // the reactive subscription.
+  const business = useQuery(
+    api.users.businessProfile.getMyBusiness,
+    area === "customer" && user ? {} : "skip",
+  );
+  const businessName = area === "customer" ? business?.name ?? null : null;
 
   // Matches the resize behaviour every page previously implemented inline.
   useEffect(() => {
@@ -175,9 +203,13 @@ export default function AppShell({
           {/* Logo — actual Lasha mark, cropped to its visible bounds; sized
               to sit comfortably inside the 90px header */}
           <LashaLogo height={34} />
-          {brandLabel && (
+          {brandLabel ? (
             <span className="dash-topnav-logo-text">{brandLabel}</span>
-          )}
+          ) : businessName ? (
+            <span className="dash-topnav-org" title={businessName}>
+              {businessName}
+            </span>
+          ) : null}
         </div>
 
         <div className="dash-topnav-right">
@@ -246,6 +278,51 @@ export default function AppShell({
           isOpen={sidebarOpen}
           items={navItems}
         />
+
+        {/* Cross-area access failure — surfaced, never swallowed. */}
+        {accessError && (
+          <div
+            role="alert"
+            style={{
+              position: "fixed",
+              top: 100,
+              left: "50%",
+              transform: "translateX(-50%)",
+              zIndex: 60,
+              maxWidth: 440,
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              padding: "12px 16px",
+              borderRadius: 12,
+              background: "#FEF2F2",
+              border: "1px solid #FECACA",
+              boxShadow: "0 8px 24px rgba(32,32,32,0.12)",
+              fontFamily: "Inter, sans-serif",
+              fontSize: 13,
+              fontWeight: 500,
+              color: "#B91C1C",
+            }}
+          >
+            <ShieldCheck size={16} />
+            <span style={{ flex: 1 }}>{accessError}</span>
+            <button
+              onClick={() => setAccessError(null)}
+              aria-label="Dismiss"
+              style={{
+                background: "none",
+                border: "none",
+                color: "#B91C1C",
+                cursor: "pointer",
+                fontFamily: "inherit",
+                fontSize: 12,
+                fontWeight: 700,
+              }}
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
 
         {/* Page content */}
         {children}

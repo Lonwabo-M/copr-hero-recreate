@@ -70,6 +70,32 @@
   letter-spacing: -0.02em;
 }
 
+/* Customer Portal account identity. The account holder is a BUSINESS (B2B and
+   B2C alike), so the header names it beside the mark — quieter than the area
+   qualifier, with a hairline separator and a truncation guard so a long
+   trading name can never push the header around. */
+.dash-topnav-org {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 280px;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dash-topnav-org::before {
+  content: "";
+  width: 1px;
+  height: 18px;
+  background: var(--border-light);
+  flex-shrink: 0;
+}
+
 .dash-topnav-links {
   display: flex !important;
   align-items: center;
@@ -1037,68 +1063,9 @@
   background: var(--primary-light);
 }
 
-/* Customer account summary */
-.dash-customer-card {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  background: var(--surface);
-  border: 1px solid var(--border-light);
-  border-radius: 16px;
-  padding: 18px 22px;
-  box-shadow: 0 1px 2px rgba(32, 32, 32, 0.04);
-  flex-wrap: wrap;
-}
-
-.dash-customer-avatar {
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  background: var(--primary-light);
-  color: var(--primary-dark);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.dash-customer-main {
-  min-width: 140px;
-}
-
-.dash-customer-name {
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--text-primary);
-}
-
-.dash-customer-org {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  margin-top: 3px;
-  font-size: 12.5px;
-  color: var(--text-secondary);
-}
-
-.dash-customer-contacts {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-left: auto;
-}
-
-.dash-customer-contact {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12.5px;
-  color: var(--text-secondary);
-}
-
-.dash-customer-contact svg {
-  color: var(--text-muted);
-}
+/* The Activity Centre's personal "Account" summary card is gone: the account
+   holder is the customer's BUSINESS (named in the shell header), not the
+   individual, so no account banner is rendered in the overview. */
 
 /* Recent orders list */
 .dash-recent-list {
