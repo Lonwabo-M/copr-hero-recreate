@@ -1,5 +1,5 @@
 import { useQuery } from "convex/react";
-import { Loader2, Bell } from "lucide-react";
+import { Loader2, Bell, Clock, XCircle, FileText } from "lucide-react";
 import { api } from "@/convex/_generated/api";
 import DriverShell from "@/components/shells/DriverShell";
 import { useAuth } from "@/hooks/use-auth";
@@ -29,6 +29,10 @@ export default function DriverHome() {
   const current = useQuery(api.tracking.queries.getMyCurrentDelivery, {});
   const history = useQuery(api.deliveries.state_machine.getMyDeliveries, { limit: 50 });
   const offers = useQuery(api.dispatch.engine.getMyDispatchOffers, {});
+
+  // Driver application state — dispatch requires an approved application, so
+  // unsubmitted/pending/rejected drivers get a persistent status banner here.
+  const application = useQuery(api.users.driverApplications.getMyDriverApplication, {});
 
   // Driver-facing in-app notifications (existing infrastructure, session-scoped).
   const notifications = useQuery(api.notifications.service.getMyNotifications, {});
@@ -63,6 +67,73 @@ export default function DriverHome() {
             </div>
           ) : (
             <>
+              {/* Application status — dispatch requires an approved application.
+                  Hidden once approved (the offers card is the success state). */}
+              {application !== undefined && application !== null && application.status !== "approved" && (
+                <button
+                  className="driver-action-card"
+                  style={{
+                    padding: 16,
+                    marginBottom: 12,
+                    borderLeft: `4px solid ${application.status === "pending" ? "#856404" : "#C62828"}`,
+                    textAlign: "left",
+                    width: "100%",
+                    cursor: "pointer",
+                    background: "#fff",
+                    border: "1px solid #E8E8E8",
+                  }}
+                  onClick={() => window.location.assign("/driver/apply")}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    {application.status === "pending" ? (
+                      <Clock size={18} color="#856404" />
+                    ) : (
+                      <XCircle size={18} color="#C62828" />
+                    )}
+                    <div>
+                      <div style={{ fontSize: 13.5, fontWeight: 700, color: "#202020" }}>
+                        {application.status === "pending"
+                          ? "Driver application under review"
+                          : "Driver application needs attention"}
+                      </div>
+                      <div style={{ fontSize: 12.5, color: "#666", marginTop: 2 }}>
+                        {application.status === "pending"
+                          ? "You'll receive offers once approved. Tap to view your submission."
+                          : "Tap to review the reason and resubmit."}
+                      </div>
+                    </div>
+                  </div>
+                </button>
+              )}
+              {application === null && (
+                <button
+                  className="driver-action-card"
+                  style={{
+                    padding: 16,
+                    marginBottom: 12,
+                    borderLeft: "4px solid #0794B5",
+                    textAlign: "left",
+                    width: "100%",
+                    cursor: "pointer",
+                    background: "#fff",
+                    border: "1px solid #E8E8E8",
+                  }}
+                  onClick={() => window.location.assign("/driver/apply")}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <FileText size={18} color="#0794B5" />
+                    <div>
+                      <div style={{ fontSize: 13.5, fontWeight: 700, color: "#202020" }}>
+                        Complete your driver application
+                      </div>
+                      <div style={{ fontSize: 12.5, color: "#666", marginTop: 2 }}>
+                        Capture your license and vehicle details to start receiving offers.
+                      </div>
+                    </div>
+                  </div>
+                </button>
+              )}
+
               {/* Available offers — path to the offers workflow */}
               <div className="driver-action-card" style={{ padding: 16 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>

@@ -78,8 +78,8 @@ assert("driver home = /driver", homeRouteForRole(ROLES.DRIVER) === "/driver");
 assert("operations home = /operations", homeRouteForRole(ROLES.OPERATIONS) === "/operations");
 assert("fleet_manager home = /operations", homeRouteForRole(ROLES.FLEET_MANAGER) === "/operations");
 // Admin pages don't exist yet — admins land in Operations (documented gap)
-assert("company_admin home = /operations (gap)", homeRouteForRole(ROLES.COMPANY_ADMIN) === "/operations");
-assert("super_admin home = /operations (gap)", homeRouteForRole(ROLES.SUPER_ADMIN) === "/operations");
+assert("company_admin home = /admin/driver-approvals", homeRouteForRole(ROLES.COMPANY_ADMIN) === "/admin/driver-approvals");
+assert("super_admin home = /admin/driver-approvals", homeRouteForRole(ROLES.SUPER_ADMIN) === "/admin/driver-approvals");
 assert("unknown role home = /dashboard (safe default)", homeRouteForRole(undefined) === "/dashboard");
 
 // ─── 4. Navigation separation ────────────────────────────────────────────────
@@ -101,13 +101,19 @@ for (const label of customerOnlyLabels) {
     !driverNavigation.some((n) => n.label === label),
   );
 }
+// Cross-area access points are the deliberate testing loop: the Driver App
+// and Admin Portal list Operations Centre + Dashboard, and the Operations
+// Centre lists Driver App + Admin Portal (all guarded by RoleGate + the
+// reversible test elevation in AppShell).
 assert(
-  "driver nav has no customer route paths",
-  !driverNavigation.some((n) => !n.route.startsWith("/driver") && n.route !== "#"),
+  "driver nav lists both return paths (operations + dashboard)",
+  driverNavigation.some((n) => n.route === "/operations") &&
+    driverNavigation.some((n) => n.route === "/dashboard"),
 );
 assert(
-  "operations nav has no driver/customer routes",
-  !operationsNavigation.some((n) => n.route.startsWith("/driver") || n.route === "/dashboard"),
+  "operations nav lists driver + admin access points",
+  operationsNavigation.some((n) => n.route === "/driver") &&
+    operationsNavigation.some((n) => n.route.startsWith("/admin")),
 );
 
 // Customer nav must NOT contain driver/operations entries.
@@ -119,13 +125,24 @@ assert(
   "customer nav excludes driver routes",
   !customerNavigation.some((n) => n.route.startsWith("/driver")),
 );
+// The customer sidebar intentionally carries the Operations Centre entry as
+// its access point (reversible test elevation on click).
 assert(
-  "customer nav excludes operations routes",
-  !customerNavigation.some((n) => n.route.startsWith("/operations")),
+  "customer nav includes the operations access point",
+  customerNavigation.some((n) => n.route === "/operations"),
+);
+assert(
+  "customer nav excludes driver/admin routes",
+  !customerNavigation.some((n) => n.route.startsWith("/driver") || n.route.startsWith("/admin")),
 );
 
-// Admin nav intentionally empty (no admin pages yet).
-assert("admin nav is empty until admin pages exist", adminNavigation.length === 0);
+// Admin nav exists now (driver approvals pipeline + return paths).
+assert(
+  "admin nav has driver approvals + return paths",
+  adminNavigation.some((n) => n.route === "/admin/driver-approvals") &&
+    adminNavigation.some((n) => n.route === "/operations") &&
+    adminNavigation.some((n) => n.route === "/dashboard"),
+);
 
 // ─── Report ──────────────────────────────────────────────────────────────────
 console.log(`\nRole-access routing tests: ${passed} passed, ${failed} failed`);

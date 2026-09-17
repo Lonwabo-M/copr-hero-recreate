@@ -1067,3 +1067,55 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* ─── Driver roster additions (names/numbers/vehicles) ─────────────────── */
+.ops-driver-contact {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 8px;
+}
+
+.ops-driver-phone {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary, #102233);
+  text-decoration: none;
+}
+
+a.ops-driver-phone:hover {
+  color: #0794B5;
+}
+
+.ops-driver-email {
+  font-size: 12px;
+}
+
+.ops-driver-vehicle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  color: var(--text-secondary, #5a6a78);
+}
+
+.ops-driver-reg {
+  margin-left: auto;
+  font-family: "SF Mono", "Menlo", monospace;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  background: rgba(7, 148, 181, 0.08);
+  color: #0794B5;
+  border-radius: 5px;
+  padding: 2px 7px;
+}
+
+.ops-driver-meta {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}

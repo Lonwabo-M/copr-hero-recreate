@@ -46,6 +46,7 @@ export const driverNavigation: NavItem[] = [
   { label: "Active Delivery", route: "/driver/active-delivery" },
   { label: "Delivery History", route: "/driver/history" },
   { label: "Earnings", route: "/driver/earnings" },
+  { label: "Driver Application", route: "/driver/apply" },
   { label: "Profile", route: "/driver/profile" },
   { label: "Operations Centre", route: "/operations" },
   { label: "Dashboard", route: "/dashboard" },
@@ -59,14 +60,19 @@ export const driverNavigation: NavItem[] = [
 export const operationsNavigation: NavItem[] = [
   { label: "Operations Centre", route: "/operations" },
   { label: "Driver App", route: "/driver" },
+  { label: "Admin Portal", route: "/admin/driver-approvals" },
   { label: "Dashboard", route: "/dashboard" },
 ];
 
 // ─── Admin Navigation ────────────────────────────────────────────────────────
-// No admin-specific pages exist yet. Documented as a remaining gap; when admin
-// pages are built they get entries here. Until then, admin-role users are
-// routed to the Operations Centre shell (see roleAccess.ts homeRouteForRole).
-export const adminNavigation: NavItem[] = [];
+// Platform administration: driver onboarding approvals (Capture → Review →
+// Accept pipeline). Reached from the Operations sidebar ("Admin Portal") via
+// the same reversible test elevation as the Driver App.
+export const adminNavigation: NavItem[] = [
+  { label: "Driver Approvals", route: "/admin/driver-approvals" },
+  { label: "Operations Centre", route: "/operations" },
+  { label: "Dashboard", route: "/dashboard" },
+];
 
 // ─── Area → Navigation ───────────────────────────────────────────────────────
 export const AREA_NAVIGATION: Record<AppArea, NavItem[]> = {

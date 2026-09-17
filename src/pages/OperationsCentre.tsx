@@ -24,6 +24,8 @@ import {
   Send,
   Ban,
   CheckSquare,
+  Phone,
+  Loader2,
 } from "lucide-react";
 import { DELIVERY_STATUS, ROLES } from "@/convex/schema";
 import "@/styles/dashboard.css";
@@ -85,6 +87,26 @@ type OpsDeliveryRow = Doc<"deliveries"> & {
     dropoffCity: string | null;
   };
 };
+
+interface DriverRosterEntry {
+  driverId: Id<"users">;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  hasProfile: boolean;
+  isAvailable: boolean;
+  rating: number | null;
+  totalTrips: number | null;
+  licenseClass: string | null;
+  vehicle: {
+    make: string;
+    model: string;
+    registration: string;
+    capacityKg: number;
+  } | null;
+  hasGps: boolean;
+  applicationStatus: "pending" | "approved" | "rejected" | null;
+}
 
 interface DriverLocationEntry {
   driverId: Id<"users">;
@@ -251,6 +273,10 @@ function OperationsCentreInner() {
     api.tracking.queries.getAvailableDriverLocations,
     {},
   );
+
+  // Full roster — every driver-role user with name/phone/vehicle/application
+  // state. The GPS subset above joins onto this by driverId for freshness.
+  const driverRoster = useQuery(api.users.driverApplications.getDriverRoster, {});
 
   const selectedTracking = useQuery(
     api.tracking.queries.getDeliveryTracking,
@@ -445,7 +471,11 @@ function OperationsCentreInner() {
           )}
 
           {activeTab === "drivers" && (
-            <DriversTab drivers={drivers} activeDeliveries={activeList} />
+            <DriversTab
+              roster={driverRoster}
+              drivers={drivers}
+              activeDeliveries={activeList}
+            />
           )}
 
           {activeTab === "exceptions" && (
@@ -1209,26 +1239,46 @@ function SvgMap({
 // ─── Drivers Tab ──────────────────────────────────────────────────────────────
 
 function DriversTab({
+  roster,
   drivers,
   activeDeliveries,
 }: {
+  roster: DriverRosterEntry[] | undefined;
   drivers: DriverLocationEntry[];
   activeDeliveries: OpsDeliveryRow[];
 }) {
+  const gpsByDriver = useMemo(() => {
+    const map = new Map<Id<"users">, DriverLocationEntry>();
+    for (const dr of drivers) map.set(dr.driverId, dr);
+    return map;
+  }, [drivers]);
+
+  if (roster === undefined) {
+    return (
+      <div style={{ display: "flex", justifyContent: "center", padding: 48 }}>
+        <Loader2 size={22} className="animate-spin" style={{ color: "#999" }} />
+      </div>
+    );
+  }
+
+  const availableNow = roster.filter((r) => r.isAvailable).length;
+  const withGps = roster.filter((r) => r.hasGps).length;
+
   return (
     <div className="ops-drivers">
       <div className="ops-section-header">
-        <h2 className="ops-section-title">Driver Positions</h2>
+        <h2 className="ops-section-title">Drivers</h2>
         <div className="ops-filter-group">
-          <span className="ops-live-count">{drivers.length} available</span>
+          <span className="ops-live-count">{roster.length} drivers · {availableNow} available · {withGps} reporting GPS</span>
         </div>
       </div>
 
-      {drivers.length > 0 ? (
+      {roster.length > 0 ? (
         <div className="ops-drivers-grid">
-          {drivers.map((dr) => {
-            const freshness = freshnessState(dr.lastUpdate);
-            const assignedDelivery = activeDeliveries.find((d) => d.courierId === dr.driverId);
+          {roster.map((entry) => {
+            const loc = gpsByDriver.get(entry.driverId);
+            const freshness = loc?.lastUpdate ? freshnessState(loc.lastUpdate) : ("none" as const);
+            const assignedDelivery = activeDeliveries.find((d) => d.courierId === entry.driverId);
             const inTransit = assignedDelivery && [
               DELIVERY_STATUS.EN_ROUTE_TO_PICKUP,
               DELIVERY_STATUS.IN_TRANSIT,
@@ -1237,17 +1287,20 @@ function DriversTab({
               DELIVERY_STATUS.PICKED_UP,
               DELIVERY_STATUS.DRIVER_ACCEPTED,
             ].includes(assignedDelivery.status as any);
+            const onDuty = assignedDelivery != null && inTransit;
+            const statusColor = onDuty ? "#0A7C42" : entry.isAvailable ? "#0794B5" : "#856404";
+            const statusText = onDuty ? "On delivery" : entry.isAvailable ? "Available" : "Awaiting application";
 
             return (
-              <div key={dr.driverId} className={`ops-driver-card ${dr.isStale ? "stale" : ""}`}>
+              <div key={entry.driverId} className={`ops-driver-card ${loc?.isStale ? "stale" : ""}`}>
                 <div className="ops-driver-top">
                   <div className="ops-driver-dot" style={{
-                    background: dr.isStale ? "#C62828" : inTransit ? "#0A7C42" : "#0794B5",
-                    boxShadow: dr.isStale ? "0 0 0 3px rgba(198,40,40,0.15)" : "none",
+                    background: loc?.isStale ? "#C62828" : statusColor,
+                    boxShadow: loc?.isStale ? "0 0 0 3px rgba(198,40,40,0.15)" : "none",
                   }} />
                   <div className="ops-driver-info">
-                    <span className="ops-driver-name">{dr.name ?? "Driver"}</span>
-                    <span className="ops-driver-id">ID {dr.driverId.slice(-6).toUpperCase()}</span>
+                    <span className="ops-driver-name">{entry.name}</span>
+                    <span className="ops-driver-id">ID {entry.driverId.slice(-6).toUpperCase()}</span>
                   </div>
                   <span className="ops-freshness-badge" style={{ color: freshnessDot(freshness) }}>
                     <Radio size={11} className={freshness === "live" ? "animate-pulse" : ""} />
@@ -1255,16 +1308,47 @@ function DriversTab({
                   </span>
                 </div>
 
-                {dr.lat !== null && dr.lat !== undefined && dr.lng !== null && dr.lng !== undefined ? (
-                  <div className="ops-driver-coords ops-small">
-                    {dr.lat.toFixed(5)}, {dr.lng.toFixed(5)}
+                {/* Contact — the roster's reason for existing */}
+                <div className="ops-driver-contact">
+                  {entry.phone ? (
+                    <a className="ops-driver-phone" href={`tel:${entry.phone}`}>
+                      <Phone size={13} />
+                      {entry.phone}
+                    </a>
+                  ) : (
+                    <span className="ops-driver-phone ops-muted">
+                      <Phone size={13} />
+                      No phone on file
+                    </span>
+                  )}
+                  {entry.email && (
+                    <span className="ops-driver-email ops-small ops-muted">{entry.email}</span>
+                  )}
+                </div>
+
+                {/* Vehicle — from the approved application */}
+                {entry.vehicle ? (
+                  <div className="ops-driver-vehicle ops-small">
+                    <Truck size={13} />
+                    {entry.vehicle.make} {entry.vehicle.model}
+                    {entry.vehicle.capacityKg ? ` · ${entry.vehicle.capacityKg.toLocaleString("en-ZA")} kg` : ""}
+                    <span className="ops-driver-reg">{entry.vehicle.registration}</span>
                   </div>
                 ) : (
-                  <div className="ops-driver-coords ops-small ops-muted">No location</div>
+                  <div className="ops-driver-vehicle ops-small ops-muted">
+                    <Truck size={13} />
+                    No vehicle on file
+                  </div>
                 )}
 
-                {dr.lastUpdate !== undefined && dr.lastUpdate !== null && (
-                  <div className="ops-driver-coords ops-small ops-muted">Updated {formatDateTime(dr.lastUpdate)}</div>
+                {/* Position — GPS joined by driverId */}
+                {loc?.lat != null && loc?.lng != null ? (
+                  <div className="ops-driver-coords ops-small">
+                    {loc.lat.toFixed(5)}, {loc.lng.toFixed(5)}
+                    {loc.lastUpdate != null && ` · Updated ${formatDateTime(loc.lastUpdate)}`}
+                  </div>
+                ) : (
+                  <div className="ops-driver-coords ops-small ops-muted">No location reported</div>
                 )}
 
                 {assignedDelivery ? (
@@ -1278,13 +1362,15 @@ function DriversTab({
                 ) : (
                   <div className="ops-driver-active ops-driver-free">
                     <span className="ops-driver-active-label">Status</span>
-                    <span className="ops-driver-active-value">Available</span>
+                    <span className="ops-driver-active-value" style={{ color: statusColor }}>{statusText}</span>
                   </div>
                 )}
 
-                {dr.totalTrips !== undefined && dr.totalTrips !== null && (
-                  <div className="ops-driver-meta ops-small ops-muted">{dr.totalTrips} total trips</div>
-                )}
+                <div className="ops-driver-meta ops-small ops-muted">
+                  {entry.rating != null && <span>{entry.rating.toFixed(1)} ★</span>}
+                  {entry.totalTrips != null && <span>{entry.totalTrips} trips</span>}
+                  {entry.licenseClass != null && <span>{entry.licenseClass}</span>}
+                </div>
               </div>
             );
           })}
@@ -1292,8 +1378,10 @@ function DriversTab({
       ) : (
         <div className="empty-state">
           <div className="empty-state-icon"><Users size={24} /></div>
-          <div className="empty-state-title">No driver location data</div>
-          <div className="empty-state-desc">No available drivers are reporting location right now.</div>
+          <div className="empty-state-title">No drivers yet</div>
+          <div className="empty-state-desc">
+            Drivers appear here once they register and are approved through the Admin Portal.
+          </div>
         </div>
       )}
     </div>

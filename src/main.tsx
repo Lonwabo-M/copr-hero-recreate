@@ -37,6 +37,8 @@ import DriverEarnings from "./pages/DriverEarnings.tsx";
 import DriverProfile from "./pages/DriverProfile.tsx";
 import PostAuthRedirect from "./pages/PostAuthRedirect.tsx";
 import CustomerOnboarding from "./pages/CustomerOnboarding.tsx";
+import DriverApprovals from "./pages/AdminDriverApprovals.tsx";
+import DriverApply from "./pages/DriverApply.tsx";
 
 /** Silent error boundary — if VlyToolbar crashes it renders nothing instead of
  *  crashing the whole app (e.g. hook errors in WebContainer environment). */
@@ -288,6 +290,14 @@ createRoot(document.getElementById("root")!).render(
                 }
               />
               <Route
+                path="/driver/apply"
+                element={
+                  <RoleGate area={APP_AREAS.DRIVER}>
+                    <DriverApply />
+                  </RoleGate>
+                }
+              />
+              <Route
                 path="/driver/offers"
                 element={
                   <RoleGate area={APP_AREAS.DRIVER}>
@@ -336,7 +346,17 @@ createRoot(document.getElementById("root")!).render(
                 }
               />
 
-              {/* ─── Operations Centre ────────────────────────────────── */}
+              {/* ─── Admin Portal ─────────────────────────────────── */}
+              <Route
+                path="/admin/driver-approvals"
+                element={
+                  <RoleGate area={APP_AREAS.ADMIN}>
+                    <DriverApprovals />
+                  </RoleGate>
+                }
+              />
+
+              {/* ─── Operations Centre ────────────────────────────── */}
               <Route
                 path="/operations"
                 element={

@@ -440,10 +440,14 @@ test("OperationsCentre does not import mock data", () => {
 });
 
 test("OperationsCentre does not fabricate driver ratings", () => {
-  assertNotContainsCode(opsPage, "rating:", "ops page does not display driver ratings");
-  // Driver names come from the real tracking query (dr.name). "Driver" is a
-  // presentation fallback when name is missing, not a fabricated identity.
-  assertContains(opsPage, "dr.driver.name ? dr.driver.name.split", "driver name from real data, fallback when missing");
+  // Ratings may only be displayed from the server-resolved driver record
+  // (driver_profiles.rating via the roster/details) — never a hardcoded or
+  // locally-fabricated value.
+  assertNotContainsCode(opsPage, "rating: 5", "ops page does not hardcode driver ratings");
+  assertNotContainsCode(opsPage, "rating: 4", "ops page does not hardcode driver ratings");
+  // Driver names come from real records. "Driver" is a presentation fallback
+  // when name is missing, not a fabricated identity.
+  assertContains(opsPage, "dr.driver.name", "driver name from real data");
 });
 
 // ─── 9. Reactive queries ───────────────────────────────────────────────────────
@@ -511,9 +515,17 @@ test("drivers panel shows driver name, ID, location, freshness, active delivery"
   assertContains(opsPage, "Active delivery", "drivers panel shows active delivery when assigned");
   assertContains(opsPage, "Available", "drivers panel shows Available when free");
 });
+test("drivers panel shows driver name, phone, and vehicle from the roster", () => {
+  assertContains(opsPage, "ops-driver-name", "drivers panel shows driver name");
+  assertContains(opsPage, "ops-driver-phone", "drivers panel shows driver phone");
+  assertContains(opsPage, "ops-driver-vehicle", "drivers panel shows driver vehicle");
+  assertContains(opsPage, "ops-driver-coords", "drivers panel shows coordinates");
+  assertContains(opsPage, "ops-freshness-badge", "drivers panel shows freshness");
+  assertContains(opsPage, "Active delivery", "drivers panel shows active delivery when assigned");
+  assertContains(opsPage, "Available", "drivers panel shows Available when free");
+});
 
-test("drivers panel does not show ratings or earnings", () => {
-  assertNotContainsCode(opsPage, "ops-driver-rating", "drivers panel has no rating display");
+test("drivers panel does not show earnings", () => {
   assertNotContainsCode(opsPage, " earned", "drivers panel does not show earnings");
 });
 

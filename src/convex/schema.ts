@@ -529,7 +529,42 @@ const schema = defineSchema(
       .index("by_registration", ["registration"])
       .index("by_active_driver", ["driverId", "isActive"]),
 
-    // ─── Driver Profiles ───────────────────────────────────────────────────
+    // ─── Driver Applications ─────────────────────────────────────────────
+    // Driver onboarding pipeline: a driver-role user captures their license
+    // and vehicle details (Driver App), an admin reviews and accepts/rejects
+    // (Admin Portal). Acceptance provisions the driver_profile + vehicle that
+    // dispatch requires — no driver is dispatchable without an approved
+    // application.
+    driver_applications: defineTable({
+      userId: v.id("users"),
+      status: v.union(
+        v.literal("pending"),
+        v.literal("approved"),
+        v.literal("rejected"),
+      ),
+      // Captured driver info
+      licenseClass: v.string(),
+      licenseNumber: v.optional(v.string()),
+      // Captured vehicle info (provisioned into `vehicles` on approval)
+      vehicleMake: v.string(),
+      vehicleModel: v.string(),
+      vehicleYear: v.optional(v.number()),
+      vehicleCapacityKg: v.number(),
+      vehicleRegistration: v.string(),
+      vehicleBreaking: v.boolean(),
+      vehicleExpress: v.boolean(),
+      vehicleFlammable: v.boolean(),
+      vehicleTrailer: v.boolean(),
+      // Review outcome
+      reviewNotes: v.optional(v.string()),
+      reviewedBy: v.optional(v.id("users")),
+      reviewedAt: v.optional(v.number()),
+      createdAt: v.number(),
+    })
+      .index("by_user", ["userId"])
+      .index("by_status", ["status"]),
+
+    // ─── Driver Profiles ───────────────────────────────────────────────
     // Driver-specific data. One profile per driver user.
     driver_profiles: defineTable({
       userId: v.id("users"),

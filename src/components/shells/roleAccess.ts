@@ -61,10 +61,9 @@ export const AREA_HOME: Record<AppArea, string> = {
   [APP_AREAS.CUSTOMER]: "/dashboard",
   [APP_AREAS.DRIVER]: "/driver",
   [APP_AREAS.OPERATIONS]: "/operations",
-  // No admin-only pages exist yet (documented gap). Until admin pages are
-  // built, admin-role users are routed to the Operations Centre, which their
-  // role already has access to.
-  [APP_AREAS.ADMIN]: "/operations",
+  // The Admin Portal's first page: the driver approvals pipeline
+  // (Capture → Review → Accept).
+  [APP_AREAS.ADMIN]: "/admin/driver-approvals",
 };
 
 export function homeRouteForRole(role?: string): string {
