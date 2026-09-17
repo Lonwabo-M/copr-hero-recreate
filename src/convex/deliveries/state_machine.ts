@@ -14,7 +14,7 @@
  * 6. Is safe against duplicate requests
  */
 
-import { mutation, query, MutationCtx } from "../_generated/server";
+import { mutation, query, MutationCtx, QueryCtx } from "../_generated/server";
 import { v } from "convex/values";
 import { Id, Doc } from "../_generated/dataModel";
 import {
@@ -44,13 +44,28 @@ import type { NotificationEventType } from "../notifications/service";
 // Ctx is structurally typed (only ctx.db.get is used) so the resolver works
 // from both query and mutation contexts.
 async function resolveDeliveryDetails(
-  ctx: { db: { get(id: any): Promise<any> } },
+  ctx: { db: Pick<QueryCtx["db"], "get" | "query"> },
   delivery: Doc<"deliveries">,
 ): Promise<DeliveryDisplayDetails> {
   const order = await ctx.db.get(delivery.orderId);
   const pickup = order ? await ctx.db.get(order.pickupAddressId) : null;
   const dropoff = order ? await ctx.db.get(order.dropoffAddressId) : null;
   const business = order?.businessId ? await ctx.db.get(order.businessId) : null;
+  const sender = order ? await ctx.db.get(order.senderId) : null;
+
+  // Assigned driver's profile + active vehicle — powers the Activity Centre's
+  // Driver/Vehicle tabs and the ops views. Null until a driver is assigned.
+  const driverProfile = delivery.courierId
+    ? await ctx.db
+        .query("driver_profiles")
+        .withIndex("by_user", (q) => q.eq("userId", delivery.courierId!))
+        .first()
+    : null;
+  const driverUser = delivery.courierId ? await ctx.db.get(delivery.courierId) : null;
+  const vehicle =
+    driverProfile?.currentVehicleId != null
+      ? await ctx.db.get(driverProfile.currentVehicleId)
+      : null;
 
   return {
     description: order?.description ?? null,
@@ -70,6 +85,23 @@ async function resolveDeliveryDetails(
     pickupCity: pickup?.city ?? null,
     dropoffAddress: dropoff?.street ?? null,
     dropoffCity: dropoff?.city ?? null,
+    senderName: sender?.name ?? null,
+    senderEmail: sender?.email ?? null,
+    senderPhone: sender?.phone ?? null,
+    driverName: driverUser?.name ?? null,
+    driverPhone: driverUser?.phone ?? null,
+    driverLicenseClass: driverProfile?.licenseClass ?? null,
+    driverRating: driverProfile?.rating ?? null,
+    driverTotalTrips: driverProfile?.totalTrips ?? null,
+    vehicleMake: vehicle?.make ?? null,
+    vehicleModel: vehicle?.model ?? null,
+    vehicleYear: vehicle?.year ?? null,
+    vehicleRegistration: vehicle?.registration ?? null,
+    vehicleCapacityKg: vehicle?.capacity ?? null,
+    vehicleBreaking: vehicle?.breaking ?? null,
+    vehicleExpress: vehicle?.express ?? null,
+    vehicleFlammable: vehicle?.flammable ?? null,
+    vehicleTrailer: vehicle?.trailer ?? null,
   };
 }
 
@@ -91,6 +123,23 @@ interface DeliveryDisplayDetails {
   pickupCity: string | null;
   dropoffAddress: string | null;
   dropoffCity: string | null;
+  senderName: string | null;
+  senderEmail: string | null;
+  senderPhone: string | null;
+  driverName: string | null;
+  driverPhone: string | null;
+  driverLicenseClass: string | null;
+  driverRating: number | null;
+  driverTotalTrips: number | null;
+  vehicleMake: string | null;
+  vehicleModel: string | null;
+  vehicleYear: number | null;
+  vehicleRegistration: string | null;
+  vehicleCapacityKg: number | null;
+  vehicleBreaking: boolean | null;
+  vehicleExpress: boolean | null;
+  vehicleFlammable: boolean | null;
+  vehicleTrailer: boolean | null;
 }
 
 // ─── Delivery notification fan-out ──────────────────────────────────────────

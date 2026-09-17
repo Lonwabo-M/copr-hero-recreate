@@ -393,10 +393,11 @@ const schema = defineSchema(
       phone: v.optional(v.string()),
       businessId: v.optional(v.id("businesses")),
 
-      // Test-access marker: set together with role="operations" by the
+      // Test-access marker: set together with the elevated role by the
       // dashboard's testing access point so the release mutation can restore
-      // the previous role WITHOUT ever demoting a real operations user.
+      // the previous role WITHOUT ever demoting a real staff user.
       testElevated: v.optional(v.boolean()),
+      testPreviousRole: v.optional(schemaRoleValidator),
 
       // Driver fields (only for couriers)
       currentLat: v.optional(v.number()),

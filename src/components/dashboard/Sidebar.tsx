@@ -52,6 +52,8 @@ const ICONS: Record<string, LucideIcon> = {
   "Log out": LogOut,
   // Operations Centre entries
   "Operations Centre": Truck,
+  // Cross-area access points (testing loop)
+  "Driver App": Truck,
 };
 
 // ─── Sidebar (shared, area-scoped) ───────────────────────────────────────────

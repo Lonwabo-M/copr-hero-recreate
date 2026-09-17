@@ -5,8 +5,10 @@ import { api } from "@/convex/_generated/api";
 import CustomerShell from "@/components/shells/CustomerShell";
 import OrderPanel from "@/components/dashboard/OrderPanel";
 import DetailsPanel from "@/components/dashboard/DetailsPanel";
-import { Loader2, Package } from "lucide-react";
+import ActivityOverview from "@/components/dashboard/ActivityOverview";
+import { Loader2 } from "lucide-react";
 import type { Order } from "@/types/dashboard";
+import { useAuth } from "@/hooks/use-auth";
 import "@/styles/dashboard.css";
 import "@/styles/pages.css";
 
@@ -41,38 +43,44 @@ function transformDeliveryToOrder(delivery: any): ActivityOrder {
       address: details.dropoffAddress ?? "Address on file",
     },
     vehicle: {
-      registration: "N/A",
-      capacity: "N/A",
-      breaking: "N/A",
-      express: "N/A",
-      flammable: "N/A",
-      trailer: "N/A",
-      time: "N/A",
+      registration: details.vehicleRegistration ?? "N/A",
+      make: details.vehicleMake ?? "N/A",
+      model: details.vehicleModel ?? "N/A",
+      year: details.vehicleYear != null ? String(details.vehicleYear) : "N/A",
+      capacity: details.vehicleCapacityKg != null ? `${details.vehicleCapacityKg.toLocaleString("en-ZA")} kg` : "N/A",
+      breaking: details.vehicleBreaking == null ? "N/A" : details.vehicleBreaking ? "Yes" : "No",
+      express: details.vehicleExpress == null ? "N/A" : details.vehicleExpress ? "Yes" : "No",
+      flammable: details.vehicleFlammable == null ? "N/A" : details.vehicleFlammable ? "Yes" : "No",
+      trailer: details.vehicleTrailer == null ? "N/A" : details.vehicleTrailer ? "Yes" : "No",
     },
     driver: {
-      name: "Unassigned",
-      license: "N/A",
-      phone: "N/A",
-      rating: "N/A",
-      trips: "N/A",
+      name: details.driverName ?? "Unassigned",
+      license: details.driverLicenseClass ?? "N/A",
+      phone: details.driverPhone ?? "N/A",
+      rating: details.driverRating != null ? details.driverRating.toFixed(1) : "N/A",
+      trips: details.driverTotalTrips != null ? String(details.driverTotalTrips) : "N/A",
     },
     customer: {
-      name: details.recipientName ?? "Not specified",
-      company: details.description ?? "—",
-      email: details.expeditionType?.replace(/_/g, "-") ?? "standard",
-      phone: details.recipientPhone ?? "N/A",
+      name: details.senderName ?? "—",
+      company: details.businessName ?? "Private customer",
+      email: details.senderEmail ?? "N/A",
+      phone: details.senderPhone ?? "N/A",
     },
   };
 }
 
 export default function Dashboard() {
+  // Default view = the overview (ops-overview grammar, customer-scoped).
+  // Selecting an order swaps in the four-tab details panel; "Back to overview"
+  // restores the default.
   const [selectedOrder, setSelectedOrder] = useState("");
   const [activeFilter, setActiveFilter] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeDetailTab, setActiveDetailTab] = useState("Vehicle Details");
+  const [activeDetailTab, setActiveDetailTab] = useState("Order Details");
   const [detailsOpen, setDetailsOpen] = useState(false);
 
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   // Fetch deliveries from Convex (server-resolved details included)
   const deliveries = useQuery(api.deliveries.state_machine.getMyDeliveries, {});
@@ -80,13 +88,14 @@ export default function Dashboard() {
   const orders: ActivityOrder[] = deliveries?.map(transformDeliveryToOrder) ?? [];
 
   const selectedOrderData = orders.find((o) => o.id === selectedOrder);
+  const isDetailOpen = selectedOrder !== "" && selectedOrderData != null;
 
   // Reset detail tab when order changes
   useEffect(() => {
-    setActiveDetailTab("Vehicle Details");
+    setActiveDetailTab("Order Details");
   }, [selectedOrder]);
 
-  // Close details panel on resize to desktop
+  // Close mobile details panel on resize to desktop
   useEffect(() => {
     const onResize = () => {
       if (window.innerWidth > 1024) {
@@ -97,19 +106,17 @@ export default function Dashboard() {
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  // Auto-select first order
-  useEffect(() => {
-    if (orders.length > 0 && !selectedOrder) {
-      setSelectedOrder(orders[0].id);
-    }
-  }, [orders, selectedOrder]);
-
   const handleSelectOrder = (id: string) => {
     setSelectedOrder(id);
-    // On mobile, open the details panel
+    // On mobile, open the details panel full-screen
     if (window.innerWidth <= 1024) {
       setDetailsOpen(true);
     }
+  };
+
+  const handleBackToOverview = () => {
+    setSelectedOrder("");
+    setDetailsOpen(false);
   };
 
   return (
@@ -121,22 +128,7 @@ export default function Dashboard() {
           <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100%", width: "100%" }}>
             <Loader2 size={24} className="animate-spin" style={{ color: "#999" }} />
           </div>
-        ) : orders.length === 0 ? (
-          /* One centered empty-state unit: icon, heading, copy all share the
-             same axis. */
-          <div
-            className="empty-state"
-            style={{
-              flex: 1,
-              height: "100%",
-              width: "100%",
-            }}
-          >
-            <div className="empty-state-icon"><Package size={24} /></div>
-            <div className="empty-state-title">No deliveries yet</div>
-            <div className="empty-state-desc">Create your first delivery to get started.</div>
-          </div>
-        ) : (
+        ) : isDetailOpen && selectedOrderData ? (
           <>
             {/* Order panel — search + filters + route cards */}
             <OrderPanel
@@ -150,17 +142,27 @@ export default function Dashboard() {
               onTrack={(order) => navigate(`/deliveries/${order.deliveryId}`)}
             />
 
-            {/* Details panel */}
-            {selectedOrderData && (
-              <DetailsPanel
-                order={selectedOrderData}
-                activeTab={activeDetailTab}
-                onTabChange={setActiveDetailTab}
-                isOpen={detailsOpen}
-                onClose={() => setDetailsOpen(false)}
-              />
-            )}
+            {/* Details panel — with a path back to the overview */}
+            <DetailsPanel
+              order={selectedOrderData}
+              activeTab={activeDetailTab}
+              onTabChange={setActiveDetailTab}
+              isOpen={detailsOpen}
+              onClose={() => setDetailsOpen(false)}
+              onBack={handleBackToOverview}
+            />
           </>
+        ) : (
+          /* Default view — the overview (stats + account + recent orders) */
+          <ActivityOverview
+            orders={orders}
+            customerName={user?.name ?? "Customer"}
+            customerCompany={"Private customer"}
+            customerEmail={user?.email ?? "N/A"}
+            customerPhone={user?.phone ?? "N/A"}
+            onSelectOrder={handleSelectOrder}
+            onRequestDelivery={() => navigate("/request-delivery")}
+          />
         )}
       </div>
     </CustomerShell>

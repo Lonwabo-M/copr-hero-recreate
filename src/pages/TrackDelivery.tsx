@@ -11,7 +11,8 @@
  * UI parity: this page renders the exact same composition as the
  * activity-centre detail page (/deliveries/:deliveryId) — shared cyan
  * header tile + stepper, freshness chip, live-route card, shipment details,
- * event timeline, and the Started/Completed/Driver side cards. Only the
+ * and the Started/Completed/Driver side cards. The recorded-event timeline
+ * card is intentionally omitted here (per design direction) and only the
  * two features the public lookup cannot provide are absent: the driver's
  * live map blip (position is only visible to the customer's own session)
  * and proof-of-delivery (authorization-scoped). No duplicate UI system.
@@ -322,39 +323,6 @@ export default function TrackDelivery() {
                     </div>
                   </div>
 
-                  {/* Timeline from the real tracking event log — same card,
-                      same rail/dot/line anatomy as the detail page */}
-                  {timeline.length > 0 && (
-                    <div className="track-route-card">
-                      <div className="track-route-header">
-                        <div>
-                          <h3 className="track-route-title">
-                            <Clock size={16} />
-                            Delivery timeline
-                          </h3>
-                          <p className="track-card-sub">Recorded events from the tracking system</p>
-                        </div>
-                      </div>
-                      <div className="track-timeline">
-                        {/* Newest first — same order the activity-centre
-                            detail page renders its timeline */}
-                        {timeline.slice().reverse().map((e, i) => (
-                          <div key={i} className="track-timeline-item">
-                            <div className="track-timeline-rail">
-                              <span className="track-timeline-dot" />
-                              <span className="track-timeline-line" />
-                            </div>
-                            <div className="track-timeline-body">
-                              <span className="track-timeline-label">
-                                {String(e.type ?? "event").replace(/_/g, " ")}
-                              </span>
-                              <span className="track-timeline-time">{formatEventTime(e.timestamp)}</span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
                 </div>
 
                 {/* Right column — Started / Completed / Driver cards */}

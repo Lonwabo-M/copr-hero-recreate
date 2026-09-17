@@ -9,6 +9,7 @@ import Sidebar from "@/components/dashboard/Sidebar";
 import LashaLogo from "@/components/branding/LashaLogo";
 import { useAuth } from "@/hooks/use-auth";
 import { ROLES } from "@/convex/schema";
+import { canAccessArea, AREA_HOME } from "./roleAccess";
 import {
   AREA_LABELS,
   AREA_NAVIGATION,
@@ -48,43 +49,51 @@ export default function AppShell({
 
   const navItems: NavItem[] = AREA_NAVIGATION[area];
 
-  // ── Operations Centre access point (customer area) / return path (ops area)
-  // Customers claim a marked, reversible test elevation (users.testAccess) and
-  // are navigated only once the reactive user record carries the operations
-  // role, so RoleGate admits the route without a refresh. Real staff navigate
-  // straight through. Inside the Operations area, test-elevated accounts get a
-  // one-click release that restores their customer role.
+  // ── Cross-area access points (testing loop) ──────────────────────────────
+  // Sidebar entries for other areas claim a marked, reversible test elevation
+  // (users.testAccess) and navigate once the reactive user record carries the
+  // target role, so RoleGate admits the route without a refresh. Real staff
+  // navigate straight through. Inside an elevated area, one click releases and
+  // restores the pre-test role.
   const { user } = useAuth();
-  const claimTestAccess = useMutation(api.users.testAccess.claimTestOperationsAccess);
-  const releaseTestAccess = useMutation(api.users.testAccess.releaseTestOperationsAccess);
+  const claimTestAccess = useMutation(api.users.testAccess.claimTestAreaAccess);
+  const releaseTestAccess = useMutation(api.users.testAccess.releaseTestAreaAccess);
   const testAccessState = useQuery(api.users.testAccess.getTestAccessState, {});
-  const [opsPending, setOpsPending] = useState(false);
+  const [pendingArea, setPendingArea] = useState<AppArea | null>(null);
   const [releasing, setReleasing] = useState(false);
 
   const isRealStaff =
     user?.role === ROLES.OPERATIONS ||
     user?.role === ROLES.FLEET_MANAGER ||
     user?.role === ROLES.COMPANY_ADMIN ||
-    user?.role === ROLES.SUPER_ADMIN;
+    user?.role === ROLES.SUPER_ADMIN ||
+    user?.role === ROLES.DRIVER;
   const isTestElevated = testAccessState?.testElevated === true;
 
-  useEffect(() => {
-    if (opsPending && (user?.role === ROLES.OPERATIONS || isRealStaff)) {
-      setOpsPending(false);
-      navigate("/operations");
-    }
-  }, [opsPending, user?.role, isRealStaff, navigate]);
+  const ROLE_FOR_AREA: Record<AppArea, string> = {
+    customer: ROLES.CUSTOMER,
+    driver: ROLES.DRIVER,
+    operations: ROLES.OPERATIONS,
+    admin: ROLES.SUPER_ADMIN,
+  };
 
-  const handleOpenOperations = async () => {
-    if (isRealStaff) {
-      navigate("/operations");
+  useEffect(() => {
+    if (pendingArea && user?.role === ROLE_FOR_AREA[pendingArea]) {
+      setPendingArea(null);
+      navigate(AREA_HOME[pendingArea]);
+    }
+  }, [pendingArea, user?.role, navigate]);
+
+  const handleOpenArea = async (target: AppArea) => {
+    if (canAccessArea(user?.role as string | undefined, target)) {
+      navigate(AREA_HOME[target]);
       return;
     }
-    setOpsPending(true);
+    setPendingArea(target);
     try {
-      await claimTestAccess({});
+      await claimTestAccess({ area: target as "driver" | "operations" | "admin" });
     } catch {
-      setOpsPending(false);
+      setPendingArea(null);
     }
   };
 
@@ -115,10 +124,17 @@ export default function AppShell({
   }, []);
 
   const handleNav = (item: NavItem) => {
-    // The sidebar's Operations Centre entry is the access point: customers
-    // claim test elevation first, staff navigate directly.
-    if (item.route === "/operations" && area !== "operations") {
-      void handleOpenOperations();
+    // Cross-area sidebar entries are the access points: navigate directly when
+    // the role already admits the area, claim reversible test elevation
+    // otherwise, and always land once the reactive role arrives.
+    const crossArea: Partial<Record<string, AppArea>> = {
+      "/operations": "operations",
+      "/driver": "driver",
+      "/dashboard": "customer",
+    };
+    const targetArea = crossArea[item.route];
+    if (targetArea) {
+      void handleOpenArea(targetArea);
       return;
     }
     navigate(item.route);
@@ -164,7 +180,7 @@ export default function AppShell({
         <div className="dash-topnav-right">
           {/* Test-elevation release — only while operating under a claimed
               (reversible) elevation, never for real staff. */}
-          {area === "operations" && isTestElevated && !isRealStaff && (
+          {isTestElevated && !isRealStaff && (
             <button
               className="dash-topnav-profile"
               onClick={handleReleaseTestAccess}

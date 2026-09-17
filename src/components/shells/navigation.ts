@@ -37,23 +37,28 @@ export const customerNavigation: NavItem[] = [
 ];
 
 // ─── Driver App Navigation ───────────────────────────────────────────────────
-// Only pages that already exist. The Driver App structure can later support
-// Earnings, History, Profile, Safety/SOS — none exist yet, so they are
-// NOT listed (no placeholder pages).
+// Driver pages plus the cross-area test loop return paths: the Driver App is
+// reachable from the Operations sidebar, so Operations Centre and Dashboard
+// ride along. Guards decide admission; entering an area you don't hold
+// triggers the reversible test elevation (see AppShell handleNav).
 export const driverNavigation: NavItem[] = [
   { label: "Delivery Offers", route: "/driver/offers" },
   { label: "Active Delivery", route: "/driver/active-delivery" },
   { label: "Delivery History", route: "/driver/history" },
   { label: "Earnings", route: "/driver/earnings" },
   { label: "Profile", route: "/driver/profile" },
+  { label: "Operations Centre", route: "/operations" },
+  { label: "Dashboard", route: "/dashboard" },
 ];
 
 // ─── Operations Centre Navigation ────────────────────────────────────────────
-// Operations/dispatch functionality, plus the return path into the Customer
-// Portal (the customer area admits every authenticated role, so operations
-// staff — including test-elevated accounts — can always get back).
+// Operations/dispatch functionality, plus every cross-area access point for
+// the testing loop: the customer Dashboard (return path) and the Driver App
+// (claim/reveal). Real staff navigate straight through; others trigger the
+// reversible test elevation in AppShell handleNav.
 export const operationsNavigation: NavItem[] = [
   { label: "Operations Centre", route: "/operations" },
+  { label: "Driver App", route: "/driver" },
   { label: "Dashboard", route: "/dashboard" },
 ];
 

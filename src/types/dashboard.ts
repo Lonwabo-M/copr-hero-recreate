@@ -18,13 +18,21 @@ export interface DropoffInfo {
 }
 
 export interface VehicleInfo {
+  /** License plate / fleet registration, e.g. "FR35C0 GP". */
   registration: string;
+  /** Vehicle brand, e.g. "Toyota". */
+  make: string;
+  /** Vehicle model, e.g. "Quantum". */
+  model: string;
+  /** Model year, when known. */
+  year: string;
+  /** Rated load capacity, e.g. "1 200 kg". */
   capacity: string;
+  /** Handling capability flags, "Yes"/"No"/"N/A". */
   breaking: string;
   express: string;
   flammable: string;
   trailer: string;
-  time: string;
 }
 
 export interface DriverInfo {

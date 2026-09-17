@@ -1,3 +1,4 @@
+import { ArrowLeft } from "lucide-react";
 import DetailTabs from "./DetailTabs";
 import VehiclePanel from "./VehiclePanel";
 import OrderDetailsTab from "./OrderDetailsTab";
@@ -11,6 +12,8 @@ interface DetailsPanelProps {
   onTabChange: (tab: string) => void;
   isOpen: boolean;
   onClose: () => void;
+  /** Return to the overview (default) view. */
+  onBack: () => void;
 }
 
 export default function DetailsPanel({
@@ -19,6 +22,7 @@ export default function DetailsPanel({
   onTabChange,
   isOpen,
   onClose,
+  onBack,
 }: DetailsPanelProps) {
   const renderTabContent = () => {
     switch (activeTab) {
@@ -49,8 +53,33 @@ export default function DetailsPanel({
         </button>
       )}
 
-      {/* Order header */}
+      {/* Order header — with a return path to the overview */}
       <div className="dash-order-header">
+        <button
+          onClick={onBack}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            background: "none",
+            border: "none",
+            fontFamily: "\"Inter\", sans-serif",
+            fontSize: 13,
+            fontWeight: 600,
+            color: "var(--primary-dark)",
+            cursor: "pointer",
+            padding: "6px 10px",
+            marginLeft: -10,
+            borderRadius: 8,
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.background = "var(--primary-light)")}
+          onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
+          aria-label="Back to overview"
+        >
+          <ArrowLeft size={15} />
+          Overview
+        </button>
+        <span style={{ flex: 1 }} />
         <span className="dash-order-header-label">Order:</span>
         <span className="dash-order-header-id">{order.id}</span>
       </div>
