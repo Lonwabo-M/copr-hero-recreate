@@ -21,14 +21,6 @@ import { AUDIT_ACTIONS } from "../audit/service";
 //    releasing "to another area" simply re-claims against that area instead.
 //  - both paths audit-log the change (category "user").
 
-const STAFF_ROLES: string[] = [
-  ROLES.DRIVER,
-  ROLES.OPERATIONS,
-  ROLES.FLEET_MANAGER,
-  ROLES.COMPANY_ADMIN,
-  ROLES.SUPER_ADMIN,
-];
-
 function elevatedRoleForArea(area: "driver" | "operations" | "admin"): string {
   switch (area) {
     case "driver":
@@ -54,14 +46,15 @@ export const claimTestAreaAccess = mutation({
     const area = args.area ?? "operations";
     const elevatedRole = elevatedRoleForArea(area);
 
-    // Staff check scoped to the target area's roles (and supersets: admins can
-    // reach ops+driver anyway, ops can reach driver).
-    const isRealStaff =
-      (user.role !== undefined && STAFF_ROLES.includes(user.role)) &&
-      // If already elevated into some area, further claims just switch area.
-      user.testElevated !== true;
-
-    if (isRealStaff) {
+    // No-op only when the caller already holds the exact role the target area
+    // is enforced with. A supervisory walk-in (e.g. super_admin → Driver App)
+    // is admitted by the frontend area rule but does NOT hold the target role,
+    // so every driver-scoped query would throw ("Only drivers can access this
+    // query"). Those walk-ins therefore receive the same marked, reversible
+    // elevation: testPreviousRole preserves their real role and release can
+    // never demote a genuinely-staffed account (it only lowers records where
+    // testElevated === true).
+    if (user.role === elevatedRole) {
       return { success: true, alreadyElevated: true };
     }
 

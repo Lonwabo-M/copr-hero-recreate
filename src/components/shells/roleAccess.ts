@@ -53,6 +53,39 @@ export function canAccessArea(role: string | undefined, area: AppArea): boolean 
   }
 }
 
+// ─── Area Elevation ─────────────────────────────────────────────────────
+// Maps each guardable area to the backend role its queries are ENFORCED with
+// and the literal the testAccess claim mutation expects. Area access is
+// broader than area enforcement (a super_admin may enter the Driver App), so
+// walk-ins receive the marked, reversible elevation instead of a workspace
+// whose every query throws.
+
+export function elevationRoleForArea(area: AppArea): string {
+  switch (area) {
+    case APP_AREAS.DRIVER:
+      return ROLES.DRIVER;
+    case APP_AREAS.OPERATIONS:
+      return ROLES.OPERATIONS;
+    default:
+      // Admin's own queries accept both admin roles; customer queries are
+      // session-scoped — neither needs an elevation.
+      return ROLES.SUPER_ADMIN;
+  }
+}
+
+export function elevationAreaArg(
+  area: AppArea,
+): "driver" | "operations" | "admin" {
+  switch (area) {
+    case APP_AREAS.DRIVER:
+      return "driver";
+    case APP_AREAS.OPERATIONS:
+      return "operations";
+    default:
+      return "admin";
+  }
+}
+
 // ─── Post-Auth Home Route ────────────────────────────────────────────────────
 // Role-aware landing: where each area's home lives. Used by RequireRole and
 // the auth page fallback.

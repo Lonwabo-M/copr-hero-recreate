@@ -7,7 +7,7 @@ import { ROLES } from "@/convex/schema";
 import { useAuth } from "@/hooks/use-auth";
 import { RequireAuth } from "@/components/RequireAuth";
 import { APP_AREAS, type AppArea } from "./navigation";
-import { canAccessArea, homeRouteForRole } from "./roleAccess";
+import { canAccessArea, homeRouteForRole, elevationRoleForArea, elevationAreaArg } from "./roleAccess";
 
 // ─── RoleGate ────────────────────────────────────────────────────────────────
 // Centralized, role-aware route guard layered on the existing RequireAuth
@@ -36,16 +36,15 @@ function AreaGuard({ area, children }: RoleGateProps) {
   const location = useLocation();
   const role = user?.role as string | undefined;
 
-  // ── Driver App elevation ─────────────────────────────────────────────────
-  // The Driver App is enforced server-side as ROLES.DRIVER — every driver
-  // query/mutation gates on it (e.g. tracking.queries.getMyCurrentDelivery,
-  // driver_earnings, the delivery state machine). A supervisory or test-elevated
-  // account is admitted to the area by the access rule but does not hold the
-  // role, so it would land on a workspace where each query throws
-  // "Only drivers can access this query". Testers must be able to walk this
-  // area end-to-end, so the guard claims the driver elevation itself (the same
-  // marked, reversible elevation the sidebar uses). Real staff are untouched:
-  // the claim is a no-op for them, and the backend still authorizes every call.
+  // ── Area elevation (driver / operations walk-ins) ────────────────────────
+  // Area access is broader than area ENFORCEMENT: a supervisory account (e.g.
+  // super_admin → Driver App) is admitted by the access rule, but the backend
+  // enforces each workspace's queries against the area's own role ("Only
+  // drivers can access this query"). A tester must be able to walk the area
+  // end-to-end, so the guard claims the marked, reversible elevation whenever
+  // the caller does not already hold the target role — exactly the elevation
+  // the sidebar access point claims. Real staff of the area are untouched (the
+  // claim is a no-op for them) and the backend still authorizes every call.
   const testAccessState = useQuery(
     api.users.testAccess.getTestAccessState,
     user ? {} : "skip",
@@ -54,31 +53,28 @@ function AreaGuard({ area, children }: RoleGateProps) {
   const [elevating, setElevating] = useState(false);
   const [elevationFailed, setElevationFailed] = useState(false);
   const elevationAttempted = useRef(false);
-  const needsDriverElevation =
-    area === APP_AREAS.DRIVER &&
-    role !== ROLES.DRIVER &&
-    testAccessState?.testElevated === true;
-  // While the elevation state is still resolving we must NOT render the
-  // workspace: rendering it under a non-driver role is precisely what surfaced
-  // "Only drivers can access this query" as a preview error.
-  const awaitingDriverElevationCheck =
-    area === APP_AREAS.DRIVER &&
-    role !== ROLES.DRIVER &&
-    testAccessState === undefined;
+  // The elevation state must have RESOLVED before we can decide: rendering the
+  // workspace while the check is in flight is precisely what surfaced "Only
+  // drivers can access this query" as a preview error.
+  const awaitingElevationCheck = testAccessState === undefined;
+  const needsElevation =
+    role !== undefined &&
+    (area === APP_AREAS.DRIVER || area === APP_AREAS.OPERATIONS) &&
+    role !== elevationRoleForArea(area);
 
   useEffect(() => {
-    if (!needsDriverElevation || elevationAttempted.current) return;
+    if (awaitingElevationCheck || !needsElevation || elevationAttempted.current) return;
     elevationAttempted.current = true;
     setElevating(true);
-    void claimTestAccess({ area: "driver" })
+    void claimTestAccess({ area: elevationAreaArg(area) })
       .catch((err) => {
-        console.error("[access] driver elevation failed:", err);
+        console.error("[access] area elevation failed:", err);
         setElevationFailed(true);
       })
       .finally(() => setElevating(false));
-  }, [needsDriverElevation, claimTestAccess]);
+  }, [awaitingElevationCheck, needsElevation, claimTestAccess]);
 
-  if (isLoading || awaitingDriverElevationCheck || needsDriverElevation || elevating) {
+  if (isLoading || awaitingElevationCheck || needsElevation || elevating) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-background">
         <Loader2 className="size-6 animate-spin text-muted-foreground" />
