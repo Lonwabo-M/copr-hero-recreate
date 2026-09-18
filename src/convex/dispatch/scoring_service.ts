@@ -110,7 +110,11 @@ export const DEFAULT_SCORING_CONFIG: ScoringConfig = {
   maxPendingOffers: 2,
   offerExpiryMs: 2 * 60 * 1000,     // 2 minutes
   minDriverRating: 3.0,
-  minDriverTrips: 5,
+  // 0 — freshly approved drivers are provisioned with totalTrips: 0, so any
+  // positive threshold permanently blocks them from dispatch (a new driver
+  // can never earn the trips the threshold demands). This contradicts the
+  // platform invariant that approval makes a driver dispatchable.
+  minDriverTrips: 0,
   locationStalenessThresholdMs: 15 * 60 * 1000, // 15 minutes
 };
 

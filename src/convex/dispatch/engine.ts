@@ -689,15 +689,18 @@ async function createDispatchOfferInternal(
     expiresAt: number;
   }
 ): Promise<Id<"dispatch_offers">> {
-  // Check for existing active offer for this delivery
-  const allOffers = await ctx.db
-    .query("dispatch_offers")
-    .withIndex("by_delivery", (q: any) => q.eq("deliveryId", args.deliveryId))
-    .collect();
-
-  const existingActive = allOffers.find((o: any) => o.status === "pending");
-  if (existingActive) {
-    throw new Error("Delivery already has an active offer");
+  // Uniqueness is per (delivery, driver): dispatch BROADCASTS offers to the
+  // top N candidates simultaneously (maxOffers, see dispatchDelivery), and
+  // exactly one of them wins — acceptDispatchOfferInternal atomically claims
+  // the delivery and cancels the sibling offers, and the expiry cron closes
+  // abandoned ones. The old "one active offer per delivery" guard made
+  // broadcast impossible: only the top-ranked driver could ever be offered
+  // the job, defeating the multi-offer dispatch model.
+  const existingForDriver = allOffers.find(
+    (o: any) => o.driverId === args.driverId && o.status === "pending",
+  );
+  if (existingForDriver) {
+    throw new Error("Driver already has a pending offer for this delivery");
   }
 
   return await ctx.db.insert("dispatch_offers", {
