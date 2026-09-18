@@ -43,6 +43,7 @@ import AdminDriverRoster from "./pages/AdminDriverRoster.tsx";
 import AdminAuditLog from "./pages/AdminAuditLog.tsx";
 import AdminPlatformHealth from "./pages/AdminPlatformHealth.tsx";
 import DriverApply from "./pages/DriverApply.tsx";
+import BookDemo from "./pages/BookDemo.tsx";
 
 /** Silent error boundary — if VlyToolbar crashes it renders nothing instead of
  *  crashing the whole app (e.g. hook errors in WebContainer environment). */
@@ -158,6 +159,7 @@ createRoot(document.getElementById("root")!).render(
             <Routes>
               <Route path="/" element={<Landing />} />
               <Route path="/auth" element={<AuthPage />} />
+              <Route path="/book-demo" element={<BookDemo />} />
               <Route path="/post-auth" element={<PostAuthRedirect />} />
 
               {/* ─── Customer Onboarding ───────────────────────────────── */}

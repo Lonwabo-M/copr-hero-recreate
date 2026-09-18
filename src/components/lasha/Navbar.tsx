@@ -35,23 +35,44 @@ export default function Navbar() {
   };
 
   return (
-    <nav
-      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
-        scrolled ? "shadow-lg" : ""
-      }`}
-      style={{ backgroundColor: "var(--lasha-navy)", height: 76 }}
-    >
-      <div
-        className="lasha-container h-full"
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr auto 1fr",
-          alignItems: "center",
-        }}
+    <>
+      <style>{`
+        .lasha-nav-inner {
+          width: min(1280px, 100%);
+          margin: 0 auto;
+          display: grid;
+          grid-template-columns: 1fr auto 1fr;
+          align-items: center;
+          padding: 0 18px;
+        }
+      `}</style>
+      {/* Floating glassmorphic pill — detached from the viewport edges, 16px
+          inset all round, 22px radius. At rest it sits as a translucent navy
+          pill on the hero; on scroll it gains backdrop blur (the glass read)
+          plus a soft shadow so it separates from content passing beneath. */}
+      <nav
+        className="lasha-nav-pill fixed left-0 right-0 z-50"
+        style={{ top: 16, paddingLeft: 16, paddingRight: 16 }}
       >
+        <div
+          className="lasha-nav-inner"
+          style={{
+            height: 64,
+            borderRadius: 22,
+            backgroundColor: scrolled ? "rgba(8, 38, 49, 0.72)" : "rgba(8, 38, 49, 0.55)",
+            backdropFilter: scrolled ? "blur(18px) saturate(150%)" : "blur(10px) saturate(130%)",
+            WebkitBackdropFilter: scrolled ? "blur(18px) saturate(150%)" : "blur(10px) saturate(130%)",
+            border: "1px solid rgba(255, 255, 255, 0.12)",
+            boxShadow: scrolled
+              ? "0 12px 32px rgba(4, 20, 26, 0.35)"
+              : "0 6px 20px rgba(4, 20, 26, 0.18)",
+            transition:
+              "background-color 300ms ease, box-shadow 300ms ease, backdrop-filter 300ms ease",
+          }}
+        >
         {/* Left rail — logo. 1fr on both sides keeps the desktop tabs truly
             centred between the rails regardless of logo/CTA width. */}
-        <div style={{ display: "flex", justifyContent: "flex-start" }}>
+        <div style={{ display: "flex", justifyContent: "flex-start", paddingLeft: 10 }}>
           <a href="/" aria-label="Lasha home" style={{ lineHeight: 0 }}>
             <LashaLogo height={30} asset="landing" />
           </a>
@@ -76,8 +97,29 @@ export default function Navbar() {
           ))}
         </div>
 
-        {/* Right rail — Login CTA on desktop; mobile toggle on small screens. */}
-        <div className="flex items-center justify-end">
+        {/* Right rail — Book-a-Demo + Login on desktop; mobile toggle on small screens. */}
+        <div className="flex items-center justify-end gap-3" style={{ paddingRight: 10 }}>
+          <a
+            href="/book-demo"
+            className="hidden lg:inline-flex text-[13px] font-semibold tracking-wide cursor-pointer no-underline"
+            style={{
+              color: "var(--lasha-cyan-light)",
+              border: "1px solid rgba(7, 148, 181, 0.45)",
+              borderRadius: 999,
+              padding: "8px 16px",
+              transition: "background-color 200ms ease, border-color 200ms ease",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = "rgba(7, 148, 181, 0.15)";
+              e.currentTarget.style.borderColor = "rgba(67, 184, 212, 0.7)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = "transparent";
+              e.currentTarget.style.borderColor = "rgba(7, 148, 181, 0.45)";
+            }}
+          >
+            Book a Demo
+          </a>
           <a
             href="/auth"
             className="lasha-btn-primary text-[13px] hidden lg:inline-flex"
@@ -92,34 +134,51 @@ export default function Navbar() {
             {mobileOpen ? <X size={24} /> : <Menu size={24} />}
           </button>
         </div>
-      </div>
+        </div>
+      </nav>
 
-      {/* Mobile menu */}
+      {/* Mobile menu — glass panel matching the pill language */}
       <div
-        className="lg:hidden fixed inset-0 transition-all duration-300"
+        className="lg:hidden fixed left-0 right-0 z-50 transition-all duration-300"
         style={{
-          top: 76,
-          backgroundColor: "var(--lasha-navy)",
+          top: 88,
+          paddingLeft: 16,
+          paddingRight: 16,
           opacity: mobileOpen ? 1 : 0,
           pointerEvents: mobileOpen ? "auto" : "none",
+          transform: mobileOpen ? "translateY(0)" : "translateY(-8px)",
         }}
       >
-        <div className="lasha-container flex flex-col gap-6 pt-10">
-          {navLinks.map((link) => (
-            <button
-              key={link.href}
-              onClick={() => handleNav(link.href)}
-              className="text-left text-[18px] font-semibold bg-transparent border-none cursor-pointer"
-              style={{ color: "rgba(255,255,255,0.85)" }}
-            >
-              {link.label}
-            </button>
-          ))}
-          <a href="/auth" className="lasha-btn-primary mt-4 justify-center text-[15px]">
-            Login
-          </a>
+        <div
+          style={{
+            borderRadius: 22,
+            backgroundColor: "rgba(8, 38, 49, 0.88)",
+            backdropFilter: "blur(18px) saturate(150%)",
+            WebkitBackdropFilter: "blur(18px) saturate(150%)",
+            border: "1px solid rgba(255, 255, 255, 0.12)",
+            boxShadow: "0 16px 40px rgba(4, 20, 26, 0.4)",
+          }}
+        >
+          <div className="flex flex-col gap-5 px-7 py-7">
+            {navLinks.map((link) => (
+              <button
+                key={link.href}
+                onClick={() => handleNav(link.href)}
+                className="text-left text-[17px] font-semibold bg-transparent border-none cursor-pointer"
+                style={{ color: "rgba(255,255,255,0.85)" }}
+              >
+                {link.label}
+              </button>
+            ))}
+            <a href="/book-demo" className="lasha-btn-secondary mt-2 justify-center text-[14px]" style={{ color: "var(--lasha-cyan-light)", borderColor: "rgba(7,148,181,0.45)" }}>
+              Book a Demo
+            </a>
+            <a href="/auth" className="lasha-btn-primary justify-center text-[15px]">
+              Login
+            </a>
+          </div>
         </div>
       </div>
-    </nav>
+    </>
   );
 }

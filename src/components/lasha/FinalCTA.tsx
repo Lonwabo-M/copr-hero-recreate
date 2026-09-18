@@ -41,7 +41,8 @@ export default function FinalCTA() {
             Get Started
             <ArrowRight size={16} />
           </a>
-          <button
+          <a
+            href="/book-demo"
             className="lasha-btn-secondary"
             style={{
               color: "var(--lasha-cyan-light)",
@@ -50,7 +51,7 @@ export default function FinalCTA() {
           >
             Talk to Lasha
             <ArrowRight size={14} />
-          </button>
+          </a>
         </div>
       </div>
     </section>

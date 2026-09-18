@@ -13,9 +13,9 @@ export default function About() {
           About Lasha
         </p>
 
-        {/* Two-column header — heading left, lede right, top-aligned so the
-            first lines of both columns sit on the same optical band. This is
-            the same header grammar as "04 / Sector Intelligence". */}
+        {/* Header row — heading left, founding line right. The lede hangs from
+            the same top edge as the heading (no arbitrary padding-top: the
+            shared border-top defines one alignment band for both columns). */}
         <div className="about-header">
           <h2
             className="lasha-heading lasha-heading-dark"
@@ -32,22 +32,30 @@ export default function About() {
           </p>
         </div>
 
-        {/* Content grid — the fleet cutout hangs from the same top edge as
-            the narrative column and its bottom edge is balanced against the
-            copy (not stretched), so neither column outruns the other. */}
-        <div className="about-grid">
-          {/* Left: editorial figure (catalog plate). */}
-          <div className="about-left">
-            <div className="about-figure">
-              <img
-                src="/assets/Taxi_image-removebg-preview.png"
-                alt="A Lasha delivery taxi"
-                loading="lazy"
-              />
-            </div>
+        {/* Feature figure — full-width editorial band above the two-column
+            body. The photograph (16:9, object-fit cover) sits inside a fixed-
+            aspect frame so the band's height is deterministic and the columns
+            below start on a clean, aligned edge. */}
+        <div className="about-figure">
+          <img
+            src="/assets/van-fleet.jpg"
+            alt="A Lasha delivery van on route"
+            loading="lazy"
+          />
+          <div className="about-figure-caption">
+            <span className="lasha-label" style={{ fontSize: 11 }}>
+              The network
+            </span>
+            <span>
+              Vetted local vehicles, moving business goods daily.
+            </span>
           </div>
+        </div>
 
-          {/* Right: narrative copy */}
+        {/* Body grid — copy left, stat rail right. Top edges aligned; the
+            stat rail's cards distribute against the copy's height so neither
+            column visually outruns the other. */}
+        <div className="about-grid">
           <div className="about-copy">
             <p>
               At Lasha, we believe the future of logistics in South Africa does
@@ -93,6 +101,35 @@ export default function About() {
               </p>
             </div>
           </div>
+
+          {/* Stat rail — the platform's real numbers, top-aligned with the
+              first paragraph and separated by hairlines, not cards-in-cards. */}
+          <aside className="about-stats" aria-label="Lasha by the numbers">
+            <div className="about-stat">
+              <span className="about-stat-value">250 000</span>
+              <span className="about-stat-label">
+                minibus taxis on South African roads — our idle capacity pool
+              </span>
+            </div>
+            <div className="about-stat">
+              <span className="about-stat-value">Same-day</span>
+              <span className="about-stat-label">
+                delivery windows, scheduled around real business operations
+              </span>
+            </div>
+            <div className="about-stat">
+              <span className="about-stat-value">100%</span>
+              <span className="about-stat-label">
+                of deliveries closed with digital proof of delivery
+              </span>
+            </div>
+            <div className="about-stat">
+              <span className="about-stat-value">Live</span>
+              <span className="about-stat-label">
+                GPS tracking on every vehicle, visible to every customer
+              </span>
+            </div>
+          </aside>
         </div>
       </div>
 
@@ -102,8 +139,8 @@ export default function About() {
           display: grid;
           grid-template-columns: 1.2fr 1fr;
           gap: 64px;
-          align-items: start;
-          margin-bottom: 72px;
+          align-items: stretch;
+          margin-bottom: 56px;
         }
         .about-lede {
           font-size: 13px;
@@ -112,41 +149,73 @@ export default function About() {
           text-transform: uppercase;
           line-height: 1.7;
           color: var(--lasha-cyan-light);
-          /* Optical baseline: nudge down so the lede's first line sits on
-             the same band as the heading's cap height. */
-          padding-top: 14px;
           margin: 0;
           max-width: 320px;
           justify-self: end;
+          align-self: start;
           text-align: left;
-          border-top: 1px solid rgba(255, 255, 255, 0.14);
+          border-top: 1px solid rgba(255, 255, 255, 0.18);
           padding-top: 18px;
+          /* The heading has no top rule — align the lede's first text line
+             with the heading's cap height instead of its border. */
+          transform: translateY(4px);
         }
 
-        /* ── Content grid ───────────────────────────────────────────── */
-        .about-grid {
-          display: grid;
-          grid-template-columns: 1fr 1.15fr;
-          gap: 72px;
-          align-items: start;
-        }
-        .about-left {
-          align-self: start;
-        }
+        /* ── Feature figure ─────────────────────────────────────────── */
         .about-figure {
-          border-radius: 16px;
+          position: relative;
+          border-radius: 20px;
+          overflow: hidden;
           border: 1px solid rgba(255, 255, 255, 0.12);
-          background: linear-gradient(180deg, #f6f8f9 0%, #e9eef0 100%);
-          padding: 32px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
+          aspect-ratio: 21 / 9;
+          margin-bottom: 64px;
+          background: var(--lasha-navy-dark);
         }
         .about-figure img {
+          position: absolute;
+          inset: 0;
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
           display: block;
-          /* Native resolution — never upscaled, so it stays crisp. */
-          width: min(100%, 300px);
-          height: auto;
+          /* Subtle navy wash keeps the photo inside the section's palette. */
+          filter: saturate(0.92);
+        }
+        .about-figure::after {
+          content: "";
+          position: absolute;
+          inset: 0;
+          background: linear-gradient(
+            180deg,
+            rgba(8, 38, 49, 0.05) 0%,
+            rgba(8, 38, 49, 0.55) 100%
+          );
+          pointer-events: none;
+        }
+        .about-figure-caption {
+          position: absolute;
+          left: 28px;
+          right: 28px;
+          bottom: 22px;
+          z-index: 1;
+          display: flex;
+          align-items: baseline;
+          justify-content: space-between;
+          gap: 24px;
+          flex-wrap: wrap;
+        }
+        .about-figure-caption > span:last-child {
+          font-size: 14px;
+          color: rgba(255, 255, 255, 0.85);
+          font-weight: 500;
+        }
+
+        /* ── Body grid ──────────────────────────────────────────────── */
+        .about-grid {
+          display: grid;
+          grid-template-columns: 1.6fr 1fr;
+          gap: 72px;
+          align-items: start;
         }
 
         /* ── Copy column ────────────────────────────────────────────── */
@@ -172,26 +241,67 @@ export default function About() {
           gap: 16px;
         }
 
+        /* ── Stat rail ──────────────────────────────────────────────── */
+        .about-stats {
+          display: flex;
+          flex-direction: column;
+          border-top: 1px solid rgba(255, 255, 255, 0.14);
+          align-self: stretch;
+        }
+        .about-stat {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          padding: 22px 0;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+        }
+        .about-stat:last-child {
+          border-bottom: none;
+        }
+        .about-stat-value {
+          font-size: 30px;
+          font-weight: 700;
+          letter-spacing: -0.02em;
+          color: #ffffff;
+          line-height: 1.1;
+        }
+        .about-stat-label {
+          font-size: 13px;
+          line-height: 1.6;
+          color: rgba(255, 255, 255, 0.55);
+          max-width: 300px;
+        }
+
         /* ── Responsive ─────────────────────────────────────────────── */
         @media (max-width: 900px) {
           .about-header {
             grid-template-columns: 1fr;
             gap: 32px;
-            margin-bottom: 56px;
+            margin-bottom: 44px;
           }
           .about-lede {
             justify-self: start;
-            padding-top: 14px;
+            transform: none;
             max-width: 420px;
+          }
+          .about-figure {
+            aspect-ratio: 16 / 9;
+            margin-bottom: 48px;
+          }
+          .about-figure-caption {
+            left: 18px;
+            right: 18px;
+            bottom: 14px;
           }
           .about-grid {
             grid-template-columns: 1fr;
-            gap: 48px;
+            gap: 44px;
           }
-          .about-figure {
-            max-width: 520px;
-            margin-inline: auto;
-            width: 100%;
+          .about-stats {
+            border-top: none;
+          }
+          .about-stat {
+            padding: 18px 0;
           }
         }
       `}</style>

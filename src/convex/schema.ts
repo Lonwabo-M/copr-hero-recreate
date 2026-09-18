@@ -995,6 +995,31 @@ const schema = defineSchema(
       .index("by_name_time", ["metricName", "timestamp"])
       .index("by_period", ["periodStart", "periodEnd"])
       .index("by_name_period", ["metricName", "periodStart"]),
+
+    // ─── Demo Requests ────────────────────────────────────────────────────
+    // Sales leads from the public "Book a Demo" page. Public-unsubmittable
+    // (no auth): rate-limited by honeypot + submission window, validated
+    // server-side. New requests notify operations via the notification
+    // service so the sales follow-up loop is the same one deliveries use.
+    demo_requests: defineTable({
+      businessName: v.string(),
+      contactName: v.string(),
+      email: v.string(),
+      phone: v.string(),
+      businessType: v.optional(v.string()),
+      monthlyVolume: v.optional(v.string()),
+      message: v.optional(v.string()),
+      status: v.union(
+        v.literal("new"),
+        v.literal("contacted"),
+        v.literal("qualified"),
+        v.literal("closed"),
+      ),
+      source: v.string(),           // e.g. "landing-final-cta", "about-page"
+      submittedAt: v.number(),
+    })
+      .index("by_status", ["status", "submittedAt"])
+      .index("by_email", ["email"]),
   },
   {
     schemaValidation: false,
