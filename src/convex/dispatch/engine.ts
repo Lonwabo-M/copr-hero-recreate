@@ -250,6 +250,24 @@ export const dispatchDelivery = mutation({
       }
     }
 
+    // 10. Hold the delivery in ASSIGNED while offers are outstanding — the
+    // delivery is "claimed in principle" by the broadcast. acceptDispatch-
+    // OfferInternal requires ASSIGNED (it re-verifies courierId-unclaimed
+    // before the atomic claim), so offers against a pending_dispatch delivery
+    // could never be accepted — the pump surfaced this as every driver accept
+    // failing with "Delivery is in \"pending_dispatch\" state". ASSIGNED is
+    // also the manual-assignment state, so Operations sees offer-hold and
+    // manual assignment identically until a driver accepts (→
+    // DRIVER_ACCEPTED). If no driver accepts before the offers expire, the
+    // delivery stays ASSIGNED and is re-dispatchable via the existing
+    // reassignDelivery flow (operations) or a new broadcast.
+    if (offersSent > 0) {
+      await ctx.db.patch(args.deliveryId, {
+        status: DELIVERY_STATUS.ASSIGNED,
+        assignedAt: now,
+      });
+    }
+
     return {
       success: offersSent > 0,
       message: offersSent > 0
@@ -696,7 +714,14 @@ async function createDispatchOfferInternal(
   // abandoned ones. The old "one active offer per delivery" guard made
   // broadcast impossible: only the top-ranked driver could ever be offered
   // the job, defeating the multi-offer dispatch model.
-  const existingForDriver = allOffers.find(
+  // (Pump fix: the guard below used to reference a removed `allOffers`
+  // variable — a dangling compile error. It now reads the delivery's real
+  // offers from the by_delivery index.)
+  const existingForDelivery = await ctx.db
+    .query("dispatch_offers")
+    .withIndex("by_delivery", (q: any) => q.eq("deliveryId", args.deliveryId))
+    .collect();
+  const existingForDriver = existingForDelivery.find(
     (o: any) => o.driverId === args.driverId && o.status === "pending",
   );
   if (existingForDriver) {

@@ -163,6 +163,50 @@ export const getMyDriverApplication = query({
   },
 });
 
+/**
+ * The signed-in driver's own dispatch identity: profile + ACTIVE vehicle with
+ * its real _id (the Operations roster's vehicle is a display projection).
+ * Session-derived only — a driver can never select another driver's data.
+ * Used by the Driver App vehicle card and by manual-assignment flows that
+ * need the driver's active vehicle id.
+ */
+export const getMyDispatchIdentity = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) return null;
+
+    const profile = await ctx.db
+      .query("driver_profiles")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .first();
+    if (!profile) return null;
+
+    const vehicle =
+      profile.currentVehicleId != null
+        ? await ctx.db.get(profile.currentVehicleId)
+        : null;
+
+    return {
+      profileId: profile._id,
+      licenseClass: profile.licenseClass,
+      isAvailable: profile.isAvailable,
+      rating: profile.rating,
+      totalTrips: profile.totalTrips,
+      vehicle:
+        vehicle && vehicle.isActive
+          ? {
+              _id: vehicle._id,
+              make: vehicle.make,
+              model: vehicle.model,
+              registration: vehicle.registration,
+              capacityKg: vehicle.capacity,
+            }
+          : null,
+    };
+  },
+});
+
 // ─── REVIEW (Admin Portal) ───────────────────────────────────────────────────
 
 function requireAdmin(user: { role?: string }): void {
