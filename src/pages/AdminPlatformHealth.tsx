@@ -33,6 +33,9 @@ function fmtMetric(name: string): string {
 
 export default function AdminPlatformHealth() {
   const metrics = useQuery(api.metrics.service.getDashboardMetrics, {});
+  // Ops workload analytics — the "what would automation be worth" panel,
+  // derived from real audit/tracking/delivery records (never estimates).
+  const workload = useQuery(api.admin.workload.getOpsWorkload, {});
 
   if (metrics === undefined) {
     return (
@@ -177,6 +180,40 @@ export default function AdminPlatformHealth() {
               </div>
             </div>
           ))}
+        </div>
+
+        {/* Ops workload / automation-coverage panel — real tracked numbers,
+            derived from the audit + tracking + delivery records. This is the
+            evidence base for automation decisions (what absorbs manual work,
+            what the exception rate actually is). */}
+        <div className="ops-stat-card" style={{ padding: 18, marginTop: 14, cursor: "default" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+            <span className="ops-stat-icon" style={{ width: 30, height: 30, background: "rgba(10,124,66,0.1)", color: "#0A7C42" }}>
+              <Activity size={16} />
+            </span>
+            <strong style={{ fontSize: 13.5 }}>
+              Ops workload · automation coverage{workload ? ` (${workload.windowDays}d)` : ""}
+            </strong>
+          </div>
+          {workload === undefined ? (
+            <Loader2 size={16} className="animate-spin" style={{ color: "#999" }} />
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 10 }}>
+              {[
+                { label: "Deliveries in window", value: String(workload.totals.deliveries) },
+                { label: "Automated transitions", value: String(workload.automatedTransitions) },
+                { label: "Manual dispatch actions", value: String(workload.manualDispatchActions) },
+                { label: "Exception rate", value: `${workload.totals.exceptionRatePct}%` },
+                { label: "Driver approvals", value: String(workload.driverApprovals) },
+              ].map((r) => (
+                <div key={r.label} style={{ border: "1px solid var(--border-light)", borderRadius: 10, padding: "10px 12px" }}>
+                  <div style={{ fontSize: 18, fontWeight: 700, letterSpacing: "-0.02em" }}>{r.value}</div>
+                  <div style={{ fontSize: 11.5, color: "#666", marginTop: 2 }}>{r.label}</div>
+                </div>
+              ))}
+            </div>
+          )}
+          <div style={{ fontSize: 11, color: "#999", marginTop: 10 }}>{workload?.basis ?? ""}</div>
         </div>
       </main>
     </AdminShell>
