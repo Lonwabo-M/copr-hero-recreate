@@ -35,6 +35,12 @@ function validateNewPassword(password: string, confirm: string): string | null {
  *  database IDs, or configuration. */
 function safeAuthError(err: unknown, fallback: string): string {
   const message = err instanceof Error ? err.message : "";
+  if (
+    message.toLowerCase().includes("usage limit") ||
+    message.toLowerCase().includes("exceeded a configured")
+  ) {
+    return "Platform database is paused (usage limit reached). Sign-in is unavailable until the limit is raised in the Convex dashboard settings.";
+  }
   if (message.includes("already exists")) return "An account with this email already exists";
   if (message.includes("Invalid credentials") || message.includes("InvalidSecret")) {
     return "Invalid email or password";
@@ -872,7 +878,7 @@ function DevQuickSignIn({ onError, setLoading }: { onError: (m: string) => void;
       const returnTo = searchParams.get("returnTo");
       navigate(returnTo ?? acct.dest, { replace: true });
     } catch (err: unknown) {
-      onError(safeAuthError(err, "Dev sign-in failed — is the deployment resumed?"));
+      onError(safeAuthError(err, "Dev sign-in failed — the platform database may be paused (usage limit)."));
       setBusy(null);
     } finally {
       setLoading(false);
