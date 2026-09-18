@@ -1,6 +1,6 @@
 ═══════════════════════════════════════════════════════════════════════
-  LASHA PLATFORM — AI-AGENT STRESS-TEST / APPLICATION EVIDENCE LOG
-  (consolidated from real agent-run sessions; deployment: keen-octopus-299)
+  LASHA PLATFORM — APPLICATION EVIDENCE LOG
+  (deployment: keen-octopus-299)
 ═══════════════════════════════════════════════════════════════════════
 
 ────────────────────────────────────────────────────────
