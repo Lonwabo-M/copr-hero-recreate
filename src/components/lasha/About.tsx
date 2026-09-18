@@ -9,7 +9,7 @@ export default function About() {
         {/* Section label — identical placement pattern to every other Lasha
             section ("04 / Sector Intelligence", etc.): first element, top of
             the container, above the content grid. */}
-        <p className="lasha-label mb-12" style={{ color: "var(--lasha-cyan-light)" }}>
+        <p className="lasha-label mb-12">
           About Lasha
         </p>
 
@@ -75,7 +75,7 @@ export default function About() {
             </p>
 
             <div className="about-support">
-              <p className="lasha-label" style={{ color: "var(--lasha-cyan-light)", fontSize: 11 }}>
+              <p className="lasha-label" style={{ fontSize: 11 }}>
                 Support
               </p>
               <p>

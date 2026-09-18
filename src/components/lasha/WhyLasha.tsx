@@ -34,7 +34,7 @@ export default function WhyLasha() {
     >
       <div className="lasha-container">
         {/* Technical label */}
-        <p className="lasha-label mb-12">01 / The Operating Edge</p>
+        <p className="lasha-label lasha-label--ink mb-12">01 / The Operating Edge</p>
 
         {/* Two-column intro */}
         <div
@@ -65,7 +65,7 @@ export default function WhyLasha() {
             "Scale" story first, then the three operating-edge cards follow. */}
         <div className="lasha-card why-fleet">
           <div className="why-fleet-copy">
-            <span className="lasha-label" style={{ display: "block", marginBottom: 16 }}>
+            <span className="lasha-label lasha-label--ink" style={{ display: "block", marginBottom: 16 }}>
               04 / The Fleet
             </span>
             <h3
@@ -118,7 +118,7 @@ export default function WhyLasha() {
               >
                 {/* Number */}
                 <span
-                  className="lasha-label"
+                  className="lasha-label lasha-label--ink"
                   style={{ display: "block", marginBottom: 20, fontSize: 12 }}
                 >
                   {b.number}

@@ -81,7 +81,7 @@ export default function FAQ() {
 
       <div className="lasha-container" style={{ position: "relative" }}>
         {/* Technical label */}
-        <p className="lasha-label mb-6" style={{ color: "var(--lasha-cyan-light)" }}>
+        <p className="lasha-label mb-6">
           06 / Field Notes
         </p>
 

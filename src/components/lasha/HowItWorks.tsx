@@ -63,7 +63,7 @@ function StepVisual({ visual }: { visual: Step["visual"] }) {
         }}
       >
         <p
-          className="lasha-label"
+          className="lasha-label lasha-label--ink"
           style={{ fontSize: 9, marginBottom: 24, color: "var(--lasha-muted)" }}
         >
           New Delivery Request
@@ -77,7 +77,7 @@ function StepVisual({ visual }: { visual: Step["visual"] }) {
           ].map((f) => (
             <div key={f.label}>
               <p
-                className="lasha-label"
+                className="lasha-label lasha-label--ink"
                 style={{
                   fontSize: 9,
                   color: "var(--lasha-muted)",
@@ -345,7 +345,7 @@ export default function HowItWorks() {
     >
       <div className="lasha-container">
         {/* Technical label */}
-        <p className="lasha-label mb-6" style={{ textAlign: "center" }}>
+        <p className="lasha-label lasha-label--ink mb-6" style={{ textAlign: "center" }}>
           03 / The Handoff
         </p>
 
@@ -419,7 +419,7 @@ export default function HowItWorks() {
           >
             <div className="flex items-center justify-between mb-6">
               <div>
-                <p className="lasha-label" style={{ marginBottom: 8 }}>
+                <p className="lasha-label lasha-label--ink" style={{ marginBottom: 8 }}>
                   Step {activeStep.number}
                 </p>
                 <h3

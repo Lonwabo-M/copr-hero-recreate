@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Menu, ShieldCheck, Loader2 } from "lucide-react";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { useQuery, useMutation } from "convex/react";
@@ -8,7 +8,7 @@ import { useNavigate } from "react-router";
 import Sidebar from "@/components/dashboard/Sidebar";
 import LashaLogo from "@/components/branding/LashaLogo";
 import { useAuth } from "@/hooks/use-auth";
-import { canAccessArea, AREA_HOME } from "./roleAccess";
+import { AREA_HOME } from "./roleAccess";
 import {
   AREA_LABELS,
   AREA_NAVIGATION,
@@ -45,20 +45,21 @@ export default function AppShell({
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { signOut } = useAuthActions();
   const navigate = useNavigate();
+  // Session user — used only for the business-identity subscription below;
+  // area admission is owned entirely by RoleGate.
+  const { user } = useAuth();
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
 
   const navItems: NavItem[] = AREA_NAVIGATION[area];
 
   // ── Cross-area access points (testing loop) ──────────────────────────────
-  // Sidebar entries for other areas claim a marked, reversible test elevation
-  // (users.testAccess) and navigate once the reactive user record carries the
-  // target role, so RoleGate admits the route without a refresh. Real staff
-  // navigate straight through. Inside an elevated area, one click releases and
-  // restores the pre-test role.
-  const { user } = useAuth();
-  const claimTestAccess = useMutation(api.users.testAccess.claimTestAreaAccess);
+  // Access points NAVIGATE FIRST — see handleOpenArea. The only cross-area
+  // state this shell owns is the "Release test access" affordance for the
+  // marked, reversible elevation (users.testAccess) the destination guard
+  // claimed. Real staff are never marked.
   const releaseTestAccess = useMutation(api.users.testAccess.releaseTestAreaAccess);
   const testAccessState = useQuery(api.users.testAccess.getTestAccessState, {});
-  const [pendingArea, setPendingArea] = useState<AppArea | null>(null);
   const [releasing, setReleasing] = useState(false);
   const [accessError, setAccessError] = useState<string | null>(null);
 
@@ -69,47 +70,14 @@ export default function AppShell({
   // (otherwise the button vanishes the moment elevation lands and the tester
   // is trapped in the area).
 
-  // Complete the area switch as soon as the reactive role admits the target
-  // area. Checking the AREA ACCESS RULE (not role equality) also covers users
-  // whose real role already admits the area (e.g. an admin moving into the
-  // Operations Centre).
-  useEffect(() => {
-    if (pendingArea && canAccessArea(user?.role as string | undefined, pendingArea)) {
-      setPendingArea(null);
-      navigate(AREA_HOME[pendingArea]);
-    }
-  }, [pendingArea, user?.role, navigate]);
-
-  // Safety net: the elevated role is already committed server-side by the time
-  // the claim mutation resolves, so if the reactive role never arrives (dropped
-  // subscription / stale cache) a full document load still lands the user in
-  // the target area instead of silently doing nothing on click.
-  useEffect(() => {
-    if (!pendingArea) return;
-    const timer = window.setTimeout(() => {
-      window.location.assign(AREA_HOME[pendingArea]);
-    }, 1500);
-    return () => window.clearTimeout(timer);
-  }, [pendingArea]);
-
-  const handleOpenArea = async (target: AppArea) => {
+  const handleOpenArea = (target: AppArea) => {
+    // Immediate client-side navigation. The destination route's RoleGate owns
+    // admission: for walk-ins it claims the reversible elevation with its own
+    // spinner and reload safety net. Racing the elevation from HERE is what
+    // broke Driver/Admin clicks — the role flip unmounts the current route's
+    // guard mid-navigation and bounces the user back to their old area.
     setAccessError(null);
-    if (canAccessArea(user?.role as string | undefined, target)) {
-      navigate(AREA_HOME[target]);
-      return;
-    }
-    setPendingArea(target);
-    try {
-      await claimTestAccess({ area: target as "driver" | "operations" | "admin" });
-    } catch (err) {
-      // Never fail silently: a swallowed error is indistinguishable from a
-      // dead sidebar entry.
-      setPendingArea(null);
-      const message =
-        err instanceof Error ? err.message : `Could not open the ${target} area`;
-      setAccessError(message);
-      console.error(`[access] opening the ${target} area failed:`, message);
-    }
+    navigateRef.current(AREA_HOME[target]);
   };
 
   const handleReleaseTestAccess = async () => {
@@ -151,11 +119,10 @@ export default function AppShell({
   }, []);
 
   const handleNav = (item: NavItem) => {
-    // Cross-area sidebar entries are the access points: navigate directly when
-    // the role already admits the area, claim reversible test elevation
-    // otherwise, and always land once the reactive role arrives. Every
-    // cross-area route MUST be mapped here — an unmapped route navigates raw
-    // and RoleGate silently bounces the user back to their home area (the
+    // Cross-area sidebar entries are the access points: navigate immediately
+    // and let the destination RoleGate admit or elevate. Every cross-area
+    // route MUST be mapped here — an unmapped route navigates raw and
+    // RoleGate silently bounces the user back to their home area (the
     // "Admin Portal does nothing" bug).
     const crossArea: Partial<Record<string, AppArea>> = {
       "/operations": "operations",
@@ -165,7 +132,7 @@ export default function AppShell({
     };
     const targetArea = crossArea[item.route] ?? (item.route.startsWith("/admin") ? "admin" : undefined);
     if (targetArea) {
-      void handleOpenArea(targetArea);
+      handleOpenArea(targetArea);
       return;
     }
     navigate(item.route);

@@ -53,6 +53,9 @@
   --lasha-cyan: #0794b5;
   --lasha-cyan-light: #43b8d4;
   --lasha-lime: #e5f34a;
+  /* Deepened lime for light surfaces — raw lime on ivory is unreadable at
+     label sizes; the ink variant keeps the hue at legible depth. */
+  --lasha-lime-ink: #647208;
   --lasha-ivory: #f4f2e9;
   --lasha-ivory-light: #f8f6ef;
   --lasha-ivory-dark: #ebe9df;
@@ -134,13 +137,19 @@ body {
 }
 
 /* Section Labels */
+/* Labels carry the Lasha lime by default (navy surfaces). On ivory/white use
+   .lasha-label--ink — same hue, legible depth. */
 .lasha-label {
   font-size: 10px;
   letter-spacing: 0.20em;
   font-weight: 500;
   text-transform: uppercase;
-  color: var(--lasha-cyan);
+  color: var(--lasha-lime);
   font-family: "Inter", monospace;
+}
+
+.lasha-label--ink {
+  color: var(--lasha-lime-ink);
 }
 
 /* Headings */

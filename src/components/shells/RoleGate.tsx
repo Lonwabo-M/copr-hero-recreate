@@ -36,15 +36,20 @@ function AreaGuard({ area, children }: RoleGateProps) {
   const location = useLocation();
   const role = user?.role as string | undefined;
 
-  // ── Area elevation (driver / operations walk-ins) ────────────────────────
+  // ── Area elevation (driver / operations / admin walk-ins) ────────────────────────
   // Area access is broader than area ENFORCEMENT: a supervisory account (e.g.
   // super_admin → Driver App) is admitted by the access rule, but the backend
   // enforces each workspace's queries against the area's own role ("Only
   // drivers can access this query"). A tester must be able to walk the area
   // end-to-end, so the guard claims the marked, reversible elevation whenever
   // the caller does not already hold the target role — exactly the elevation
-  // the sidebar access point claims. Real staff of the area are untouched (the
-  // claim is a no-op for them) and the backend still authorizes every call.
+  // the sidebar access point relies on (AppShell navigates first; THIS guard
+  // is the sole owner of the claim, so a role flip can never unmount a guard
+  // mid-navigation). Admin is included: an operations walk-in holds neither
+  // admin role, so without elevation the admin guard would bounce them back
+  // to /operations (the "Admin Portal lands in Operations" bug). Real staff
+  // of the area are untouched (the claim is a no-op for them) and the
+  // backend still authorizes every call.
   const testAccessState = useQuery(
     api.users.testAccess.getTestAccessState,
     user ? {} : "skip",
@@ -57,9 +62,10 @@ function AreaGuard({ area, children }: RoleGateProps) {
   // workspace while the check is in flight is precisely what surfaced "Only
   // drivers can access this query" as a preview error.
   const awaitingElevationCheck = testAccessState === undefined;
+  const admitted = role !== undefined && canAccessArea(role, area);
   const needsElevation =
     role !== undefined &&
-    (area === APP_AREAS.DRIVER || area === APP_AREAS.OPERATIONS) &&
+    area !== APP_AREAS.CUSTOMER &&
     role !== elevationRoleForArea(area);
 
   useEffect(() => {
@@ -101,7 +107,7 @@ function AreaGuard({ area, children }: RoleGateProps) {
     return <Navigate to={homeRouteForRole(role)} replace />;
   }
 
-  if (!canAccessArea(role, area)) {
+  if (!admitted) {
     // Redirect to the home of the area this user belongs to. Preserve the
     // attempted path so an authorized user can be sent back after switching
     // accounts (cheap, non-security-critical; Convex still authorizes data).

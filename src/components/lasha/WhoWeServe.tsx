@@ -9,7 +9,7 @@ export default function WhoWeServe() {
     >
       <div className="lasha-container">
         {/* Technical label */}
-        <p className="lasha-label mb-12" style={{ color: "var(--lasha-cyan-light)" }}>
+        <p className="lasha-label mb-12">
           02 / Who We Serve
         </p>
 
@@ -55,7 +55,7 @@ export default function WhoWeServe() {
               <Building2 size={24} style={{ color: "var(--lasha-cyan-light)" }} strokeWidth={1.5} />
               <span
                 className="lasha-label"
-                style={{ color: "var(--lasha-cyan-light)", fontSize: 11 }}
+                style={{ fontSize: 11 }}
               >
                 B2B Logistics
               </span>

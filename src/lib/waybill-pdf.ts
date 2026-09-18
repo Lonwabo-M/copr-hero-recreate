@@ -1,5 +1,5 @@
 import { jsPDF } from "jspdf";
-import logoCrop from "@/assets/22-crop.png";
+import logoMark from "@/assets/22-mark.png";
 
 // ─── Waybill PDF ─────────────────────────────────────────────────────────────
 // Renders the server-resolved waybill payload (see
@@ -129,25 +129,12 @@ export function downloadWaybillPdf(p: WaybillPayload): void {
   doc.setFillColor(...CYAN);
   doc.rect(0, 26, W, 1.2, "F");
 
-  // Real Lasha mark (the 22.png crop — transparent background, edge-to-edge
-  // mark) on a white chip so its navy strokes read against the navy band.
-  const markH = 9; // mm
-  const markW = markH * (418 / 117); // measured asset aspect (w/h)
-  const chipW = markW + 8;
-  const chipH = markH + 5;
-  const chipX = M - 2;
-  const chipY = (26 - chipH) / 2;
-  doc.setFillColor(255, 255, 255);
-  doc.roundedRect(chipX, chipY, chipW, chipH, 1.2, 1.2, "F");
-  doc.setFillColor(...CYAN);
-  doc.rect(chipX, chipY + chipH - 0.8, chipW, 0.8, "F");
-  doc.addImage(logoCrop, "PNG", chipX + 4, chipY + 2.5, markW, markH);
-
-  // Wordmark beside the chip.
-  doc.setTextColor(255, 255, 255);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(17);
-  doc.text("Lasha", chipX + chipW + 5, 15.5);
+  // Real Lasha mark (22-mark.png — the colored mark alone, transparent
+  // background) placed edge-to-edge on the navy band. No white chip behind it
+  // and no separate "Lasha" word beside it — the mark IS the brand line.
+  const markH = 12; // mm
+  const markW = markH * (152 / 117); // measured asset aspect (w/h)
+  doc.addImage(logoMark, "PNG", M, (26 - markH) / 2, markW, markH);
 
   // Right-aligned document class.
   doc.setFont("helvetica", "bold");
@@ -168,29 +155,68 @@ export function downloadWaybillPdf(p: WaybillPayload): void {
   doc.setDrawColor(...RULE);
   doc.roundedRect(M, y, CONTENT_W, refH, 1.5, 1.5, "S");
 
-  const colW = CONTENT_W / 4;
+  // Columns are SIZED TO THEIR CONTENT, not quartered: waybill/tracking
+  // numbers are long fixed-width strings and equal columns overflowed into
+  // the next column (the reported "WAYBILL NO. over TRACKING NO." overlap).
+  // The two reference numbers get exactly the width their text needs; Status
+  // and Issue Date share the remainder. If nothing fits at 11.5pt the whole
+  // row downshifts a notch at a time.
+  const refPad = 5; // left pad inside a column
+  const refGap = 4; // breathing room after a value before its divider
+  const measureRef = (text: string, size: number) => {
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(size);
+    const wmm = doc.getTextWidth(text);
+    doc.setFont("helvetica", "normal");
+    return wmm;
+  };
+
+  const refValues = [
+    p.waybillNumber,
+    p.trackingNumber,
+    titleCase(p.status),
+    fmtDateTime(p.createdAt).split(",")[0],
+  ];
+  let refSize = 11.5;
+  for (; refSize >= 8; refSize -= 0.5) {
+    const needed =
+      refValues.reduce((sum, v) => sum + measureRef(v, refSize), 0) +
+      refPad * 2 * 4 +
+      refGap * 3;
+    if (needed <= CONTENT_W) break;
+  }
+  const wbW = measureRef(refValues[0], refSize) + refPad * 2 + refGap;
+  const trW = measureRef(refValues[1], refSize) + refPad * 2 + refGap;
+  const remainingW = CONTENT_W - wbW - trW;
+  const colBounds = [
+    M,
+    M + wbW,
+    M + wbW + trW,
+    M + wbW + trW + remainingW / 2,
+    W - M,
+  ];
   const refRow = (
     label: string,
     value: string,
     col: number,
     valueColor: [number, number, number] = INK,
   ) => {
-    const cx = M + col * colW + 5;
+    const cx = colBounds[col] + refPad;
     sectionLabel(doc, label, cx, y + 6);
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(11.5);
+    doc.setFontSize(refSize);
     doc.setTextColor(...valueColor);
     doc.text(value, cx, y + 12.2);
     doc.setFont("helvetica", "normal");
   };
 
-  refRow("Waybill No.", p.waybillNumber, 0, CYAN);
-  refRow("Tracking No.", p.trackingNumber, 1);
-  refRow("Status", titleCase(p.status), 2);
-  refRow("Issue Date", fmtDateTime(p.createdAt).split(",")[0], 3);
+  refRow("Waybill No.", refValues[0], 0, CYAN);
+  refRow("Tracking No.", refValues[1], 1);
+  refRow("Status", refValues[2], 2);
+  refRow("Issue Date", refValues[3], 3);
   doc.setDrawColor(...RULE);
   for (let i = 1; i < 4; i++) {
-    doc.line(M + i * colW, y + 3, M + i * colW, y + refH - 3);
+    doc.line(colBounds[i], y + 3, colBounds[i], y + refH - 3);
   }
 
   // ── 3. SHIP FROM / SHIP TO panels ──────────────────────────────────────────

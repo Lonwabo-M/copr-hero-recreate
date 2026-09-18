@@ -35,7 +35,7 @@ export default function SectorIntelligence() {
     >
       <div className="lasha-container">
         {/* Technical label */}
-        <p className="lasha-label mb-12">04 / Sector Intelligence</p>
+        <p className="lasha-label lasha-label--ink mb-12">04 / Sector Intelligence</p>
 
         {/* Two-column header */}
         <div

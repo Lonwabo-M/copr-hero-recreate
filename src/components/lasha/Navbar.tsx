@@ -41,14 +41,27 @@ export default function Navbar() {
       }`}
       style={{ backgroundColor: "var(--lasha-navy)", height: 76 }}
     >
-      <div className="lasha-container flex items-center justify-between h-full">
-        {/* Logo — the landing-page brand asset, cropped to its visible mark */}
-        <a href="/" aria-label="Lasha home" style={{ lineHeight: 0 }}>
-          <LashaLogo height={30} asset="landing" />
-        </a>
+      <div
+        className="lasha-container h-full"
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr auto 1fr",
+          alignItems: "center",
+        }}
+      >
+        {/* Left rail — logo. 1fr on both sides keeps the desktop tabs truly
+            centred between the rails regardless of logo/CTA width. */}
+        <div style={{ display: "flex", justifyContent: "flex-start" }}>
+          <a href="/" aria-label="Lasha home" style={{ lineHeight: 0 }}>
+            <LashaLogo height={30} asset="landing" />
+          </a>
+        </div>
 
-        {/* Desktop links */}
-        <div className="hidden lg:flex items-center gap-8">
+        {/* Centred desktop links */}
+        <div
+          className="hidden lg:flex items-center gap-8"
+          style={{ justifySelf: "center" }}
+        >
           {navLinks.map((link) => (
             <button
               key={link.href}
@@ -66,14 +79,19 @@ export default function Navbar() {
           </a>
         </div>
 
-        {/* Mobile toggle */}
-        <button
-          className="lg:hidden bg-transparent border-none text-white cursor-pointer p-2"
-          onClick={() => setMobileOpen(!mobileOpen)}
-          aria-label="Toggle menu"
+        {/* Right rail — spacer that mirrors the logo's column so the tabs sit
+            dead-centre; on mobile it holds the toggle. */}
+        <div
+          className="flex items-center justify-end"
         >
-          {mobileOpen ? <X size={24} /> : <Menu size={24} />}
-        </button>
+          <button
+            className="lg:hidden bg-transparent border-none text-white cursor-pointer p-2"
+            onClick={() => setMobileOpen(!mobileOpen)}
+            aria-label="Toggle menu"
+          >
+            {mobileOpen ? <X size={24} /> : <Menu size={24} />}
+          </button>
+        </div>
       </div>
 
       {/* Mobile menu */}
