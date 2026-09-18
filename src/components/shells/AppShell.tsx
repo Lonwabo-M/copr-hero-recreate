@@ -119,6 +119,15 @@ export default function AppShell({
   }, []);
 
   const handleNav = (item: NavItem) => {
+    // Routes INSIDE the shell's own area navigate directly — routing them
+    // through the area switch sent every in-area click to the area home (the
+    // "only Driver Approvals is clickable" admin bug: /admin/pricing-rules
+    // was treated as an access point and rerouted to /admin/driver-approvals).
+    const sameAreaRoutes = new Set(AREA_NAVIGATION[area].map((n) => n.route));
+    if (sameAreaRoutes.has(item.route)) {
+      navigate(item.route);
+      return;
+    }
     // Cross-area sidebar entries are the access points: navigate immediately
     // and let the destination RoleGate admit or elevate. Every cross-area
     // route MUST be mapped here — an unmapped route navigates raw and

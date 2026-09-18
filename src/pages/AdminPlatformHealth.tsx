@@ -38,9 +38,9 @@ export default function AdminPlatformHealth() {
     return (
       <AdminShell activeItem="Platform Health">
         <main className="ops-main">
-          <div className="ops-page-head">
-            <span className="ops-page-eyebrow">Admin Portal</span>
-            <h1 className="ops-page-title">Platform Health</h1>
+          <div className="ops-admin-head">
+            <h1 className="ops-admin-portal">Admin Portal</h1>
+            <span className="ops-admin-section">Platform Health</span>
           </div>
           <div style={{ display: "flex", justifyContent: "center", padding: 48 }}>
             <Loader2 size={22} className="animate-spin" style={{ color: "#999" }} />
@@ -121,9 +121,9 @@ export default function AdminPlatformHealth() {
   return (
     <AdminShell activeItem="Platform Health">
       <main className="ops-main">
-        <div className="ops-page-head">
-          <span className="ops-page-eyebrow">Admin Portal</span>
-          <h1 className="ops-page-title">Platform Health</h1>
+        <div className="ops-admin-head">
+          <h1 className="ops-admin-portal">Admin Portal</h1>
+          <span className="ops-admin-section">Platform Health</span>
         </div>
 
         {/* Headline outcomes */}

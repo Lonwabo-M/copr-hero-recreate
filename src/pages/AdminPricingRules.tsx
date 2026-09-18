@@ -111,9 +111,9 @@ export default function AdminPricingRules() {
   return (
     <AdminShell activeItem="Pricing Rules">
       <main className="ops-main">
-        <div className="ops-page-head">
-          <span className="ops-page-eyebrow">Admin Portal</span>
-          <h1 className="ops-page-title">Pricing Rules</h1>
+        <div className="ops-admin-head">
+          <h1 className="ops-admin-portal">Admin Portal</h1>
+          <span className="ops-admin-section">Pricing Rules</span>
         </div>
         <p style={{ marginTop: -6, marginBottom: 18, fontSize: 13, color: "#666", maxWidth: 640 }}>
           The live rule matrix behind every quote. Retiring a rule stops new quotes

@@ -84,13 +84,18 @@ export const getMyDispatchOffers = query({
     const user = await getCurrentAuthUser(ctx);
     if (!user) throw new Error("Authentication required");
 
-    // Get pending offers for this driver
-    const offers = await ctx.db
+    // Pending offers for this driver — index-led (`by_driver_status`), so the
+    // scan scales with the driver's LIVE offers, not their lifetime offer
+    // history. Pressure tests showed drivers accumulate dozens of expired
+    // offers within a single pump; the previous full-driver scan filtered
+    // `pending` in memory, an unbounded per-poll cost on the hottest driver
+    // query (offers is polled continuously while a driver is on shift).
+    const pendingOffers = await ctx.db
       .query("dispatch_offers")
-      .withIndex("by_driver", (q) => q.eq("driverId", user.userId))
+      .withIndex("by_driver_status", (q) =>
+        q.eq("driverId", user.userId).eq("status", "pending")
+      )
       .collect();
-
-    const pendingOffers = offers.filter((o) => o.status === "pending");
 
     // Enrich with delivery data
     const enrichedOffers = [];
@@ -485,10 +490,18 @@ export const reassignDelivery = mutation({
  * Shared expiry-processing core (existing logic, extracted for reuse).
  *
  * Closes every dispatch offer whose `expiresAt` has passed while it is still
- * `pending`. Accepted / rejected / expired / cancelled offers are untouched,
- * and no delivery state is modified here — a closed offer makes the delivery
- * eligible for the existing reassignment flows (manual Operations
- * re-dispatch or `requestReassignment`), which remain authoritative.
+ * `pending`. Accepted / rejected / expired / cancelled offers are untouched.
+ *
+ * Stuck-hold recovery: the broadcast holds its delivery in `assigned` while
+ * offers are outstanding. If every offer expires and no driver accepted, that
+ * hold is dead — the delivery would sit in `assigned` with nobody holding it
+ * until an operator noticed (the pressure-test waves surfaced exactly this:
+ * expired broadcasts never re-entered the dispatch queue). When a delivery's
+ * last pending offers expire here, and it is still `assigned` with no
+ * courier, it is returned to `pending_dispatch` (assignment fields cleared)
+ * so the existing re-dispatch flows can pick it up again. Accepted offers
+ * flip the status before expiry ever sees them, and a delivery with any
+ * still-pending offer is left alone, so this can never revoke a live claim.
  *
  * Idempotent: an already-`expired` offer no longer matches the predicate, so
  * repeated runs (cron, manual trigger, overlapping invocations) cannot
@@ -502,6 +515,7 @@ async function processExpiredOffersInternal(ctx: MutationCtx) {
   const now = Date.now();
   let expiredCount = 0;
   let failureCount = 0;
+  let recoveredCount = 0;
 
   const log = createLogger(LOG_CATEGORIES.DISPATCH);
 
@@ -517,6 +531,10 @@ async function processExpiredOffersInternal(ctx: MutationCtx) {
   const expiredOffers = candidateOffers.filter(
     (o) => o.status === "pending"
   );
+
+  // Deliveries whose LAST pending offers are closing in this pass — the only
+  // deliveries that can transition out of a dead offer-hold afterwards.
+  const affectedDeliveryIds = [...new Set(expiredOffers.map((o) => o.deliveryId))];
 
   for (const offer of expiredOffers) {
     try {
@@ -556,7 +574,57 @@ async function processExpiredOffersInternal(ctx: MutationCtx) {
     });
   }
 
-  return { expiredCount, failureCount };
+  // ── Stuck-hold recovery ────────────────────────────────────────────────
+  // A delivery held in `assigned` by a broadcast whose offers ALL just
+  // expired goes back to `pending_dispatch` so it can be dispatched again.
+  // Guards make this safe under races:
+  //   - still `assigned` (an accept moves it to DRIVER_ACCEPTED first, and
+  //     the recovery read happens after the offer writes commit),
+  //   - no courier (a claimed delivery is never touched),
+  //   - zero remaining pending offers for the delivery (a newer broadcast
+  //     that still has live offers is a valid hold).
+  for (const deliveryId of affectedDeliveryIds) {
+    try {
+      const remainingPending = await ctx.db
+        .query("dispatch_offers")
+        .withIndex("by_delivery_status", (q) =>
+          q.eq("deliveryId", deliveryId).eq("status", "pending")
+        )
+        .first();
+      if (remainingPending) continue;
+
+      const delivery = await ctx.db.get(deliveryId);
+      if (!delivery) continue;
+      if (delivery.status !== DELIVERY_STATUS.ASSIGNED || delivery.courierId) {
+        continue;
+      }
+
+      await ctx.db.patch(deliveryId, {
+        status: DELIVERY_STATUS.PENDING_DISPATCH,
+        courierId: undefined,
+        vehicleId: undefined,
+        assignedAt: undefined,
+        acceptedAt: undefined,
+      });
+      recoveredCount++;
+    } catch (error) {
+      failureCount++;
+      log.error("Failed to recover expired-offer delivery hold", {
+        metadata: {
+          deliveryId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      });
+    }
+  }
+
+  if (recoveredCount > 0) {
+    log.info("Recovered deliveries stuck in expired offer-hold", {
+      metadata: { recoveredCount },
+    });
+  }
+
+  return { expiredCount, failureCount, recoveredCount };
 }
 
 /**

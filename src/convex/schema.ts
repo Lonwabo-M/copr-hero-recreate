@@ -691,6 +691,7 @@ const schema = defineSchema(
       .index("by_delivery", ["deliveryId"])
       .index("by_driver", ["driverId"])
       .index("by_delivery_status", ["deliveryId", "status"])
+      .index("by_driver_status", ["driverId", "status"])
       .index("by_expires", ["expiresAt", "status"]),
 
     // ─── Pricing Rules ─────────────────────────────────────────────────────

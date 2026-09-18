@@ -76,9 +76,9 @@ export default function AdminAuditLog() {
   return (
     <AdminShell activeItem="Audit Log">
       <main className="ops-main">
-        <div className="ops-page-head">
-          <span className="ops-page-eyebrow">Admin Portal</span>
-          <h1 className="ops-page-title">Audit Log</h1>
+        <div className="ops-admin-head">
+          <h1 className="ops-admin-portal">Admin Portal</h1>
+          <span className="ops-admin-section">Audit Log</span>
         </div>
 
         <div className="ops-stats-grid" style={{ marginBottom: 18 }}>

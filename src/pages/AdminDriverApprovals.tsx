@@ -325,9 +325,9 @@ export default function DriverApprovals() {
   return (
     <AdminShell activeItem="Driver Approvals">
       <main className="ops-main">
-        <div className="ops-page-head">
-          <span className="ops-page-eyebrow">Admin Portal</span>
-          <h1 className="ops-page-title">Driver Approvals</h1>
+        <div className="ops-admin-head">
+          <h1 className="ops-admin-portal">Admin Portal</h1>
+          <span className="ops-admin-section">Driver Approvals</span>
         </div>
 
         {/* Pipeline: Capture → Review → Accept */}

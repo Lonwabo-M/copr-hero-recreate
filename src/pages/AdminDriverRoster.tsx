@@ -60,9 +60,9 @@ export default function AdminDriverRoster() {
   return (
     <AdminShell activeItem="Driver Roster">
       <main className="ops-main">
-        <div className="ops-page-head">
-          <span className="ops-page-eyebrow">Admin Portal</span>
-          <h1 className="ops-page-title">Driver Roster</h1>
+        <div className="ops-admin-head">
+          <h1 className="ops-admin-portal">Admin Portal</h1>
+          <span className="ops-admin-section">Driver Roster</span>
         </div>
 
         <div className="ops-stats-grid" style={{ marginBottom: 18 }}>
