@@ -417,6 +417,8 @@ export default function AuthPage({ redirectAfterAuth = "/post-auth" }: AuthProps
           By continuing, you agree to Lasha's Terms of Service and
           Privacy Policy.
         </p>
+
+        <DevQuickSignIn onError={setError} setLoading={setLoading} />
       </div>
     );
   } else if (mode === "signup") {
@@ -836,6 +838,97 @@ export default function AuthPage({ redirectAfterAuth = "/post-auth" }: AuthProps
           }
         }
       `}</style>
+    </div>
+  );
+}
+
+// ─── Dev quick sign-in ──────────────────────────────────────────────────────
+// Development/testing affordance: one-click sign-in to the REAL seeded agent
+// accounts from the stress-test waves (all platform data lives on them). It
+// uses the standard password sign-in flow — no backend changes, no elevated
+// privileges. Gated to non-production builds; hidden once the app is built
+// for production.
+const DEV_PASSWORD = "Lasha!Pump2026";
+const DEV_ACCOUNTS: { label: string; email: string; dest: string }[] = [
+  { label: "Admin", email: "agent.admin@lasha.test", dest: "/admin/driver-approvals" },
+  { label: "Operations", email: "agent.ops@lasha.test", dest: "/operations" },
+  { label: "Driver #1", email: "agent.driver1@lasha.test", dest: "/driver" },
+  { label: "Customer #1", email: "agent.customer1@lasha.test", dest: "/dashboard" },
+];
+
+function DevQuickSignIn({ onError, setLoading }: { onError: (m: string) => void; setLoading: (b: boolean) => void }) {
+  const { signIn } = useAuthActions();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const [busy, setBusy] = useState<string | null>(null);
+  if (import.meta.env.PROD) return null;
+
+  const quickSignIn = async (acct: (typeof DEV_ACCOUNTS)[number]) => {
+    onError("");
+    setBusy(acct.label);
+    setLoading(true);
+    try {
+      await signIn("password", { email: acct.email, password: DEV_PASSWORD, flow: "signIn" });
+      const returnTo = searchParams.get("returnTo");
+      navigate(returnTo ?? acct.dest, { replace: true });
+    } catch (err: unknown) {
+      onError(safeAuthError(err, "Dev sign-in failed — is the deployment resumed?"));
+      setBusy(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div
+      className="dev-quick-signin"
+      style={{
+        marginTop: 28,
+        paddingTop: 20,
+        borderTop: "1px dashed var(--lasha-border-light)",
+      }}
+    >
+      <p
+        style={{
+          fontSize: 9,
+          fontFamily: '"SF Mono", Menlo, monospace',
+          fontWeight: 600,
+          letterSpacing: "0.22em",
+          textTransform: "uppercase",
+          color: "var(--lasha-muted)",
+          marginBottom: 10,
+          textAlign: "center",
+        }}
+      >
+        Dev quick sign-in · seeded accounts
+      </p>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+        {DEV_ACCOUNTS.map((acct) => (
+          <button
+            key={acct.label}
+            type="button"
+            disabled={busy !== null}
+            onClick={() => void quickSignIn(acct)}
+            style={{
+              padding: "9px 10px",
+              fontSize: 12.5,
+              fontWeight: 600,
+              fontFamily: "Inter, sans-serif",
+              color: "var(--lasha-navy)",
+              backgroundColor: "#ffffff",
+              border: "1px solid var(--lasha-border-light)",
+              borderRadius: 9,
+              cursor: busy !== null ? "wait" : "pointer",
+              transition: "border-color 0.15s, background 0.15s",
+              opacity: busy !== null && busy !== acct.label ? 0.5 : 1,
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.borderColor = "var(--lasha-cyan)")}
+            onMouseLeave={(e) => (e.currentTarget.style.borderColor = "var(--lasha-border-light)")}
+          >
+            {busy === acct.label ? "Signing in…" : acct.label}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

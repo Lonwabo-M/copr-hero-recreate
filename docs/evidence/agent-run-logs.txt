@@ -1,0 +1,67 @@
+═══════════════════════════════════════════════════════════════════════
+  LASHA PLATFORM — AI-AGENT STRESS-TEST / APPLICATION EVIDENCE LOG
+  (consolidated from real agent-run sessions; deployment: keen-octopus-299)
+═══════════════════════════════════════════════════════════════════════
+
+────────────────────────────────────────────────────────
+LOG 1 — SCALE WAVE 4  (60 new customers + 5 new drivers)
+────────────────────────────────────────────────────────
+═══ WAVE: 60 customers + 5 drivers (start c160/d20, mode=full) ═══
+  ✓ 5 driver application(s) submitted
+  ✓ admin approved 5 application(s)
+  ✓ 60 customers onboarded, 60 orders created (R18317.45 quoted)
+  ✓ driver21 on-air at Johannesburg
+  ✓ driver22 on-air at Pretoria
+  ✓ driver23 on-air at Centurion
+  ✓ driver24 on-air at Midrand
+  ✓ driver25 on-air at Sandton
+  10/60 dispatched: 9 delivered / 1 declined / 0 no-eligible
+  20/60 dispatched: 18 delivered / 2 declined / 0 no-eligible
+  30/60 dispatched: 28 delivered / 2 declined / 0 no-eligible
+  40/60 dispatched: 37 delivered / 3 declined / 0 no-eligible
+  50/60 dispatched: 47 delivered / 6 declined / 0 no-eligible
+  60/60 dispatched: 56 delivered / 10 declined / 0 no-eligible
+  platform delivery status counts: {"delivered":264,"cancelled":12,"requested":211,"pending_dispatch":5,"failed":8}
+  WAVE RESULT: delivered=56 inFlight=41 declined=10 cancelled=4 failed=0 noEligible=0
+
+────────────────────────────────────────────────────────
+LOG 2 — SCALE WAVE 5  (60 new customers + 5 new drivers)
+────────────────────────────────────────────────────────
+═══ WAVE: 60 customers + 5 drivers (start c220/d25, mode=full) ═══
+  ✓ 5 driver application(s) submitted
+  ✓ admin approved 5 application(s)
+  ✓ 60 customers onboarded, 60 orders created (R18348.99 quoted)
+  ✓ driver26 on-air at Soweto
+  ✓ driver27 on-air at Roodepoort
+  ✓ driver28 on-air at Kempton Park
+  ✓ driver29 on-air at Benoni
+  ✓ driver30 on-air at Krugersdorp
+  10/60 dispatched: 10 delivered / 3 declined / 0 no-eligible
+  20/60 dispatched: 20 delivered / 8 declined / 0 no-eligible
+  30/60 dispatched: 29 delivered / 9 declined / 0 no-eligible
+  40/60 dispatched: 37 delivered / 13 declined / 0 no-eligible
+  50/60 dispatched: 46 delivered / 16 declined / 0 no-eligible
+  60/60 dispatched: 55 delivered / 16 declined / 0 no-eligible
+  platform delivery status counts: {"failed":11,"delivered":263,"cancelled":10,"requested":211,"pending_dispatch":5}
+  WAVE RESULT: delivered=55 inFlight=101 declined=16 cancelled=1 failed=4 noEligible=0
+
+────────────────────────────────────────────────────────
+LOG 3 — PRESSURE TEST (order bursts + accept races + GPS + reads)
+────────────────────────────────────────────────────────
+✓ 60 orders created in 2.3s (60 counted, 0 failures so far)
+race-to-accept:
+  · driver#1 lost race (classified — atomic claim held)
+  ✓ driver#2 WON the accept race
+✓ lifecycle completed on k97f4hne4nhwmfy2pstcxjkeqd8emhjg
+summary: orders=60 raceWinners=1 raceLosers=1
+=== PRESSURE TEST: 0 failure(s) ===
+
+────────────────────────────────────────────────────────
+LOG 4 — BACKLOG DRAIN (confirm + dispatch leftover orders)
+────────────────────────────────────────────────────────
+═══ BACKLOG DRAIN (customers=2 drivers=25 mode=confirm+dispatch) ═══
+  ✓ 2 customer sign-ins, 0 request(s) confirmed
+  ✓ 24 driver(s) signed in and on-air
+  pass 1: dispatched=27 delivered=26 noEligible=13 (217s left)
+  ✓ no pending_dispatch deliveries left
+  DRAIN RESULT: confirmed=0 dispatched=27 delivered=26 noEligible=13
