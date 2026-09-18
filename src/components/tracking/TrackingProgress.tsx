@@ -303,7 +303,12 @@ export function TrackingHeader({
   );
 }
 
-// ─── Inline route mini-map (customer's own delivery only) ─────────────────────
+// ─── Route mini-map (customer's own delivery only) ───────────────────────────
+// Leaflet-backed placeholder for the Google Maps route view: renders the
+// delivery's real pickup / dropoff / driver coordinates over OpenStreetMap
+// tiles. The previous decorative SVG schematic has been retired.
+
+import LeafletRouteMap from "@/components/tracking/LeafletRouteMap";
 
 export function RouteMap({
   pickup,
@@ -314,73 +319,11 @@ export function RouteMap({
   dropoff?: { lat?: number | null; lng?: number | null } | null;
   driver?: { lat?: number | null; lng?: number | null } | null;
 }) {
-  const points: Array<{ lat: number; lng: number; kind: "pickup" | "dropoff" | "driver" }> = [];
-  if (pickup?.lat != null && pickup?.lng != null) points.push({ lat: pickup.lat, lng: pickup.lng, kind: "pickup" });
-  if (dropoff?.lat != null && dropoff?.lng != null) points.push({ lat: dropoff.lat, lng: dropoff.lng, kind: "dropoff" });
-  if (driver?.lat != null && driver?.lng != null) points.push({ lat: driver.lat, lng: driver.lng, kind: "driver" });
+  const hasAny =
+    (pickup?.lat != null && pickup?.lng != null) ||
+    (dropoff?.lat != null && dropoff?.lng != null) ||
+    (driver?.lat != null && driver?.lng != null);
+  if (!hasAny) return null;
 
-  if (points.length === 0) return null;
-
-  const W = 640;
-  const H = 260;
-  const pad = 56;
-  const lats = points.map((p) => p.lat);
-  const lngs = points.map((p) => p.lng);
-  const minLat = Math.min(...lats);
-  const maxLat = Math.max(...lats);
-  const minLng = Math.min(...lngs);
-  const maxLng = Math.max(...lngs);
-  const latSpan = maxLat - minLat || 0.001;
-  const lngSpan = maxLng - minLng || 0.001;
-
-  const toXY = (lat: number, lng: number): [number, number] => [
-    pad + ((lng - minLng) / lngSpan) * (W - pad * 2),
-    H - pad - ((lat - minLat) / latSpan) * (H - pad * 2),
-  ];
-
-  const pickupXY = pickup?.lat != null && pickup?.lng != null ? toXY(pickup.lat, pickup.lng) : null;
-  const dropoffXY = dropoff?.lat != null && dropoff?.lng != null ? toXY(dropoff.lat, dropoff.lng) : null;
-  const driverXY = driver?.lat != null && driver?.lng != null ? toXY(driver.lat, driver.lng) : null;
-
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="track-map-svg" role="img" aria-label="Delivery route map">
-      <defs>
-        <linearGradient id="trackRouteGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#0794B5" stopOpacity="0.9" />
-          <stop offset="100%" stopColor="#0A7C42" stopOpacity="0.9" />
-        </linearGradient>
-      </defs>
-      {pickupXY && dropoffXY && (
-        <line
-          x1={pickupXY[0]} y1={pickupXY[1]}
-          x2={dropoffXY[0]} y2={dropoffXY[1]}
-          stroke="url(#trackRouteGrad)" strokeWidth={2.5} strokeLinecap="round"
-        />
-      )}
-      {pickupXY && (
-        <g>
-          <circle cx={pickupXY[0]} cy={pickupXY[1]} r={13} fill="rgba(7,148,181,0.15)" />
-          <circle cx={pickupXY[0]} cy={pickupXY[1]} r={7} fill="#0794B5" stroke="#fff" strokeWidth={2.5} />
-          <text x={pickupXY[0] - 9} y={pickupXY[1] + 24} fontSize={11} fill="#667" fontWeight={600} textAnchor="start">PICKUP</text>
-        </g>
-      )}
-      {dropoffXY && (
-        <g>
-          <circle cx={dropoffXY[0]} cy={dropoffXY[1]} r={13} fill="rgba(10,124,66,0.15)" />
-          <circle cx={dropoffXY[0]} cy={dropoffXY[1]} r={7} fill="#0A7C42" stroke="#fff" strokeWidth={2.5} />
-          <text x={dropoffXY[0] - 16} y={dropoffXY[1] + 24} fontSize={11} fill="#667" fontWeight={600} textAnchor="start">DROP-OFF</text>
-        </g>
-      )}
-      {driverXY && (
-        <g>
-          <circle cx={driverXY[0]} cy={driverXY[1]} r={16} fill="rgba(245,158,11,0.18)">
-            <animate attributeName="r" values="12;20;12" dur="2.4s" repeatCount="indefinite" />
-            <animate attributeName="opacity" values="0.55;0.15;0.55" dur="2.4s" repeatCount="indefinite" />
-          </circle>
-          <circle cx={driverXY[0]} cy={driverXY[1]} r={7.5} fill="#F59E0B" stroke="#fff" strokeWidth={2.5} />
-          <text x={driverXY[0] + 12} y={driverXY[1] - 8} fontSize={11} fill="#1f2937" fontWeight={700}>DRIVER</text>
-        </g>
-      )}
-    </svg>
-  );
+  return <LeafletRouteMap pickup={pickup} dropoff={dropoff} driver={driver} height={260} />;
 }

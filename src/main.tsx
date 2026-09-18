@@ -38,6 +38,10 @@ import DriverProfile from "./pages/DriverProfile.tsx";
 import PostAuthRedirect from "./pages/PostAuthRedirect.tsx";
 import CustomerOnboarding from "./pages/CustomerOnboarding.tsx";
 import DriverApprovals from "./pages/AdminDriverApprovals.tsx";
+import AdminPricingRules from "./pages/AdminPricingRules.tsx";
+import AdminDriverRoster from "./pages/AdminDriverRoster.tsx";
+import AdminAuditLog from "./pages/AdminAuditLog.tsx";
+import AdminPlatformHealth from "./pages/AdminPlatformHealth.tsx";
 import DriverApply from "./pages/DriverApply.tsx";
 
 /** Silent error boundary — if VlyToolbar crashes it renders nothing instead of
@@ -355,6 +359,38 @@ createRoot(document.getElementById("root")!).render(
                   </RoleGate>
                 }
               />
+              <Route
+                path="/admin/pricing-rules"
+                element={
+                  <RoleGate area={APP_AREAS.ADMIN}>
+                    <AdminPricingRules />
+                  </RoleGate>
+                }
+              />
+              <Route
+                path="/admin/driver-roster"
+                element={
+                  <RoleGate area={APP_AREAS.ADMIN}>
+                    <AdminDriverRoster />
+                  </RoleGate>
+                }
+              />
+              <Route
+                path="/admin/audit-log"
+                element={
+                  <RoleGate area={APP_AREAS.ADMIN}>
+                    <AdminAuditLog />
+                  </RoleGate>
+                }
+              />
+              <Route
+                path="/admin/platform-health"
+                element={
+                  <RoleGate area={APP_AREAS.ADMIN}>
+                    <AdminPlatformHealth />
+                  </RoleGate>
+                }
+              />
 
               {/* ─── Operations Centre ────────────────────────────── */}
               <Route
@@ -366,10 +402,11 @@ createRoot(document.getElementById("root")!).render(
                 }
               />
 
-              {/* ─── Admin ──────────────────────────────────────────────
-                   No admin pages exist yet. /admin is not registered as a
-                   route; admin-role users land in the Operations Centre via
-                   homeRouteForRole(). Documented in docs/frontend-architecture.md */}
+              {/* ─── Admin ──────────────────────────────────────
+                   Admin routes are registered above (driver approvals,
+                   pricing rules, driver roster, audit log, platform health).
+                   Unmatched /admin/* paths fall through to NotFound.
+                   Documented in docs/frontend-architecture.md */}
 
               <Route path="*" element={<NotFound />} />
             </Routes>

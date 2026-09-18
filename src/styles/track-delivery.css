@@ -472,6 +472,22 @@
   display: block;
 }
 
+/* Leaflet route map (replaces the SVG schematic) — inherits the panel frame
+   above via .track-map-frame; keep Leaflet's chrome consistent with the app. */
+.track-leaflet-map {
+  border-radius: 0;
+  z-index: 0;
+}
+
+.track-leaflet-map .leaflet-control-attribution {
+  font-size: 9px;
+  background: rgba(255, 255, 255, 0.8);
+}
+
+.track-leaflet-map .leaflet-container {
+  font: inherit;
+}
+
 /* ── Route strip (addresses) ──────────────── */
 
 .track-route-visual {

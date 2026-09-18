@@ -6,30 +6,38 @@ export default function About() {
       style={{ padding: "120px 0", backgroundColor: "var(--lasha-navy)" }}
     >
       <div className="lasha-container">
-        {/* Section label — same placement pattern as every other Lasha
+        {/* Section label — identical placement pattern to every other Lasha
             section ("04 / Sector Intelligence", etc.): first element, top of
             the container, above the content grid. */}
         <p className="lasha-label mb-12" style={{ color: "var(--lasha-cyan-light)" }}>
           About Lasha
         </p>
 
-        <div className="about-grid">
-          {/* Left: heading block + editorial figure. */}
-          <div className="about-left">
-            <h2
-              className="lasha-heading lasha-heading-dark"
-              style={{ fontSize: "clamp(34px, 3.6vw, 54px)" }}
-            >
-              Local reach.
-              <br />
-              Modern visibility.
-              <br />
-              <span style={{ color: "var(--lasha-cyan)" }}>One delivery network.</span>
-            </h2>
+        {/* Two-column header — heading left, lede right, top-aligned so the
+            first lines of both columns sit on the same optical band. This is
+            the same header grammar as "04 / Sector Intelligence". */}
+        <div className="about-header">
+          <h2
+            className="lasha-heading lasha-heading-dark"
+            style={{ fontSize: "clamp(34px, 3.6vw, 54px)" }}
+          >
+            Local reach.
+            <br />
+            Modern visibility.
+            <br />
+            <span style={{ color: "var(--lasha-cyan)" }}>One delivery network.</span>
+          </h2>
+          <p className="about-lede">
+            Founded in the Western Cape, South Africa
+          </p>
+        </div>
 
-            {/* Vehicle image — the fleet cutout sits on a light studio panel
-                like a catalog plate: sharp at native resolution, and a
-                deliberate contrast against the navy section. */}
+        {/* Content grid — the fleet cutout hangs from the same top edge as
+            the narrative column and its bottom edge is balanced against the
+            copy (not stretched), so neither column outruns the other. */}
+        <div className="about-grid">
+          {/* Left: editorial figure (catalog plate). */}
+          <div className="about-left">
             <div className="about-figure">
               <img
                 src="/assets/Taxi_image-removebg-preview.png"
@@ -41,9 +49,6 @@ export default function About() {
 
           {/* Right: narrative copy */}
           <div className="about-copy">
-            <p className="about-lede">
-              Founded in the Western Cape, South Africa
-            </p>
             <p>
               At Lasha, we believe the future of logistics in South Africa does
               not lie in building more trucks — it lies in unlocking the
@@ -92,6 +97,33 @@ export default function About() {
       </div>
 
       <style>{`
+        /* ── Header row ─────────────────────────────────────────────── */
+        .about-header {
+          display: grid;
+          grid-template-columns: 1.2fr 1fr;
+          gap: 64px;
+          align-items: start;
+          margin-bottom: 72px;
+        }
+        .about-lede {
+          font-size: 13px;
+          font-weight: 600;
+          letter-spacing: 0.14em;
+          text-transform: uppercase;
+          line-height: 1.7;
+          color: var(--lasha-cyan-light);
+          /* Optical baseline: nudge down so the lede's first line sits on
+             the same band as the heading's cap height. */
+          padding-top: 14px;
+          margin: 0;
+          max-width: 320px;
+          justify-self: end;
+          text-align: left;
+          border-top: 1px solid rgba(255, 255, 255, 0.14);
+          padding-top: 18px;
+        }
+
+        /* ── Content grid ───────────────────────────────────────────── */
         .about-grid {
           display: grid;
           grid-template-columns: 1fr 1.15fr;
@@ -102,11 +134,10 @@ export default function About() {
           align-self: start;
         }
         .about-figure {
-          margin-top: 40px;
           border-radius: 16px;
           border: 1px solid rgba(255, 255, 255, 0.12);
           background: linear-gradient(180deg, #f6f8f9 0%, #e9eef0 100%);
-          padding: 28px 32px;
+          padding: 32px;
           display: flex;
           align-items: center;
           justify-content: center;
@@ -117,6 +148,8 @@ export default function About() {
           width: min(100%, 300px);
           height: auto;
         }
+
+        /* ── Copy column ────────────────────────────────────────────── */
         .about-copy {
           display: flex;
           flex-direction: column;
@@ -128,33 +161,37 @@ export default function About() {
           color: rgba(255, 255, 255, 0.68);
           margin: 0;
         }
-        .about-lede {
-          font-size: 13px !important;
-          font-weight: 600;
-          letter-spacing: 0.14em;
-          text-transform: uppercase;
-          color: var(--lasha-cyan-light) !important;
-          margin-bottom: 4px;
-        }
         .about-support {
-          border-top: 1px solid rgba(255, 255, 255, 0.12);
-          padding-top: 28px;
-          margin-top: 12px;
+          border: 1px solid rgba(67, 184, 212, 0.22);
+          background: linear-gradient(180deg, rgba(7, 148, 181, 0.10) 0%, rgba(7, 148, 181, 0.04) 100%);
+          border-radius: 16px;
+          padding: 28px;
+          margin-top: 16px;
           display: flex;
           flex-direction: column;
           gap: 16px;
         }
+
+        /* ── Responsive ─────────────────────────────────────────────── */
         @media (max-width: 900px) {
-          .about-grid {
-            grid-template-columns: 1fr !important;
-            gap: 48px !important;
+          .about-header {
+            grid-template-columns: 1fr;
+            gap: 32px;
+            margin-bottom: 56px;
           }
-          .about-left {
-            position: static;
+          .about-lede {
+            justify-self: start;
+            padding-top: 14px;
+            max-width: 420px;
+          }
+          .about-grid {
+            grid-template-columns: 1fr;
+            gap: 48px;
           }
           .about-figure {
-            margin-top: 28px;
             max-width: 520px;
+            margin-inline: auto;
+            width: 100%;
           }
         }
       `}</style>

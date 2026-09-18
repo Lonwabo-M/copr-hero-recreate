@@ -65,11 +65,18 @@ export const operationsNavigation: NavItem[] = [
 ];
 
 // ─── Admin Navigation ────────────────────────────────────────────────────────
-// Platform administration: driver onboarding approvals (Capture → Review →
-// Accept pipeline). Reached from the Operations sidebar ("Admin Portal") via
-// the same reversible test elevation as the Driver App.
+// Platform administration — the responsibilities the portal owns beyond the
+// operations floor: driver onboarding approvals (Capture → Review → Accept),
+// the approved-driver roster of record, the pricing rule matrix behind every
+// quote, platform health telemetry and the audit trail. Reached from the
+// Operations sidebar ("Admin Portal") via the same reversible test elevation
+// as the Driver App.
 export const adminNavigation: NavItem[] = [
   { label: "Driver Approvals", route: "/admin/driver-approvals" },
+  { label: "Driver Roster", route: "/admin/driver-roster" },
+  { label: "Pricing Rules", route: "/admin/pricing-rules" },
+  { label: "Platform Health", route: "/admin/platform-health" },
+  { label: "Audit Log", route: "/admin/audit-log" },
   { label: "Operations Centre", route: "/operations" },
   { label: "Dashboard", route: "/dashboard" },
 ];

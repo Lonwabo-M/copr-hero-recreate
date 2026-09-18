@@ -74,6 +74,19 @@ function AreaGuard({ area, children }: RoleGateProps) {
       .finally(() => setElevating(false));
   }, [awaitingElevationCheck, needsElevation, claimTestAccess]);
 
+  // Safety net: the elevation is already committed server-side by the time the
+  // claim resolves, so if the reactive role never arrives (dropped
+  // subscription / stale cache) a full document load still lands the tester in
+  // the workspace instead of spinning here forever. Mirrors the AppShell
+  // access-point behaviour.
+  useEffect(() => {
+    if (awaitingElevationCheck || !needsElevation || elevationFailed) return;
+    const timer = window.setTimeout(() => {
+      window.location.reload();
+    }, 2500);
+    return () => window.clearTimeout(timer);
+  }, [awaitingElevationCheck, needsElevation, elevationFailed]);
+
   if (isLoading || awaitingElevationCheck || needsElevation || elevating) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-background">

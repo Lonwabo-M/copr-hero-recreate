@@ -201,11 +201,11 @@ test("OperationsCentre renders status labels from real DELIVERY_STATUS vocabular
 
 console.log("\n3. Live tactical map");
 
-test("OperationsCentre renders an inline SVG tactical map (no external map service)", () => {
-  assertContains(opsPage, "<svg viewBox=", "map is an inline SVG");
-  assertContains(opsPage, "function SvgMap", "map is rendered by an SvgMap component");
+test("OperationsCentre renders a real interactive Leaflet map (no Google/Mapbox)", () => {
+  assertContains(opsPage, "OpsLeafletMap", "map is rendered by the OpsLeafletMap component");
+  const mapComponent = read(join("components/operations", "OpsLeafletMap.tsx"));
+  assertContains(mapComponent, "L.tileLayer", "Leaflet map instance is created with a tile layer");
   assertNotContains(opsPage, "Mapbox", "no Mapbox");
-  assertNotContains(opsPage, "Leaflet", "no Leaflet");
   assertNotContains(opsPage, "google.maps", "no Google Maps");
   assertNotContains(opsPage, "mapboxgl", "no mapbox-gl");
   assertNotContains(opsPage, "navigator.geolocation", "map does not request GPS from this browser");
@@ -231,7 +231,6 @@ test("tactical map renders pickup and dropoff markers from delivery records", ()
 
 test("tactical map shows stale driver locations with a distinct visual", () => {
   assertContains(opsPage, "stale ? \"#C62828\" : \"#0A7C42\"", "stale drivers are rendered red");
-  assertContains(opsPage, "strokeDasharray=\"2 2\"", "stale drivers have a dashed ring indicator");
 });
 
 test("tactical map coordinate range is derived from real data, not a fixed fake viewport", () => {
@@ -246,15 +245,12 @@ test("tactical map coordinate range is derived from real data, not a fixed fake 
 });
 
 test("tactical map route lines connect pickup → dropoff for deliveries with both coords", () => {
-  assertContains(opsPage, "strokeDasharray={selected ? \"none\" : \"4 4\"}", "routes are dashed for non-selected");
-  // SvgMap derives routes from pickups (which carry the delivery with dropoff coords)
-  // and renders them as SVG <line> elements inside the map.
-  assertContains(opsPage, "const routes = pickups", "routes are derived from pickup markers with delivery dropoff");
-  const routesBlock = opsPage.slice(
-    opsPage.indexOf("const routes = pickups"),
-    opsPage.indexOf("const pickupMarkers = pickups"),
-  );
-  assertContains(routesBlock, "<line", "map draws route lines as SVG lines");
+  assertContains(opsPage, "selected: p.delivery._id === selectedDeliveryId", "selection state flows into the map component");
+  // OpsLeafletMap derives route legs from pickup markers that carry the
+  // delivery's dropoff coordinates and draws them as Leaflet polylines.
+  assertContains(opsPage, "routes={deliveryMarkers", "routes are derived from pickup markers with delivery dropoff");
+  const mapComponent = read(join("components/operations", "OpsLeafletMap.tsx"));
+  assertContains(mapComponent, "L.polyline", "map draws route lines as Leaflet polylines");
 });
 
 // ─── 4. Tracking freshness ─────────────────────────────────────────────────────

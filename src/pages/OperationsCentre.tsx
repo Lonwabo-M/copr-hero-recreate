@@ -1,9 +1,11 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { useQuery, useMutation } from "convex/react";
+import { useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Doc, Id } from "@/convex/_generated/dataModel";
 import OperationsShell from "@/components/shells/OperationsShell";
 import WaybillButton from "@/components/operations/WaybillButton";
+import OpsLeafletMap from "@/components/operations/OpsLeafletMap";
 import { RoleGate, APP_AREAS } from "@/components/shells/RoleGate";
 import {
   Package,
@@ -28,8 +30,12 @@ import {
   Loader2,
   ClipboardList,
   Search,
+  Upload,
+  Download,
+  FileSpreadsheet,
 } from "lucide-react";
 import { DELIVERY_STATUS, ROLES } from "@/convex/schema";
+import { parseCsv, toCsv, downloadCsv, pickField, type CsvColumn } from "@/lib/csv";
 import "@/styles/dashboard.css";
 import "@/styles/operations.css";
 
@@ -613,6 +619,22 @@ const ORDER_STATUS_FILTERS = [
 
 type OrderStatusFilter = (typeof ORDER_STATUS_FILTERS)[number]["id"];
 
+// CSV columns shared by export (written) and import (accepted). Export writes
+// extra tracking/status columns for readability — the import tolerates and
+// ignores unknown headers.
+const ORDER_CSV_COLUMNS: CsvColumn[] = [
+  { key: "orderName", label: "Order Name" },
+  { key: "recipientName", label: "Recipient Name" },
+  { key: "recipientPhone", label: "Recipient Phone" },
+  { key: "pickupAddress", label: "Pickup Address" },
+  { key: "dropoffAddress", label: "Dropoff Address" },
+  { key: "weight", label: "Weight (kg)" },
+  { key: "parcelType", label: "Parcel Type" },
+  { key: "expeditionType", label: "Expedition Type" },
+  { key: "trackingNumber", label: "Tracking Number" },
+  { key: "status", label: "Status" },
+];
+
 function formatCurrency(cents?: number | null): string {
   if (cents === undefined || cents === null) return "—";
   return `R ${(cents / 100).toLocaleString("en-ZA", {
@@ -669,9 +691,36 @@ function orderSearchText(d: OpsDeliveryRow): string {
     .toLowerCase();
 }
 
+// Hard ceiling per import — mirrors MAX_IMPORT_ROWS in
+// deliveries/csv.ts (duplicated here rather than imported so the Convex
+// action module is never pulled into the browser bundle).
+const CSV_IMPORT_MAX_ROWS = 200;
+
+/** One import outcome as reported by the importOrdersFromCsv action. */
+type CsvRowResult = {
+  row: number;
+  status: "created" | "duplicate" | "error";
+  trackingNumber?: string;
+  message?: string;
+};
+
 function OrdersTab() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<OrderStatusFilter>("all");
+
+  // ── CSV import / export state ──────────────────────────────────────────
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [csvBusy, setCsvBusy] = useState(false);
+  const [csvError, setCsvError] = useState<string | null>(null);
+  const [csvReport, setCsvReport] = useState<{
+    total: number;
+    created: number;
+    duplicates: number;
+    failed: number;
+    truncated: boolean;
+    results: CsvRowResult[];
+  } | null>(null);
+  const importOrders = useAction(api.deliveries.csv.importOrdersFromCsv);
 
   const orders = useQuery(api.deliveries.state_machine.getAllDeliveriesForOps, {
     limit: 500,
@@ -697,16 +746,173 @@ function OrdersTab() {
   const deliveredCount = rows.filter((d) => d.status === DELIVERY_STATUS.DELIVERED).length;
   const closedCount = rows.length - openCount;
 
+  // ── CSV handlers ────────────────────────────────────────────────────────
+  // Export writes the CURRENTLY FILTERED rows (search + status filter both
+  // apply) using the same columns the import accepts, so a round-trip file is
+  // immediately re-importable.
+  const handleExportCsv = () => {
+    if (filtered.length === 0) return;
+    const records = filtered.map((d) => ({
+      orderName: d.details?.description ?? "",
+      recipientName: d.details?.recipientName ?? "",
+      recipientPhone: d.details?.recipientPhone ?? "",
+      pickupAddress: [d.details?.pickupAddress, d.details?.pickupCity]
+        .filter(Boolean)
+        .join(", "),
+      dropoffAddress: [d.details?.dropoffAddress, d.details?.dropoffCity]
+        .filter(Boolean)
+        .join(", "),
+      weight: d.details?.weight ?? "",
+      parcelType: d.details?.parcelType ?? "",
+      expeditionType: d.details?.expeditionType ?? "",
+      trackingNumber: d.trackingNumber ?? "",
+      status: d.status,
+    }));
+    downloadCsv(
+      `lasha-orders-${new Date().toISOString().slice(0, 10)}.csv`,
+      toCsv(records, ORDER_CSV_COLUMNS),
+    );
+  };
+
+  const handleImportCsv = async (file: File) => {
+    setCsvBusy(true);
+    setCsvError(null);
+    setCsvReport(null);
+    try {
+      const text = await file.text();
+      const parsed = parseCsv(text);
+      if (parsed.rows.length === 0) {
+        throw new Error("The file contains no data rows.");
+      }
+      if (parsed.rows.length > CSV_IMPORT_MAX_ROWS) {
+        throw new Error(
+          `The file contains ${parsed.rows.length} rows — the import limit is ${CSV_IMPORT_MAX_ROWS}. Split the file and try again.`,
+        );
+      }
+      const importRows = parsed.rows.map((r) => {
+        const num = (raw?: string): number | undefined => {
+          if (raw === undefined) return undefined;
+          const n = Number(raw.replace(/[^0-9.\-]/g, ""));
+          return Number.isFinite(n) ? n : undefined;
+        };
+        const epoch = (raw?: string): number | undefined => {
+          if (!raw) return undefined;
+          const n = Number(raw);
+          if (Number.isFinite(n) && n > 1_000_000_000) return n;
+          const d = new Date(raw);
+          return Number.isNaN(d.getTime()) ? undefined : d.getTime();
+        };
+        return {
+          orderName: pickField(r, "orderName", "description", "order name", "goods"),
+          recipientName: pickField(r, "recipientName", "recipient", "receiver name"),
+          recipientPhone: pickField(r, "recipientPhone", "recipient phone", "phone"),
+          pickupAddress: pickField(r, "pickupAddress", "pickup", "collection address"),
+          dropoffAddress: pickField(r, "dropoffAddress", "dropoff", "delivery address"),
+          weight: num(pickField(r, "weight", "weightkg", "weight kg")),
+          parcelType: pickField(r, "parcelType", "parcel type", "type"),
+          expeditionType: pickField(r, "expeditionType", "expedition", "service level"),
+          pickupLat: num(pickField(r, "pickupLat", "pickup lat")),
+          pickupLng: num(pickField(r, "pickupLng", "pickup lng")),
+          dropoffLat: num(pickField(r, "dropoffLat", "dropoff lat")),
+          dropoffLng: num(pickField(r, "dropoffLng", "dropoff lng")),
+          scheduledTime: epoch(pickField(r, "scheduledTime", "scheduled")),
+        };
+      });
+      const report = await importOrders({ rows: importRows, fileName: file.name });
+      setCsvReport(report);
+    } catch (e) {
+      setCsvError(
+        e instanceof Error ? e.message : "The import could not be completed.",
+      );
+    } finally {
+      setCsvBusy(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
   return (
     <div className="ops-orders">
       <div className="ops-section-header">
         <h2 className="ops-section-title">Orders</h2>
-        <div className="ops-filter-group">
+        <div className="ops-filter-group" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {/* CSV import/export — bulk onboarding and offline reporting for the
+              operations team. Import runs through the existing authorized
+              action (session role enforced server-side); export is client-side
+              over the currently filtered rows. */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".csv,text/csv"
+            style={{ display: "none" }}
+            aria-label="Import orders CSV"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) void handleImportCsv(f);
+            }}
+          />
+          <button
+            className="ops-btn ops-btn-sm"
+            disabled={csvBusy}
+            onClick={() => fileInputRef.current?.click()}
+            title="Import orders from a CSV file (max 200 rows)"
+          >
+            {csvBusy ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+            Import CSV
+          </button>
+          <button
+            className="ops-btn ops-btn-sm"
+            disabled={csvBusy || filtered.length === 0}
+            onClick={handleExportCsv}
+            title="Download the currently filtered orders as CSV"
+          >
+            <Download size={14} />
+            Export CSV
+          </button>
           <span className="ops-live-count">
             {filtered.length} of {rows.length} orders
           </span>
         </div>
       </div>
+
+      {csvError && (
+        <div className="ops-dispatch-error" style={{ marginBottom: 14 }}>
+          {csvError}
+        </div>
+      )}
+
+      {csvReport && (
+        <div
+          className="ops-history-summary"
+          style={{ marginBottom: 16, alignItems: "center", flexWrap: "wrap", gap: 8 }}
+        >
+          <span className="ops-history-summary-item">
+            <FileSpreadsheet size={16} style={{ color: "#0A7C42" }} />
+            <span>
+              Imported {csvReport.created} of {csvReport.total}
+              {csvReport.duplicates > 0 ? ` · ${csvReport.duplicates} duplicate(s) skipped` : ""}
+              {csvReport.failed > 0 ? ` · ${csvReport.failed} failed` : ""}
+              {csvReport.truncated ? " · file truncated at row limit" : ""}
+            </span>
+            <button
+              className="ops-btn ops-btn-sm"
+              style={{ marginLeft: 4 }}
+              onClick={() => setCsvReport(null)}
+            >
+              Dismiss
+            </button>
+          </span>
+          {csvReport.results.some((r) => r.status === "error") && (
+            <span className="ops-small ops-muted">
+              Row errors: {csvReport.results
+                .filter((r) => r.status === "error")
+                .slice(0, 5)
+                .map((r) => `row ${r.row} — ${r.message ?? "failed"}`)
+                .join("; ")}
+              {csvReport.results.filter((r) => r.status === "error").length > 5 ? " …" : ""}
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Search — tracking number, order reference, business, recipient,
           sender, addresses, driver or status. */}
@@ -856,14 +1062,17 @@ function DispatchTab({
   const [dispatchError, setDispatchError] = useState<string | null>(null);
   const [dispatchReassigningId, setDispatchReassigningId] = useState<string | null>(null);
 
-  // Everything pre-assignment lives here now: requested (needs staff release),
-  // pending_dispatch (released — send driver offers), reassignment_required
-  // (previous driver fell through). Each state has its own action.
+  // Everything dispatch can act on: pre-assignment states (requested needs
+  // staff release, pending_dispatch needs offers, reassignment_required needs
+  // a new driver) PLUS live assignments (assigned / driver_accepted) — those
+  // must be reassignable in place, e.g. when a driver falls through mid-run.
   const activePending = deliveries.filter(
     (d) =>
       d.status === DELIVERY_STATUS.REQUESTED ||
       d.status === DELIVERY_STATUS.PENDING_DISPATCH ||
-      d.status === DELIVERY_STATUS.REASSIGNMENT_REQUIRED,
+      d.status === DELIVERY_STATUS.REASSIGNMENT_REQUIRED ||
+      d.status === DELIVERY_STATUS.ASSIGNED ||
+      d.status === DELIVERY_STATUS.DRIVER_ACCEPTED,
   );
 
   // Release a requested delivery into the dispatch pool
@@ -1002,6 +1211,21 @@ function DispatchTab({
                       )}
                     </button>
                   )}
+                  {(d.status === DELIVERY_STATUS.ASSIGNED ||
+                    d.status === DELIVERY_STATUS.DRIVER_ACCEPTED) && (
+                    <button
+                      className="ops-btn ops-btn-sm"
+                      disabled={dispatchReassigningId === d._id}
+                      onClick={() => handleDispatchReassign(d._id)}
+                      title="Cancel this driver's assignment and send offers to new drivers"
+                    >
+                      {dispatchReassigningId === d._id ? (
+                        <><RefreshCw size={14} className="animate-spin" />Reassigning…</>
+                      ) : (
+                        <><RefreshCw size={14} />Reassign driver<ArrowRight size={14} /></>
+                      )}
+                    </button>
+                  )}
                 </div>
 
                 {dispatchError && <div className="ops-dispatch-error">{dispatchError}</div>}
@@ -1014,8 +1238,9 @@ function DispatchTab({
           <div className="empty-state-icon"><Package size={24} /></div>
           <div className="empty-state-title">Nothing awaiting dispatch</div>
           <div className="empty-state-desc">
-            No deliveries are waiting to be released, offered to drivers, or
-            reassigned. New customer requests appear here automatically.
+            No deliveries are waiting to be released, offered to drivers,
+            reassigned, or currently assigned. New customer requests appear here
+            automatically.
           </div>
         </div>
       )}
@@ -1104,19 +1329,40 @@ function LiveTab({
 
           <div className="ops-map">
             {mapBounds.hasData ? (
-              <SvgMap
-                bounds={mapBounds}
-                drivers={driverMarkers}
-                pickups={deliveryMarkers}
-                dropoffs={dropoffMarkers}
+              <OpsLeafletMap
+                drivers={driverMarkers.map((dr) => ({
+                  driverId: dr.driver.driverId as string,
+                  name: dr.driver.name ?? "Driver",
+                  lat: dr.lat,
+                  lng: dr.lng,
+                  stale: dr.driver.isStale,
+                  trackingNumber: dr.delivery?.trackingNumber ?? null,
+                  deliveryId: (dr.delivery?._id as string) ?? null,
+                }))}
+                pickups={deliveryMarkers.map((p) => ({
+                  deliveryId: p.delivery._id as string,
+                  lat: p.lat,
+                  lng: p.lng,
+                  kind: "pickup" as const,
+                  selected: p.delivery._id === selectedDeliveryId,
+                }))}
+                dropoffs={dropoffMarkers.map((d) => ({
+                  deliveryId: d.delivery._id as string,
+                  lat: d.lat,
+                  lng: d.lng,
+                  kind: "dropoff" as const,
+                  selected: d.delivery._id === selectedDeliveryId,
+                }))}
+                routes={deliveryMarkers
+                  .filter((p) => p.delivery.dropoffLat !== undefined && p.delivery.dropoffLng !== undefined)
+                  .map((p) => ({
+                    from: [p.lat, p.lng] as [number, number],
+                    to: [p.delivery.dropoffLat as number, p.delivery.dropoffLng as number] as [number, number],
+                    selected: p.delivery._id === selectedDeliveryId,
+                  }))}
                 selectedDeliveryId={selectedDeliveryId}
-                onDriverClick={(driver) => {
-                  if (driver.delivery) {
-                    onSelectDelivery(driver.delivery._id as string);
-                  }
-                }}
-                onPickupClick={(d) => onSelectDelivery(d.delivery._id as string)}
-                onDropoffClick={(d) => onSelectDelivery(d.delivery._id as string)}
+                onSelectDelivery={(id) => onSelectDelivery(id)}
+                height={420}
               />
             ) : (
               <div className="ops-map-empty">
@@ -1351,143 +1597,6 @@ function DeliveryPODSection({ deliveryId }: { deliveryId: string }) {
         </div>
       )}
     </div>
-  );
-}
-
-// ─── Inline SVG tactical map ──────────────────────────────────────────────────
-
-function SvgMap({
-  bounds,
-  drivers,
-  pickups,
-  dropoffs,
-  selectedDeliveryId,
-  onDriverClick,
-  onPickupClick,
-  onDropoffClick,
-}: {
-  bounds: { minLat: number; maxLat: number; minLng: number; maxLng: number; hasData: boolean };
-  drivers: Array<{ driver: DriverLocationEntry; delivery: OpsDeliveryRow | null; lat: number; lng: number }>;
-  pickups: Array<{ type: "pickup"; lat: number; lng: number; delivery: OpsDeliveryRow }>;
-  dropoffs: Array<{ type: "dropoff"; lat: number; lng: number; delivery: OpsDeliveryRow }>;
-  selectedDeliveryId: string | null;
-  onDriverClick: (dr: any) => void;
-  onPickupClick: (d: any) => void;
-  onDropoffClick: (d: any) => void;
-}) {
-  const width = 600;
-  const height = 420;
-  const lngRange = bounds.maxLng - bounds.minLng || 0.001;
-  const latRange = bounds.maxLat - bounds.minLat || 0.001;
-
-  const toSvg = (lat: number, lng: number) => [
-    ((lng - bounds.minLng) / lngRange) * width,
-    ((bounds.maxLat - lat) / latRange) * height,
-  ];
-
-  const gridLines: React.ReactNode[] = [];
-  for (let i = 0; i <= 6; i++) {
-    const x = (i / 6) * width;
-    gridLines.push(<line key={`vg${i}`} x1={x} y1={0} x2={x} y2={height} stroke="#e5e7eb" strokeWidth={1} />);
-  }
-  for (let i = 0; i <= 4; i++) {
-    const y = (i / 4) * height;
-    gridLines.push(<line key={`hg${i}`} x1={0} y1={y} x2={width} y2={y} stroke="#e5e7eb" strokeWidth={1} />);
-  }
-
-  const routes = pickups
-    .filter((p) => p.delivery.dropoffLat !== undefined)
-    .map((p) => {
-      const [x1, y1] = toSvg(p.lat, p.lng);
-      const [x2, y2] = toSvg(p.delivery.dropoffLat as number, p.delivery.dropoffLng as number);
-      const selected = p.delivery._id === selectedDeliveryId;
-      return (
-        <g key={`route-${p.delivery._id}`}>
-          <line
-            x1={x1} y1={y1} x2={x2} y2={y2}
-            stroke={selected ? "#0794B5" : "#cbd5e1"}
-            strokeWidth={selected ? 2.5 : 1.2}
-            strokeDasharray={selected ? "none" : "4 4"}
-            opacity={selected ? 1 : 0.6}
-          />
-        </g>
-      );
-    });
-
-  const pickupMarkers = pickups.map((p) => {
-    const [x, y] = toSvg(p.lat, p.lng);
-    const selected = p.delivery._id === selectedDeliveryId;
-    return (
-      <g key={`pk-${p.delivery._id}`}>
-        <circle
-          cx={x} cy={y} r={selected ? 7 : 5}
-          fill="#0794B5"
-          stroke={selected ? "#fff" : "none"}
-          strokeWidth={selected ? 2 : 0}
-          className="ops-map-marker"
-          style={{ cursor: "pointer" }}
-          onClick={() => onPickupClick(p.delivery)}
-        />
-      </g>
-    );
-  });
-
-  const dropoffMarkers = dropoffs.map((d) => {
-    const [x, y] = toSvg(d.lat, d.lng);
-    const selected = d.delivery._id === selectedDeliveryId;
-    return (
-      <g key={`dp-${d.delivery._id}`}>
-        <circle
-          cx={x} cy={y} r={selected ? 7 : 5}
-          fill="#856404"
-          stroke={selected ? "#fff" : "none"}
-          strokeWidth={selected ? 2 : 0}
-          className="ops-map-marker"
-          style={{ cursor: "pointer" }}
-          onClick={() => onDropoffClick(d.delivery)}
-        />
-      </g>
-    );
-  });
-
-  const driverMarkers = drivers.map((dr) => {
-    const [x, y] = toSvg(dr.lat, dr.lng);
-    const stale = dr.driver.isStale;
-    const selectedDelivery = dr.delivery?._id === selectedDeliveryId;
-    return (
-      <g key={`dr-${dr.driver.driverId}`}>
-        <circle
-          cx={x} cy={y} r={selectedDelivery ? 8 : 6}
-          fill={stale ? "#C62828" : "#0A7C42"}
-          stroke="#fff"
-          strokeWidth={selectedDelivery ? 2.5 : 2}
-          className="ops-map-marker"
-          style={{ cursor: "pointer" }}
-          onClick={() => onDriverClick(dr)}
-        />
-        {stale && (
-          <circle cx={x} cy={y} r={11} fill="none" stroke="#C62828" strokeWidth={1.5} strokeDasharray="2 2" opacity={0.7} />
-        )}
-        <text x={x + 9} y={y + 4} fontSize={10} fill="#1f2937" fontWeight={500} className="ops-map-label">
-          {dr.driver.name ? dr.driver.name.split(" ")[0] : "Driver"}
-        </text>
-        {dr.delivery && (
-          <text x={x + 9} y={y + 16} fontSize={9} fill="#6b7280" className="ops-map-label ops-small">
-            {dr.delivery.trackingNumber}
-          </text>
-        )}
-      </g>
-    );
-  });
-
-  return (
-    <svg viewBox={`0 0 ${width} ${height}`} className="ops-map-svg" preserveAspectRatio="xMidYMid meet">
-      {gridLines}
-      {routes}
-      {dropoffMarkers}
-      {pickupMarkers}
-      {driverMarkers}
-    </svg>
   );
 }
 

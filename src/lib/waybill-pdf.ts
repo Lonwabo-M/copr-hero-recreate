@@ -1,4 +1,5 @@
 import { jsPDF } from "jspdf";
+import logoCrop from "@/assets/22-crop.png";
 
 // ─── Waybill PDF ─────────────────────────────────────────────────────────────
 // Renders the server-resolved waybill payload (see
@@ -7,7 +8,7 @@ import { jsPDF } from "jspdf";
 // is authoritative, the browser just renders it.
 //
 // Layout grammar (standard freight waybill anatomy):
-//   1. Brand header band + document class
+//   1. Brand header band (real Lasha mark) + document class
 //   2. Reference strip — waybill no., tracking no., status, issue date
 //   3. SHIP FROM / SHIP TO panels
 //   4. Consignment details table (goods, class, dimensions, weight)
@@ -110,15 +111,6 @@ function sectionLabel(doc: jsPDF, text: string, x: number, y: number): void {
   doc.setFont("helvetica", "normal");
 }
 
-/** Field value — primary data text. */
-function fieldValue(doc: jsPDF, text: string, x: number, y: number, size = 10.5): void {
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(size);
-  doc.setTextColor(...INK);
-  doc.text(text, x, y);
-  doc.setFont("helvetica", "normal");
-}
-
 /** Field value — secondary data text. */
 function mutedValue(doc: jsPDF, text: string, x: number, y: number, size = 9.5): void {
   doc.setFont("helvetica", "normal");
@@ -133,35 +125,40 @@ export function downloadWaybillPdf(p: WaybillPayload): void {
   // ── 1. Brand header band ───────────────────────────────────────────────────
   doc.setFillColor(...NAVY);
   doc.rect(0, 0, W, 26, "F");
-  // Cyan brand accent — the logo mark's signature tick.
+  // Cyan brand accent under the band.
   doc.setFillColor(...CYAN);
   doc.rect(0, 26, W, 1.2, "F");
 
+  // Real Lasha mark (the 22.png crop — transparent background, edge-to-edge
+  // mark) on a white chip so its navy strokes read against the navy band.
+  const markH = 9; // mm
+  const markW = markH * (418 / 117); // measured asset aspect (w/h)
+  const chipW = markW + 8;
+  const chipH = markH + 5;
+  const chipX = M - 2;
+  const chipY = (26 - chipH) / 2;
+  doc.setFillColor(255, 255, 255);
+  doc.roundedRect(chipX, chipY, chipW, chipH, 1.2, 1.2, "F");
+  doc.setFillColor(...CYAN);
+  doc.rect(chipX, chipY + chipH - 0.8, chipW, 0.8, "F");
+  doc.addImage(logoCrop, "PNG", chipX + 4, chipY + 2.5, markW, markH);
+
+  // Wordmark beside the chip.
   doc.setTextColor(255, 255, 255);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(17);
-  doc.text("Lasha", M, 12);
-  doc.setFillColor(...CYAN);
-  // Brand dot cluster beside the wordmark (echoes the mark).
-  doc.circle(M + 22.5, 7.2, 1.3, "F");
-  doc.circle(M + 25.4, 10, 1.1, "F");
-  doc.circle(M + 25.4, 13.4, 1.1, "F");
+  doc.text("Lasha", chipX + chipW + 5, 15.5);
 
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(8);
-  doc.setTextColor(190, 210, 220);
-  doc.text("Waybill / Consignment Note", M, 18.5);
-  doc.text("Non-negotiable document of carriage", M, 22.3);
-
+  // Right-aligned document class.
   doc.setFont("helvetica", "bold");
   doc.setFontSize(9);
   doc.setTextColor(255, 255, 255);
-  doc.text("LASHA LOGISTICS (PTY) LTD", W - M, 11, { align: "right" });
+  doc.text("LASHA LOGISTICS (PTY) LTD", W - M, 10.5, { align: "right" });
   doc.setFont("helvetica", "normal");
   doc.setFontSize(7.5);
   doc.setTextColor(190, 210, 220);
-  doc.text("lasha.co.za  ·  support@lasha.co.za", W - M, 16, { align: "right" });
-  doc.text("Johannesburg, South Africa", W - M, 20, { align: "right" });
+  doc.text("Waybill / Consignment Note", W - M, 15.3, { align: "right" });
+  doc.text("Non-negotiable document of carriage", W - M, 19.5, { align: "right" });
 
   // ── 2. Reference strip ─────────────────────────────────────────────────────
   let y = 34;
@@ -191,7 +188,6 @@ export function downloadWaybillPdf(p: WaybillPayload): void {
   refRow("Tracking No.", p.trackingNumber, 1);
   refRow("Status", titleCase(p.status), 2);
   refRow("Issue Date", fmtDateTime(p.createdAt).split(",")[0], 3);
-  // Column separators
   doc.setDrawColor(...RULE);
   for (let i = 1; i < 4; i++) {
     doc.line(M + i * colW, y + 3, M + i * colW, y + refH - 3);
@@ -274,7 +270,6 @@ export function downloadWaybillPdf(p: WaybillPayload): void {
     { key: "weight", label: "Weight", x: 158, w: 22 },
   ] as const;
 
-  // Header row
   const rowH = 8;
   doc.setFillColor(...NAVY);
   doc.rect(M, y, CONTENT_W, rowH, "F");
@@ -286,7 +281,6 @@ export function downloadWaybillPdf(p: WaybillPayload): void {
   }
   y += rowH;
 
-  // Data row
   const dims =
     p.parcel.width != null && p.parcel.height != null
       ? `${p.parcel.width} × ${p.parcel.height} cm`
@@ -382,6 +376,9 @@ export function downloadWaybillPdf(p: WaybillPayload): void {
   );
 
   // ── 7. Signature blocks ────────────────────────────────────────────────────
+  // Clean signature line: one rule per block with "Signature" / "Date" printed
+  // BELOW the line at its own anchor — no second line under the rule (the old
+  // stray `doc.line` at the "Signature" label drew over the text).
   y += 12;
   const sigW = (CONTENT_W - 12) / 2;
   const sigBlock = (x: number, title: string) => {
@@ -390,9 +387,13 @@ export function downloadWaybillPdf(p: WaybillPayload): void {
     doc.setLineWidth(0.3);
     doc.line(x, y + 14, x + sigW, y + 14);
     doc.setLineWidth(0.2);
+    // Under-rule captions: "Signature" anchored at the rule's left end,
+    // "Date" at the 62% mark — printed below the line, not over it.
     mutedValue(doc, "Signature", x, y + 18.5, 7.5);
     mutedValue(doc, "Date", x + sigW * 0.62, y + 18.5, 7.5);
-    doc.line(x + sigW * 0.58, y + 14, x + sigW * 0.58, y + 14);
+    // Date tick separating the two halves of the rule.
+    doc.setDrawColor(...RULE);
+    doc.line(x + sigW * 0.58, y + 11, x + sigW * 0.58, y + 14);
   };
   sigBlock(M, "Driver Signature");
   sigBlock(M + sigW + 12, "Recipient Signature");
