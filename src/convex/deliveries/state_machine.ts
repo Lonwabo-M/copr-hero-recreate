@@ -385,6 +385,21 @@ export const createOrderAndDelivery = mutation({
       updatedAt: now,
     });
 
+    // 8b. Write the order_placed tracking event — the tracking page's
+    // "placed" milestone derives from this event log entry. (Pump finding:
+    // this creation path never wrote the event, so every order created
+    // through the Request Delivery flow showed a tracking timeline that
+    // began at "picked up" with no placed milestone.)
+    await recordDeliveryEvent(
+      ctx,
+      deliveryId,
+      "order_placed",
+      "none",
+      DELIVERY_STATUS.REQUESTED,
+      userId,
+      JSON.stringify({ orderId })
+    );
+
     // 9. Record audit
     await ctx.runMutation(internal.audit.service.recordDeliveryTransition, {
       actorId: userId,
@@ -1316,6 +1331,7 @@ export const completeDelivery = mutation({
     // settlement-${deliveryId} key makes retries safe. The driver is the
     // delivery's authoritative assigned courier — never a client-supplied ID.
     if (delivery.courierId) {
+      const courierId = delivery.courierId;
       await ctx.runMutation(
         internal.pricing.service.createSettlement,
         {
@@ -1324,6 +1340,21 @@ export const completeDelivery = mutation({
           driverId: delivery.courierId,
         }
       );
+
+      // Completion stats: the driver profile's trip counter and lifetime
+      // rating aggregate must reflect completed work — the Operations Drivers
+      // tab and dispatch scoring both read them. (Pump finding: settlements
+      // were created but totalTrips stayed 0 forever, so freshly approved
+      // drivers showed zero experience no matter how much they drove.)
+      const courierProfile = await ctx.db
+        .query("driver_profiles")
+        .withIndex("by_user", (q) => q.eq("userId", courierId))
+        .unique();
+      if (courierProfile) {
+        await ctx.db.patch(courierProfile._id, {
+          totalTrips: (courierProfile.totalTrips ?? 0) + 1,
+        });
+      }
     }
 
     return { success: true };

@@ -46,17 +46,38 @@ const stuck = (all ?? []).filter((d) =>
 );
 console.log(`  stuck deliveries: ${stuck.length}`);
 
-for (const delivery of stuck) {
+// Ops confirms the 13 REQUESTED leftovers (ops holds the requested→
+// pending_dispatch transition permission) before manual completion.
+for (const delivery of (all ?? []).filter((d) => d.status === "requested")) {
+  await ops.mutateSoft(
+    "deliveries/state_machine:dispatchDelivery",
+    { deliveryId: delivery._id },
+    "opsConfirmRequested",
+    raceLost
+  );
+}
+const refreshed = (await ops.query("deliveries/state_machine:getAllDeliveriesForOps", { limit: 500 })) ?? [];
+const dispatchable = refreshed.filter((d) =>
+  ["pending_dispatch", "assigned", "reassignment_required"].includes(d.status)
+);
+console.log(`  dispatchable after confirm: ${dispatchable.length}`);
+
+// Agent drivers only — the roster also holds real staff accounts from earlier
+// manual testing, which have no agent client to drive them.
+const agentAssignable = assignable.filter((r) => /agent\.driver\d+@/.test(r.email ?? ""));
+console.log(`  agent assignable drivers: ${agentAssignable.length}`);
+
+for (const delivery of dispatchable) {
   // Pick a driver round-robin and resolve their REAL vehicle id via their own
   // driver-app query (the roster's vehicle is a display projection without _id).
-  const pick = assignable[completed % assignable.length];
+  const pick = agentAssignable[completed % agentAssignable.length];
   if (!pick) break;
   const driverClient = drivers.find(
     (d) => d.i + 1 === Number(pick.email?.match(/driver(\d+)@/)?.[1] ?? 0)
   );
   if (!driverClient) continue;
-  const profile = await driverClient.client.query("users/driverProfiles:getMyDriverProfile", {});
-  const vehicleId = profile?.currentVehicleId;
+  const profile = await driverClient.client.query("users/driverApplications:getMyDispatchIdentity", {});
+  const vehicleId = profile?.vehicle?._id;
   if (!vehicleId) {
     console.log(`  · skip ${delivery.trackingNumber} (driver has no active vehicle)`);
     continue;
