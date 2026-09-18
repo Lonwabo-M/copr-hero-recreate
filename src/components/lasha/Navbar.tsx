@@ -97,29 +97,8 @@ export default function Navbar() {
           ))}
         </div>
 
-        {/* Right rail — Book-a-Demo + Login on desktop; mobile toggle on small screens. */}
-        <div className="flex items-center justify-end gap-3" style={{ paddingRight: 10 }}>
-          <a
-            href="/book-demo"
-            className="hidden lg:inline-flex text-[13px] font-semibold tracking-wide cursor-pointer no-underline"
-            style={{
-              color: "var(--lasha-cyan-light)",
-              border: "1px solid rgba(7, 148, 181, 0.45)",
-              borderRadius: 999,
-              padding: "8px 16px",
-              transition: "background-color 200ms ease, border-color 200ms ease",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = "rgba(7, 148, 181, 0.15)";
-              e.currentTarget.style.borderColor = "rgba(67, 184, 212, 0.7)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = "transparent";
-              e.currentTarget.style.borderColor = "rgba(7, 148, 181, 0.45)";
-            }}
-          >
-            Book a Demo
-          </a>
+        {/* Right rail — Login CTA on desktop; mobile toggle on small screens. */}
+        <div className="flex items-center justify-end" style={{ paddingRight: 10 }}>
           <a
             href="/auth"
             className="lasha-btn-primary text-[13px] hidden lg:inline-flex"
@@ -170,9 +149,6 @@ export default function Navbar() {
                 {link.label}
               </button>
             ))}
-            <a href="/book-demo" className="lasha-btn-secondary mt-2 justify-center text-[14px]" style={{ color: "var(--lasha-cyan-light)", borderColor: "rgba(7,148,181,0.45)" }}>
-              Book a Demo
-            </a>
             <a href="/auth" className="lasha-btn-primary justify-center text-[15px]">
               Login
             </a>
