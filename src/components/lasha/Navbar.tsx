@@ -57,7 +57,7 @@ export default function Navbar() {
           </a>
         </div>
 
-        {/* Centred desktop links */}
+        {/* Centred desktop links — tabs only, no CTA */}
         <div
           className="hidden lg:flex items-center gap-8"
           style={{ justifySelf: "center" }}
@@ -74,16 +74,16 @@ export default function Navbar() {
               {link.label}
             </button>
           ))}
-          <a href="/auth" className="lasha-btn-primary text-[13px]">
-            Login
-          </a>
         </div>
 
-        {/* Right rail — spacer that mirrors the logo's column so the tabs sit
-            dead-centre; on mobile it holds the toggle. */}
-        <div
-          className="flex items-center justify-end"
-        >
+        {/* Right rail — Login CTA on desktop; mobile toggle on small screens. */}
+        <div className="flex items-center justify-end">
+          <a
+            href="/auth"
+            className="lasha-btn-primary text-[13px] hidden lg:inline-flex"
+          >
+            Login
+          </a>
           <button
             className="lg:hidden bg-transparent border-none text-white cursor-pointer p-2"
             onClick={() => setMobileOpen(!mobileOpen)}
