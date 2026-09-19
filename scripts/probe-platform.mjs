@@ -10,4 +10,4 @@ try {
   const msg = e instanceof Error ? e.message : String(e);
   console.log(msg.includes("usage limit") ? "STILL-PAUSED" : "ERROR: " + msg.slice(0, 180));
 }
-c.close();
+try { c.close(); } catch { /* client versions without close() */ }
