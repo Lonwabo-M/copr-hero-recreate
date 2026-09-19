@@ -31,7 +31,12 @@ export default function SectorIntelligence() {
   return (
     <section
       id="sector-intelligence"
-      style={{ backgroundColor: "var(--lasha-ivory)", padding: "120px 0" }}
+      style={{
+        /* Light logo-cyan wash — this is the section's colour variation and
+           the one place the brand cyan owns a full canvas, corporate-style. */
+        backgroundColor: "#E6F4F8",
+        padding: "120px 0",
+      }}
     >
       <div className="lasha-container">
         {/* Technical label */}
@@ -99,7 +104,9 @@ export default function SectorIntelligence() {
         .sector-grid {
           display: grid;
           grid-template-columns: repeat(4, 1fr);
-          border: 1px solid var(--lasha-border-light);
+          /* White panel so the cards read crisply against the cyan wash. */
+          background: #ffffff;
+          border: 1px solid rgba(7, 148, 181, 0.18);
           border-radius: 20px;
           overflow: hidden;
         }
@@ -114,7 +121,6 @@ export default function SectorIntelligence() {
           overflow: hidden;
           transition: background 0.25s ease, box-shadow 0.25s ease;
         }
-
         .sector-card:last-child {
           border-right: none;
         }
@@ -135,8 +141,8 @@ export default function SectorIntelligence() {
           transition: transform 0.3s ease;
         }
         .sector-card:hover {
-          background: rgba(7, 148, 181, 0.05);
-          box-shadow: 0 12px 32px -18px rgba(8, 38, 49, 0.25);
+          background: rgba(7, 148, 181, 0.06);
+          box-shadow: 0 12px 32px -18px rgba(8, 38, 49, 0.3);
         }
         .sector-card:hover::before {
           transform: scaleX(1);
@@ -214,7 +220,7 @@ export default function SectorIntelligence() {
           }
           .sector-card:nth-child(1),
           .sector-card:nth-child(2) {
-            border-bottom: 1px solid var(--lasha-border-light);
+            border-bottom: 1px solid rgba(7, 148, 181, 0.14);
           }
         }
 
@@ -224,7 +230,7 @@ export default function SectorIntelligence() {
           }
           .sector-card {
             border-right: none !important;
-            border-bottom: 1px solid var(--lasha-border-light);
+            border-bottom: 1px solid rgba(7, 148, 181, 0.14);
             min-height: auto;
           }
           .sector-card:last-child {

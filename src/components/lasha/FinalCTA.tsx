@@ -6,9 +6,29 @@ export default function FinalCTA() {
       style={{
         backgroundColor: "var(--lasha-navy)",
         padding: "128px 0",
+        position: "relative",
+        overflow: "hidden",
       }}
     >
-      <div className="lasha-container" style={{ textAlign: "center" }}>
+      {/* Ambient cyan glow — matches the FAQ section's depth treatment so the
+          two closing navy blocks read as one continuous band. */}
+      <div
+        aria-hidden="true"
+        style={{
+          position: "absolute",
+          bottom: -200,
+          left: "50%",
+          transform: "translateX(-50%)",
+          width: 640,
+          height: 640,
+          borderRadius: "50%",
+          background:
+            "radial-gradient(circle, rgba(7,148,181,0.14) 0%, rgba(7,148,181,0) 70%)",
+          pointerEvents: "none",
+        }}
+      />
+
+      <div className="lasha-container" style={{ textAlign: "center", position: "relative" }}>
         <h2
           className="lasha-heading lasha-heading-dark mb-8"
           style={{

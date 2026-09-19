@@ -32,30 +32,29 @@ export default function About() {
           </p>
         </div>
 
-        {/* Feature figure — full-width editorial band above the two-column
-            body. The photograph (16:9, object-fit cover) sits inside a fixed-
-            aspect frame so the band's height is deterministic and the columns
-            below start on a clean, aligned edge. */}
-        <div className="about-figure">
-          <img
-            src="/assets/van-fleet.jpg"
-            alt="A Lasha delivery van on route"
-            loading="lazy"
-          />
-          <div className="about-figure-caption">
-            <span className="lasha-label" style={{ fontSize: 11 }}>
-              The network
-            </span>
-            <span>
-              Vetted local vehicles, moving business goods daily.
-            </span>
-          </div>
-        </div>
+        {/* Body grid — contained photograph left (4:3, capped width so it never
+            dominates the section), narrative copy right. Top edges aligned on
+            one shared line; the caption sits under the image like a print
+            credit, not overlaid on it. */}
+        <div className="about-body">
+          <figure className="about-figure">
+            <div className="about-figure-frame">
+              <img
+                src="/assets/van-fleet.jpg"
+                alt="A Lasha delivery van on route"
+                loading="lazy"
+              />
+            </div>
+            <figcaption className="about-figure-caption">
+              <span className="lasha-label" style={{ fontSize: 11 }}>
+                The network
+              </span>
+              <span className="about-figure-note">
+                Vetted local vehicles, moving business goods daily.
+              </span>
+            </figcaption>
+          </figure>
 
-        {/* Body grid — copy left, stat rail right. Top edges aligned; the
-            stat rail's cards distribute against the copy's height so neither
-            column visually outruns the other. */}
-        <div className="about-grid">
           <div className="about-copy">
             <p>
               At Lasha, we believe the future of logistics in South Africa does
@@ -101,35 +100,36 @@ export default function About() {
               </p>
             </div>
           </div>
+        </div>
 
-          {/* Stat rail — the platform's real numbers, top-aligned with the
-              first paragraph and separated by hairlines, not cards-in-cards. */}
-          <aside className="about-stats" aria-label="Lasha by the numbers">
-            <div className="about-stat">
-              <span className="about-stat-value">250 000</span>
-              <span className="about-stat-label">
-                minibus taxis on South African roads — our idle capacity pool
-              </span>
-            </div>
-            <div className="about-stat">
-              <span className="about-stat-value">Same-day</span>
-              <span className="about-stat-label">
-                delivery windows, scheduled around real business operations
-              </span>
-            </div>
-            <div className="about-stat">
-              <span className="about-stat-value">100%</span>
-              <span className="about-stat-label">
-                of deliveries closed with digital proof of delivery
-              </span>
-            </div>
-            <div className="about-stat">
-              <span className="about-stat-value">Live</span>
-              <span className="about-stat-label">
-                GPS tracking on every vehicle, visible to every customer
-              </span>
-            </div>
-          </aside>
+        {/* Stat band — the platform's real numbers as a full-width horizontal
+            rail with hairline separators: corporate, scannable, aligned to the
+            same container edges as everything above it. */}
+        <div className="about-stats" aria-label="Lasha by the numbers">
+          <div className="about-stat">
+            <span className="about-stat-value">250 000</span>
+            <span className="about-stat-label">
+              minibus taxis on South African roads — our idle capacity pool
+            </span>
+          </div>
+          <div className="about-stat">
+            <span className="about-stat-value">Same-day</span>
+            <span className="about-stat-label">
+              delivery windows, scheduled around real business operations
+            </span>
+          </div>
+          <div className="about-stat">
+            <span className="about-stat-value">100%</span>
+            <span className="about-stat-label">
+              of deliveries closed with digital proof of delivery
+            </span>
+          </div>
+          <div className="about-stat">
+            <span className="about-stat-value">Live</span>
+            <span className="about-stat-label">
+              GPS tracking on every vehicle, visible to every customer
+            </span>
+          </div>
         </div>
       </div>
 
@@ -161,61 +161,51 @@ export default function About() {
           transform: translateY(4px);
         }
 
-        /* ── Feature figure ─────────────────────────────────────────── */
+        /* ── Body grid: image + copy ───────────────────────────────── */
+        .about-body {
+          display: grid;
+          grid-template-columns: minmax(320px, 440px) 1fr;
+          gap: 64px;
+          align-items: start;
+          margin-bottom: 72px;
+        }
+
+        /* Contained figure — a bounded 4:3 frame with a fixed width cap, so
+           the photo reads as one editorial element beside the copy rather
+           than a full-width band that outruns the section. */
         .about-figure {
-          position: relative;
+          margin: 0;
+          position: sticky;
+          top: 96px;
+        }
+        .about-figure-frame {
           border-radius: 20px;
           overflow: hidden;
           border: 1px solid rgba(255, 255, 255, 0.12);
-          aspect-ratio: 21 / 9;
-          margin-bottom: 64px;
+          aspect-ratio: 4 / 3;
           background: var(--lasha-navy-dark);
         }
-        .about-figure img {
-          position: absolute;
-          inset: 0;
+        .about-figure-frame img {
           width: 100%;
           height: 100%;
           object-fit: cover;
           display: block;
           /* Subtle navy wash keeps the photo inside the section's palette. */
-          filter: saturate(0.92);
-        }
-        .about-figure::after {
-          content: "";
-          position: absolute;
-          inset: 0;
-          background: linear-gradient(
-            180deg,
-            rgba(8, 38, 49, 0.05) 0%,
-            rgba(8, 38, 49, 0.55) 100%
-          );
-          pointer-events: none;
+          filter: saturate(0.94);
         }
         .about-figure-caption {
-          position: absolute;
-          left: 28px;
-          right: 28px;
-          bottom: 22px;
-          z-index: 1;
           display: flex;
           align-items: baseline;
           justify-content: space-between;
-          gap: 24px;
+          gap: 16px;
           flex-wrap: wrap;
+          margin-top: 14px;
+          padding: 0 2px;
         }
-        .about-figure-caption > span:last-child {
-          font-size: 14px;
-          color: rgba(255, 255, 255, 0.85);
+        .about-figure-note {
+          font-size: 13px;
+          color: rgba(255, 255, 255, 0.6);
           font-weight: 500;
-        }
-
-        /* ── Body grid ──────────────────────────────────────────────── */
-        .about-grid {
-          display: grid;
-          grid-template-columns: 1.6fr 1fr;
-          gap: 72px;
-          align-items: start;
         }
 
         /* ── Copy column ────────────────────────────────────────────── */
@@ -223,6 +213,7 @@ export default function About() {
           display: flex;
           flex-direction: column;
           gap: 20px;
+          padding-top: 4px;
         }
         .about-copy p {
           font-size: 16px;
@@ -241,22 +232,26 @@ export default function About() {
           gap: 16px;
         }
 
-        /* ── Stat rail ──────────────────────────────────────────────── */
+        /* ── Stat band — horizontal rail ────────────────────────────── */
         .about-stats {
-          display: flex;
-          flex-direction: column;
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
           border-top: 1px solid rgba(255, 255, 255, 0.14);
-          align-self: stretch;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.14);
         }
         .about-stat {
           display: flex;
           flex-direction: column;
-          gap: 6px;
-          padding: 22px 0;
-          border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+          gap: 8px;
+          padding: 32px 32px 32px 0;
+          border-right: 1px solid rgba(255, 255, 255, 0.14);
+        }
+        .about-stat:nth-child(n + 2) {
+          padding-left: 32px;
         }
         .about-stat:last-child {
-          border-bottom: none;
+          border-right: none;
+          padding-right: 0;
         }
         .about-stat-value {
           font-size: 30px;
@@ -269,10 +264,39 @@ export default function About() {
           font-size: 13px;
           line-height: 1.6;
           color: rgba(255, 255, 255, 0.55);
-          max-width: 300px;
+          max-width: 280px;
         }
 
         /* ── Responsive ─────────────────────────────────────────────── */
+        @media (max-width: 1024px) {
+          .about-body {
+            grid-template-columns: 1fr;
+            gap: 40px;
+            margin-bottom: 56px;
+          }
+          .about-figure {
+            position: static;
+            max-width: 560px;
+          }
+          .about-stats {
+            grid-template-columns: repeat(2, 1fr);
+          }
+          .about-stat {
+            padding: 24px 24px 24px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+          }
+          .about-stat:nth-child(n + 2) {
+            padding-left: 24px;
+          }
+          .about-stat:nth-child(3),
+          .about-stat:nth-child(4) {
+            border-bottom: none;
+          }
+          .about-stat:nth-child(2) {
+            border-right: none;
+            padding-right: 0;
+          }
+        }
         @media (max-width: 900px) {
           .about-header {
             grid-template-columns: 1fr;
@@ -284,24 +308,21 @@ export default function About() {
             transform: none;
             max-width: 420px;
           }
-          .about-figure {
-            aspect-ratio: 16 / 9;
-            margin-bottom: 48px;
-          }
-          .about-figure-caption {
-            left: 18px;
-            right: 18px;
-            bottom: 14px;
-          }
-          .about-grid {
-            grid-template-columns: 1fr;
-            gap: 44px;
+        }
+        @media (max-width: 640px) {
+          .about-body {
+            gap: 32px;
           }
           .about-stats {
-            border-top: none;
+            grid-template-columns: 1fr;
           }
           .about-stat {
-            padding: 18px 0;
+            padding: 20px 0 !important;
+            border-right: none !important;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+          }
+          .about-stat:last-child {
+            border-bottom: none;
           }
         }
       `}</style>
