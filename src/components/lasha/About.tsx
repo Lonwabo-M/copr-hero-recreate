@@ -6,31 +6,26 @@ export default function About() {
       style={{ padding: "120px 0", backgroundColor: "var(--lasha-navy)" }}
     >
       <div className="lasha-container">
-        {/* Section label — identical placement pattern to every other Lasha
-            section ("04 / Sector Intelligence", etc.): first element, top of
-            the container, above the content grid. */}
-        <p className="lasha-label mb-12">
-          About Lasha
-        </p>
-
-        {/* Header row — heading left, founding line right. The lede hangs from
-            the same top edge as the heading (no arbitrary padding-top: the
-            shared border-top defines one alignment band for both columns). */}
-        <div className="about-header">
-          <h2
-            className="lasha-heading lasha-heading-dark"
-            style={{ fontSize: "clamp(34px, 3.6vw, 54px)" }}
-          >
-            Local reach.
-            <br />
-            Modern visibility.
-            <br />
-            <span style={{ color: "var(--lasha-cyan)" }}>One delivery network.</span>
-          </h2>
+        {/* Topline — section label and founding line share one baseline row
+            ("About Lasha" left, "Founded…" right), so the two read as a
+            single aligned band at the top of the section. */}
+        <div className="about-topline">
+          <p className="lasha-label">About Lasha</p>
           <p className="about-lede">
             Founded in the Western Cape, South Africa
           </p>
         </div>
+
+        <h2
+          className="lasha-heading lasha-heading-dark"
+          style={{ fontSize: "clamp(34px, 3.6vw, 54px)", marginBottom: 56 }}
+        >
+          Local reach.
+          <br />
+          Modern visibility.
+          <br />
+          <span style={{ color: "var(--lasha-cyan)" }}>One delivery network.</span>
+        </h2>
 
         {/* Body grid — contained photograph left (4:3, capped width so it never
             dominates the section), narrative copy right. Top edges aligned on
@@ -80,25 +75,30 @@ export default function About() {
               income streams for taxi owners and strengthening the backbone of
               the township economy.
             </p>
+          </div>
+        </div>
 
-            <div className="about-support">
-              <p className="lasha-label" style={{ fontSize: 11 }}>
-                Support
-              </p>
-              <p>
-                Our vision is strengthened by the support of the Department of
-                Science, Technology and Innovation (DTSI), the Technology
-                Innovation Agency (TIA), and the Council for Scientific and
-                Industrial Research (CSIR) — partners who share our commitment
-                to building innovative, locally-rooted solutions that transform
-                industries and uplift communities.
-              </p>
-              <p>
-                At the heart of it, our mission is simple: move goods smarter,
-                strengthen communities, and build a logistics system truly made
-                for Africa.
-              </p>
-            </div>
+        {/* Support panel — stretched across the full container width so its
+            left edge aligns with the photograph's left edge above; label and
+            copy sit in a two-column grid at desktop widths. */}
+        <div className="about-support">
+          <p className="lasha-label" style={{ fontSize: 11 }}>
+            Support
+          </p>
+          <div className="about-support-copy">
+            <p>
+              Our vision is strengthened by the support of the Department of
+              Science, Technology and Innovation (DTSI), the Technology
+              Innovation Agency (TIA), and the Council for Scientific and
+              Industrial Research (CSIR) — partners who share our commitment
+              to building innovative, locally-rooted solutions that transform
+              industries and uplift communities.
+            </p>
+            <p>
+              At the heart of it, our mission is simple: move goods smarter,
+              strengthen communities, and build a logistics system truly made
+              for Africa.
+            </p>
           </div>
         </div>
 
@@ -107,25 +107,33 @@ export default function About() {
             same container edges as everything above it. */}
         <div className="about-stats" aria-label="Lasha by the numbers">
           <div className="about-stat">
+            <span className="about-stat-index">01</span>
             <span className="about-stat-value">250 000</span>
+            <span className="about-stat-tick" aria-hidden="true" />
             <span className="about-stat-label">
               minibus taxis on South African roads — our idle capacity pool
             </span>
           </div>
           <div className="about-stat">
+            <span className="about-stat-index">02</span>
             <span className="about-stat-value">Same-day</span>
+            <span className="about-stat-tick" aria-hidden="true" />
             <span className="about-stat-label">
               delivery windows, scheduled around real business operations
             </span>
           </div>
           <div className="about-stat">
+            <span className="about-stat-index">03</span>
             <span className="about-stat-value">100%</span>
+            <span className="about-stat-tick" aria-hidden="true" />
             <span className="about-stat-label">
               of deliveries closed with digital proof of delivery
             </span>
           </div>
           <div className="about-stat">
+            <span className="about-stat-index">04</span>
             <span className="about-stat-value">Live</span>
+            <span className="about-stat-tick" aria-hidden="true" />
             <span className="about-stat-label">
               GPS tracking on every vehicle, visible to every customer
             </span>
@@ -134,13 +142,14 @@ export default function About() {
       </div>
 
       <style>{`
-        /* ── Header row ─────────────────────────────────────────────── */
-        .about-header {
-          display: grid;
-          grid-template-columns: 1.2fr 1fr;
-          gap: 64px;
-          align-items: stretch;
-          margin-bottom: 56px;
+        /* ── Topline row: label + founding line on one baseline ────── */
+        .about-topline {
+          display: flex;
+          align-items: baseline;
+          justify-content: space-between;
+          gap: 24px;
+          flex-wrap: wrap;
+          margin-bottom: 20px;
         }
         .about-lede {
           font-size: 13px;
@@ -150,15 +159,6 @@ export default function About() {
           line-height: 1.7;
           color: var(--lasha-cyan-light);
           margin: 0;
-          max-width: 320px;
-          justify-self: end;
-          align-self: start;
-          text-align: left;
-          border-top: 1px solid rgba(255, 255, 255, 0.18);
-          padding-top: 18px;
-          /* The heading has no top rule — align the lede's first text line
-             with the heading's cap height instead of its border. */
-          transform: translateY(4px);
         }
 
         /* ── Body grid: image + copy ───────────────────────────────── */
@@ -167,7 +167,7 @@ export default function About() {
           grid-template-columns: minmax(320px, 440px) 1fr;
           gap: 64px;
           align-items: start;
-          margin-bottom: 72px;
+          margin-bottom: 56px;
         }
 
         /* Contained figure — a bounded 4:3 frame with a fixed width cap, so
@@ -221,18 +221,34 @@ export default function About() {
           color: rgba(255, 255, 255, 0.68);
           margin: 0;
         }
+        /* ── Support band — full container width, label left / copy right,
+            left edge flush with the photograph above. */
         .about-support {
           border: 1px solid rgba(67, 184, 212, 0.22);
           background: linear-gradient(180deg, rgba(7, 148, 181, 0.10) 0%, rgba(7, 148, 181, 0.04) 100%);
           border-radius: 16px;
-          padding: 28px;
-          margin-top: 16px;
+          padding: 28px 32px;
+          display: grid;
+          grid-template-columns: 180px 1fr;
+          gap: 32px;
+          align-items: start;
+          margin-bottom: 56px;
+        }
+        .about-support-copy {
           display: flex;
           flex-direction: column;
           gap: 16px;
         }
+        .about-support-copy p {
+          font-size: 15px;
+          line-height: 1.75;
+          color: rgba(255, 255, 255, 0.68);
+          margin: 0;
+        }
 
-        /* ── Stat band — horizontal rail ────────────────────────────── */
+        /* ── Stat band — horizontal rail with layered accents: index chips,
+            cyan values, a lime tick rule, and a soft corner wash so each
+            cell carries colour without turning into a loud card. */
         .about-stats {
           display: grid;
           grid-template-columns: repeat(4, 1fr);
@@ -240,30 +256,63 @@ export default function About() {
           border-bottom: 1px solid rgba(255, 255, 255, 0.14);
         }
         .about-stat {
+          position: relative;
           display: flex;
           flex-direction: column;
-          gap: 8px;
-          padding: 32px 32px 32px 0;
+          gap: 10px;
+          padding: 32px 32px 32px 28px;
           border-right: 1px solid rgba(255, 255, 255, 0.14);
+          overflow: hidden;
+          /* Soft cyan wash anchored bottom-left of each cell. */
+          background:
+            radial-gradient(120% 100% at 0% 100%, rgba(7, 148, 181, 0.10) 0%, rgba(7, 148, 181, 0) 62%);
+          transition: background 0.25s ease;
+        }
+        .about-stat:hover {
+          background:
+            radial-gradient(120% 100% at 0% 100%, rgba(7, 148, 181, 0.18) 0%, rgba(7, 148, 181, 0) 62%);
         }
         .about-stat:nth-child(n + 2) {
-          padding-left: 32px;
+          padding-left: 28px;
         }
         .about-stat:last-child {
           border-right: none;
           padding-right: 0;
         }
+        /* Index chip — the platform's numbered-label motif (01 / 02 …). */
+        .about-stat-index {
+          font-size: 11px;
+          font-weight: 700;
+          letter-spacing: 0.1em;
+          color: var(--lasha-cyan-light);
+          line-height: 1;
+          padding: 5px 9px;
+          border: 1px solid rgba(67, 184, 212, 0.35);
+          border-radius: 999px;
+          width: fit-content;
+          background: rgba(7, 148, 181, 0.12);
+        }
         .about-stat-value {
           font-size: 30px;
           font-weight: 700;
           letter-spacing: -0.02em;
-          color: #ffffff;
+          color: var(--lasha-cyan-light);
           line-height: 1.1;
+        }
+        /* Lime tick — a short accent rule bridging value and label, the
+           section's one lime note (the brand's highlight colour). */
+        .about-stat-tick {
+          display: block;
+          width: 26px;
+          height: 2px;
+          background: var(--lasha-lime);
+          border-radius: 1px;
+          opacity: 0.9;
         }
         .about-stat-label {
           font-size: 13px;
           line-height: 1.6;
-          color: rgba(255, 255, 255, 0.55);
+          color: rgba(255, 255, 255, 0.6);
           max-width: 280px;
         }
 
@@ -272,17 +321,22 @@ export default function About() {
           .about-body {
             grid-template-columns: 1fr;
             gap: 40px;
-            margin-bottom: 56px;
+            margin-bottom: 44px;
           }
           .about-figure {
             position: static;
             max-width: 560px;
           }
+          .about-support {
+            grid-template-columns: 1fr;
+            gap: 18px;
+            margin-bottom: 44px;
+          }
           .about-stats {
             grid-template-columns: repeat(2, 1fr);
           }
           .about-stat {
-            padding: 24px 24px 24px 0;
+            padding: 24px 24px 24px 24px;
             border-bottom: 1px solid rgba(255, 255, 255, 0.14);
           }
           .about-stat:nth-child(n + 2) {
@@ -294,30 +348,28 @@ export default function About() {
           }
           .about-stat:nth-child(2) {
             border-right: none;
-            padding-right: 0;
+            padding-right: 24px;
           }
         }
         @media (max-width: 900px) {
-          .about-header {
-            grid-template-columns: 1fr;
-            gap: 32px;
-            margin-bottom: 44px;
-          }
-          .about-lede {
-            justify-self: start;
-            transform: none;
-            max-width: 420px;
+          .about-topline {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 10px;
           }
         }
         @media (max-width: 640px) {
           .about-body {
             gap: 32px;
           }
+          .about-support {
+            padding: 22px 20px;
+          }
           .about-stats {
             grid-template-columns: 1fr;
           }
           .about-stat {
-            padding: 20px 0 !important;
+            padding: 20px 0 20px 20px !important;
             border-right: none !important;
             border-bottom: 1px solid rgba(255, 255, 255, 0.14);
           }
