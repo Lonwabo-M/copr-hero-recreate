@@ -1020,6 +1020,15 @@ const schema = defineSchema(
     })
       .index("by_status", ["status", "submittedAt"])
       .index("by_email", ["email"]),
+
+    // One-time platform bootstrap marker (see convex/bootstrap.ts). Records
+    // that the initial seeding pass has run on this deployment so it can
+    // never repeat. Empty on any long-lived deployment.
+    platform_bootstrap: defineTable({
+      seededAt: v.number(),
+      reason: v.string(),
+      version: v.number(),
+    }),
   },
   {
     schemaValidation: false,
