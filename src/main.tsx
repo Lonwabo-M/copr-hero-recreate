@@ -4,7 +4,7 @@ import { APP_AREAS, RoleGate } from "@/components/shells/RoleGate";
 import { homeRouteForRole } from "@/components/shells/roleAccess";
 import { VlyToolbar } from "../vly-toolbar-readonly.tsx";
 import { ConvexAuthProvider } from "@convex-dev/auth/react";
-import { ConvexReactClient } from "convex/react";
+import { convexClient } from "./lib/convex";
 import React, { StrictMode, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Route, Routes, useLocation } from "react-router";
@@ -101,10 +101,7 @@ class RootErrorBoundary extends React.Component<
   }
 }
 
-const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL as string);
-
-
-
+const convex = convexClient; // single source of truth from src/lib/convex.ts (migrated deployment)
 /** Role-aware post-auth entry: resolves the signed-in user's home route via
  *  PostAuthRedirect (customer → /dashboard, driver → /driver, ops → /operations). */
 
