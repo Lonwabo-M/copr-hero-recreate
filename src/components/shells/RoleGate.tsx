@@ -62,7 +62,13 @@ function AreaGuard({ area, children }: RoleGateProps) {
   // workspace while the check is in flight is precisely what surfaced "Only
   // drivers can access this query" as a preview error.
   const awaitingElevationCheck = testAccessState === undefined;
-  const admitted = role !== undefined && canAccessArea(role, area);
+  // Roleless accounts (a brand-new sign-up, before the backend provisions a
+  // role) belong to the Customer experience — canAccessArea already admits
+  // them to the Customer area. Requiring `role !== undefined` here bounced new
+  // accounts away from /onboarding/customer straight to /dashboard, skipping
+  // onboarding entirely. This is UX routing only; the backend remains the
+  // authorization authority.
+  const admitted = canAccessArea(role, area);
   const needsElevation =
     role !== undefined &&
     area !== APP_AREAS.CUSTOMER &&

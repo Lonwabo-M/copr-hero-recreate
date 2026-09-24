@@ -41,9 +41,6 @@ export default function About() {
               />
             </div>
             <figcaption className="about-figure-caption">
-              <span className="lasha-label" style={{ fontSize: 11 }}>
-                The network
-              </span>
               <span className="about-figure-note">
                 Vetted local vehicles, moving business goods daily.
               </span>
