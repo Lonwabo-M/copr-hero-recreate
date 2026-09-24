@@ -246,45 +246,46 @@ export default function About() {
         /* ── Stat band — horizontal rail with layered accents: index chips,
             cyan values, a lime tick rule, and a soft corner wash so each
             cell carries colour without turning into a loud card. */
+        /* Stat tiles — light neutral cards on the navy band, so the numbers
+           read as clean, corporate blocks. Each tile carries one accent hue
+           (cool cyan → sea green → brand olive-lime → warm amber); the accent
+           is set once and reused by the index chip, value and tick. Accents
+           are the deeper, text-safe versions so they hold contrast on the
+           light card. */
         .about-stats {
           display: grid;
           grid-template-columns: repeat(4, 1fr);
-          border-top: 1px solid rgba(255, 255, 255, 0.14);
-          border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+          gap: 16px;
         }
-        /* Per-tile accent: each cell carries its own hue, drawn as one
-           harmonious family (cool cyan → sea green → brand lime → warm
-           amber) that stays complementary to the navy section ground. The
-           accent is set once per tile and reused by the wash, index chip,
-           value and tick so each tile reads as a single colour story. */
         .about-stat {
-          --stat-accent: #4ab6d8;
+          --stat-neutral: #f7f6f1;
+          --stat-accent: #0b7d99;
           position: relative;
           display: flex;
           flex-direction: column;
           gap: 10px;
-          padding: 32px 32px 32px 28px;
-          border-right: 1px solid rgba(255, 255, 255, 0.14);
-          overflow: hidden;
-          /* Soft accent wash anchored bottom-left of each cell. */
-          background:
-            radial-gradient(120% 100% at 0% 100%, color-mix(in srgb, var(--stat-accent) 12%, transparent) 0%, transparent 62%);
-          transition: background 0.25s ease;
+          padding: 28px;
+          border-radius: 18px;
+          border: 1px solid rgba(8, 38, 49, 0.08);
+          box-shadow:
+            0 1px 2px rgba(8, 38, 49, 0.04),
+            0 8px 24px rgba(8, 38, 49, 0.06);
+          background: var(--stat-neutral);
+          transition:
+            transform 0.25s ease,
+            box-shadow 0.25s ease,
+            background 0.25s ease;
         }
-        .about-stat:nth-child(1) { --stat-accent: #4ab6d8; }  /* cyan */
-        .about-stat:nth-child(2) { --stat-accent: #5fd4c1; }  /* sea green */
-        .about-stat:nth-child(3) { --stat-accent: #dcec52; }  /* brand lime */
-        .about-stat:nth-child(4) { --stat-accent: #f0a960; }  /* warm amber */
+        .about-stat:nth-child(1) { --stat-accent: #0b7d99; }  /* deep cyan */
+        .about-stat:nth-child(2) { --stat-accent: #127a68; }  /* sea green */
+        .about-stat:nth-child(3) { --stat-accent: #647208; }  /* brand lime-ink */
+        .about-stat:nth-child(4) { --stat-accent: #b26b1c; }  /* warm amber */
         .about-stat:hover {
-          background:
-            radial-gradient(120% 100% at 0% 100%, color-mix(in srgb, var(--stat-accent) 20%, transparent) 0%, transparent 62%);
-        }
-        .about-stat:nth-child(n + 2) {
-          padding-left: 28px;
-        }
-        .about-stat:last-child {
-          border-right: none;
-          padding-right: 0;
+          transform: translateY(-3px);
+          box-shadow:
+            0 2px 4px rgba(8, 38, 49, 0.05),
+            0 14px 32px rgba(8, 38, 49, 0.10);
+          background: color-mix(in srgb, var(--stat-accent) 7%, var(--stat-neutral));
         }
         /* Index chip — the platform's numbered-label motif (01 / 02 …). */
         .about-stat-index {
@@ -294,10 +295,10 @@ export default function About() {
           color: var(--stat-accent);
           line-height: 1;
           padding: 5px 9px;
-          border: 1px solid color-mix(in srgb, var(--stat-accent) 40%, transparent);
+          border: 1px solid color-mix(in srgb, var(--stat-accent) 34%, transparent);
           border-radius: 999px;
           width: fit-content;
-          background: color-mix(in srgb, var(--stat-accent) 14%, transparent);
+          background: color-mix(in srgb, var(--stat-accent) 10%, transparent);
         }
         .about-stat-value {
           font-size: 30px;
@@ -306,8 +307,7 @@ export default function About() {
           color: var(--stat-accent);
           line-height: 1.1;
         }
-        /* Lime tick — a short accent rule bridging value and label, the
-           section's one lime note (the brand's highlight colour). */
+        /* Accent tick — a short rule bridging value and label. */
         .about-stat-tick {
           display: block;
           width: 26px;
@@ -319,7 +319,7 @@ export default function About() {
         .about-stat-label {
           font-size: 13px;
           line-height: 1.6;
-          color: rgba(255, 255, 255, 0.6);
+          color: rgba(8, 38, 49, 0.66);
           max-width: 280px;
         }
 
@@ -342,21 +342,6 @@ export default function About() {
           .about-stats {
             grid-template-columns: repeat(2, 1fr);
           }
-          .about-stat {
-            padding: 24px 24px 24px 24px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.14);
-          }
-          .about-stat:nth-child(n + 2) {
-            padding-left: 24px;
-          }
-          .about-stat:nth-child(3),
-          .about-stat:nth-child(4) {
-            border-bottom: none;
-          }
-          .about-stat:nth-child(2) {
-            border-right: none;
-            padding-right: 24px;
-          }
         }
         @media (max-width: 900px) {
           .about-topline {
@@ -376,12 +361,7 @@ export default function About() {
             grid-template-columns: 1fr;
           }
           .about-stat {
-            padding: 20px 0 20px 20px !important;
-            border-right: none !important;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.14);
-          }
-          .about-stat:last-child {
-            border-bottom: none;
+            padding: 22px;
           }
         }
       `}</style>
