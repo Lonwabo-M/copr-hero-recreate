@@ -252,7 +252,13 @@ export default function About() {
           border-top: 1px solid rgba(255, 255, 255, 0.14);
           border-bottom: 1px solid rgba(255, 255, 255, 0.14);
         }
+        /* Per-tile accent: each cell carries its own hue, drawn as one
+           harmonious family (cool cyan → sea green → brand lime → warm
+           amber) that stays complementary to the navy section ground. The
+           accent is set once per tile and reused by the wash, index chip,
+           value and tick so each tile reads as a single colour story. */
         .about-stat {
+          --stat-accent: #4ab6d8;
           position: relative;
           display: flex;
           flex-direction: column;
@@ -260,14 +266,18 @@ export default function About() {
           padding: 32px 32px 32px 28px;
           border-right: 1px solid rgba(255, 255, 255, 0.14);
           overflow: hidden;
-          /* Soft cyan wash anchored bottom-left of each cell. */
+          /* Soft accent wash anchored bottom-left of each cell. */
           background:
-            radial-gradient(120% 100% at 0% 100%, rgba(7, 148, 181, 0.10) 0%, rgba(7, 148, 181, 0) 62%);
+            radial-gradient(120% 100% at 0% 100%, color-mix(in srgb, var(--stat-accent) 12%, transparent) 0%, transparent 62%);
           transition: background 0.25s ease;
         }
+        .about-stat:nth-child(1) { --stat-accent: #4ab6d8; }  /* cyan */
+        .about-stat:nth-child(2) { --stat-accent: #5fd4c1; }  /* sea green */
+        .about-stat:nth-child(3) { --stat-accent: #dcec52; }  /* brand lime */
+        .about-stat:nth-child(4) { --stat-accent: #f0a960; }  /* warm amber */
         .about-stat:hover {
           background:
-            radial-gradient(120% 100% at 0% 100%, rgba(7, 148, 181, 0.18) 0%, rgba(7, 148, 181, 0) 62%);
+            radial-gradient(120% 100% at 0% 100%, color-mix(in srgb, var(--stat-accent) 20%, transparent) 0%, transparent 62%);
         }
         .about-stat:nth-child(n + 2) {
           padding-left: 28px;
@@ -281,19 +291,19 @@ export default function About() {
           font-size: 11px;
           font-weight: 700;
           letter-spacing: 0.1em;
-          color: var(--lasha-cyan-light);
+          color: var(--stat-accent);
           line-height: 1;
           padding: 5px 9px;
-          border: 1px solid rgba(67, 184, 212, 0.35);
+          border: 1px solid color-mix(in srgb, var(--stat-accent) 40%, transparent);
           border-radius: 999px;
           width: fit-content;
-          background: rgba(7, 148, 181, 0.12);
+          background: color-mix(in srgb, var(--stat-accent) 14%, transparent);
         }
         .about-stat-value {
           font-size: 30px;
           font-weight: 700;
           letter-spacing: -0.02em;
-          color: var(--lasha-cyan-light);
+          color: var(--stat-accent);
           line-height: 1.1;
         }
         /* Lime tick — a short accent rule bridging value and label, the
@@ -302,7 +312,7 @@ export default function About() {
           display: block;
           width: 26px;
           height: 2px;
-          background: var(--lasha-lime);
+          background: var(--stat-accent);
           border-radius: 1px;
           opacity: 0.9;
         }
