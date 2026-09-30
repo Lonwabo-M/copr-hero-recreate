@@ -30,11 +30,13 @@ type ApplicationRow = {
   _id: string;
   userId: string;
   status: "pending" | "approved" | "rejected";
-  // Captured driver identity
-  firstName: string;
-  surname: string;
-  idNumber: string;
-  cellNumber: string;
+  // Captured driver identity. Optional because applications submitted before
+  // identity capture existed have no values on file — the review card must fall
+  // back to the account details rather than render "undefined".
+  firstName?: string;
+  surname?: string;
+  idNumber?: string;
+  cellNumber?: string;
   licenseClass: string;
   licenseNumber?: string;
   vehicleMake: string;
@@ -184,9 +186,24 @@ function ApplicationCard({
         Captured Driver Details
       </div>
       <div className="dash-info-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" }}>
-        <InfoCard label="Full Name" value={`${app.firstName} ${app.surname}`} />
-        <InfoCard label="ID Number" value={app.idNumber} />
-        <InfoCard label="Cell Number" value={app.cellNumber} />
+        <InfoCard
+          label="Full Name"
+          value={
+            [app.firstName, app.surname].filter(Boolean).join(" ") ||
+            app.applicantName ||
+            "—"
+          }
+        />
+        <InfoCard
+          label="ID Number"
+          value={app.idNumber ?? "Not provided"}
+          muted={!app.idNumber}
+        />
+        <InfoCard
+          label="Cell Number"
+          value={app.cellNumber ?? app.applicantPhone ?? "Not provided"}
+          muted={!app.cellNumber}
+        />
         <InfoCard label="License Class" value={app.licenseClass} />
         <InfoCard label="License Number" value={app.licenseNumber ?? "—"} muted />
       </div>

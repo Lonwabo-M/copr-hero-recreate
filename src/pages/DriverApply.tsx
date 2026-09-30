@@ -186,6 +186,15 @@ export default function DriverApply() {
   // Narrowed non-null application for the pending/approved branches.
   const liveApp = application ?? null;
 
+  // Applications captured before identity fields existed have none on file, so
+  // fall back to the account details and never render "undefined".
+  const displayName =
+    [liveApp?.firstName, liveApp?.surname].filter(Boolean).join(" ") ||
+    user?.name ||
+    "—";
+  const displayId = liveApp?.idNumber || "—";
+  const displayCell = liveApp?.cellNumber || user?.phone || "—";
+
   // Prefill identity + vehicle fields once data lands: resubmissions start
   // from the captured application; fresh forms start from the account.
   const prefillDone = useRef(false);
@@ -193,10 +202,10 @@ export default function DriverApply() {
     if (prefillDone.current || application === undefined) return;
     prefillDone.current = true;
     if (application) {
-      setFirstName(application.firstName);
-      setSurname(application.surname);
-      setIdNumber(application.idNumber);
-      setCellNumber(application.cellNumber);
+      setFirstName(application.firstName ?? knownFirstName);
+      setSurname(application.surname ?? knownSurname);
+      setIdNumber(application.idNumber ?? "");
+      setCellNumber(application.cellNumber ?? knownCell);
       setLicenseClass(application.licenseClass);
       setLicenseNumber(application.licenseNumber ?? "");
       setVehicleMake(application.vehicleMake);
@@ -253,7 +262,7 @@ export default function DriverApply() {
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                     <Truck size={18} color="#0794B5" />
                     <div style={{ fontSize: 13.5, color: "#202020" }}>
-                      {liveApp.firstName} {liveApp.surname} · {liveApp.vehicleMake}{" "}
+                      {displayName} · {liveApp.vehicleMake}{" "}
                       {liveApp.vehicleModel} · {liveApp.vehicleRegistration} — on file
                       with Lasha.
                     </div>
@@ -269,10 +278,10 @@ export default function DriverApply() {
                     </div>
                   </div>
                   <div style={{ fontSize: 13, color: "#444", lineHeight: 1.9 }}>
-                    Driver: <strong>{liveApp.firstName} {liveApp.surname}</strong>
+                    Driver: <strong>{displayName}</strong>
                     <br />
-                    ID number: <strong>{liveApp.idNumber}</strong> · Cell:{" "}
-                    <strong>{liveApp.cellNumber}</strong>
+                    ID number: <strong>{displayId}</strong> · Cell:{" "}
+                    <strong>{displayCell}</strong>
                     <br />
                     License: <strong>{liveApp.licenseClass}</strong>
                     {liveApp.licenseNumber ? ` (${liveApp.licenseNumber})` : ""}
