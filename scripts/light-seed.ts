@@ -62,6 +62,19 @@ const DRIVER_NAMES = [
   "Nomvula Zulu", "Riaan Venter", "Bongani Mahlangu", "Elsie September",
 ];
 
+// Deterministic, valid 13-digit SA ID (passes the Luhn checksum) for a
+// simulated driver index, e.g. 8501155008085.
+function seedDriverIdNumber(index: number): string {
+  const base = `8501${String(5 + (index % 5))}${String(10 + index).padStart(2, "0")}089`;
+  let sum = 0;
+  for (let pos = 0; pos < base.length; pos++) {
+    let d = Number(base[base.length - 1 - pos]);
+    if (pos % 2 === 1) { d *= 2; if (d > 9) d -= 9; }
+    sum += d;
+  }
+  return `${base}${(10 - (sum % 10)) % 10}`;
+}
+
 const RECIPIENTS = [
   "M. Jacobs", "T. Nkosi", "S. Petersen", "A. Fourie", "D. Mthembu",
   "K. Abrahams", "P. Molefe", "R. Davids",
@@ -194,12 +207,20 @@ async function createCustomer(index: number): Promise<{ email: string; tokens: T
 
 async function createDriver(index: number, adminTokens: Tokens): Promise<DriverContext> {
   const email = `seed.driver${index}.${RUN_ID}@seed.lasha.test`;
-  const tokens = await signUp(email, DEV_PASSWORD, DRIVER_NAMES[index % DRIVER_NAMES.length]);
+  const fullName = DRIVER_NAMES[index % DRIVER_NAMES.length];
+  const [seedFirst, ...seedRest] = fullName.split(" ");
+  const seedSurname = seedRest.join(" ") || "Driver";
+  const tokens = await signUp(email, DEV_PASSWORD, fullName);
   await provisionRole(tokens.token, "driver");
 
   const veh = VEHICLES[index % VEHICLES.length];
   await throttle();
   const applyResult = await call("mutation", "users/driverApplications:submitMyDriverApplication", {
+    // Valid Luhn-checksummed 13-digit SA ID derived from the driver index.
+    firstName: seedFirst,
+    surname: seedSurname,
+    idNumber: seedDriverIdNumber(index),
+    cellNumber: `0${7 + (index % 2)}${String(10000000 + index * 137).slice(0, 8)}`,
     licenseClass: "C1",
     licenseNumber: `L-${RUN_ID}-${String(index).padStart(3, "0")}`,
     vehicleMake: veh.make,

@@ -542,6 +542,12 @@ const schema = defineSchema(
         v.literal("approved"),
         v.literal("rejected"),
       ),
+      // Captured driver identity (verified at vetting; synced onto the users
+      // account on submission so the roster shows a full legal name).
+      firstName: v.string(),
+      surname: v.string(),
+      idNumber: v.string(),
+      cellNumber: v.string(),
       // Captured driver info
       licenseClass: v.string(),
       licenseNumber: v.optional(v.string()),
@@ -570,6 +576,8 @@ const schema = defineSchema(
       userId: v.id("users"),
       licenseClass: v.string(),           // "B Code 08", "C Code 10"
       licenseNumber: v.optional(v.string()),
+      // National identity number captured at application vetting.
+      idNumber: v.optional(v.string()),
       rating: v.number(),                 // 0-5 average
       totalTrips: v.number(),
       totalEarnings: v.number(),          // cents

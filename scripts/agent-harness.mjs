@@ -275,9 +275,22 @@ export async function driverClaimRole(agent) {
 export async function driverSubmitApplication(agent, i) {
   const makes = [["Toyota", "Quantum"], ["Ford", "Ranger"], ["Nissan", "NP200"], ["Hyundai", "H100"], ["Isuzu", "KBD"]];
   const [make, model] = pick(makes, i);
+  // Deterministic valid SA ID (Luhn-checksummed) for the simulated driver.
+  const simBase = `8501${String(5 + (i % 5))}${String(10 + i).padStart(2, "0")}089`;
+  let simSum = 0;
+  for (let pos = 0; pos < simBase.length; pos++) {
+    let d = Number(simBase[simBase.length - 1 - pos]);
+    if (pos % 2 === 1) { d *= 2; if (d > 9) d -= 9; }
+    simSum += d;
+  }
+  const simId = `${simBase}${(10 - (simSum % 10)) % 10}`;
   return await agent.mutate(
     "users/driverApplications:submitMyDriverApplication",
     {
+      firstName: `Driver${i}`,
+      surname: "Application",
+      idNumber: simId,
+      cellNumber: `0${7 + (i % 2)}${String(10000000 + i * 137).slice(0, 8)}`,
       licenseClass: ["Code 08", "Code 10", "Code 14"][i % 3],
       licenseNumber: `${String(10000000 + i * 3313)}`,
       vehicleMake: make,

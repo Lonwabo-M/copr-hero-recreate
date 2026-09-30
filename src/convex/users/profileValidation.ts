@@ -103,3 +103,85 @@ export function validateBusinessName(name: string): string | null {
   }
   return null;
 }
+
+// ─── Driver identity validators ──────────────────────────────────────────────
+// Used by the driver application (Capture step) so vetting captures real,
+// verifiable identity details rather than relying on the sign-up name alone.
+
+/**
+ * South African ID number: exactly 13 digits, a plausible YYMMDD birthdate,
+ * and a valid Luhn checksum. Spaces are tolerated on input but the stored
+ * value is the digit string.
+ */
+export const SA_ID_LENGTH = 13;
+
+export function validateSaIdNumber(idNumber: string): string | null {
+  const trimmed = idNumber.replace(/\s/g, "");
+  if (!/^\d+$/.test(trimmed)) {
+    return "ID number must contain digits only";
+  }
+  if (trimmed.length !== SA_ID_LENGTH) {
+    return `ID number must be exactly ${SA_ID_LENGTH} digits`;
+  }
+
+  // Plausible birthdate embedded in the first six digits (YYMMDD).
+  const month = Number(trimmed.slice(2, 4));
+  const day = Number(trimmed.slice(4, 6));
+  if (month < 1 || month > 12) {
+    return "ID number contains an invalid birth month";
+  }
+  if (day < 1 || day > 31) {
+    return "ID number contains an invalid birth day";
+  }
+
+  // Luhn checksum (the SA ID uses the same mod-10 scheme as credit cards).
+  let sum = 0;
+  for (let i = 0; i < trimmed.length; i++) {
+    let digit = Number(trimmed[trimmed.length - 1 - i]);
+    if (i % 2 === 1) {
+      digit *= 2;
+      if (digit > 9) digit -= 9;
+    }
+    sum += digit;
+  }
+  if (sum % 10 !== 0) {
+    return "ID number checksum is invalid — please double-check it";
+  }
+  return null;
+}
+
+/**
+ * South African cell number: 0[6-8]XXXXXXXXX or +27[6-8]XXXXXXXXX.
+ * Spaces, dashes and parentheses are tolerated on input.
+ */
+export const CELL_MAX_LENGTH = 20;
+
+export function validateCellNumber(cell: string): string | null {
+  const trimmed = cell.trim();
+  if (trimmed.length === 0) {
+    return "Cell number is required";
+  }
+  if (trimmed.length > CELL_MAX_LENGTH) {
+    return `Cell number is too long (maximum ${CELL_MAX_LENGTH} characters)`;
+  }
+  const digits = trimmed.replace(/[\s()-]/g, "");
+  if (!/^(\+27|0)[6-8]\d{8}$/.test(digits)) {
+    return "Enter a valid South African cell number (e.g. 082 123 4567)";
+  }
+  return null;
+}
+
+/** Personal name part (first name / surname): required, length-capped. */
+export function validatePersonName(
+  value: string,
+  label: "First name" | "Surname"
+): string | null {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    return `${label} is required`;
+  }
+  if (trimmed.length > NAME_MAX_LENGTH) {
+    return `${label} is too long (maximum ${NAME_MAX_LENGTH} characters)`;
+  }
+  return null;
+}

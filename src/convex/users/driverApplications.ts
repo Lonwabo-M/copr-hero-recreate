@@ -5,6 +5,11 @@ import { internal } from "../_generated/api";
 import { requireAuth } from "../auth/authorization";
 import { ROLES } from "../schema";
 import { AUDIT_ACTIONS } from "../audit/service";
+import {
+  validateSaIdNumber,
+  validateCellNumber,
+  validatePersonName,
+} from "./profileValidation";
 
 // ─── Driver Applications ─────────────────────────────────────────────────────
 // The driver onboarding pipeline: Capture → Review → Accept.
@@ -27,6 +32,15 @@ const MAX_CAPACITY_KG = 50_000;
 const MIN_CAPACITY_KG = 1;
 
 function validateApplicationArgs(args: ApplicationInput): string | null {
+  // Identity: first name, surname, SA ID number, cell number.
+  const firstNameError = validatePersonName(args.firstName, "First name");
+  if (firstNameError) return firstNameError;
+  const surnameError = validatePersonName(args.surname, "Surname");
+  if (surnameError) return surnameError;
+  const idError = validateSaIdNumber(args.idNumber);
+  if (idError) return idError;
+  const cellError = validateCellNumber(args.cellNumber);
+  if (cellError) return cellError;
   if (args.licenseClass.trim().length < 2) return "License class is required";
   if (args.vehicleMake.trim().length < 2) return "Vehicle make is required";
   if (args.vehicleModel.trim().length < 2) return "Vehicle model is required";
@@ -45,8 +59,15 @@ function validateApplicationArgs(args: ApplicationInput): string | null {
 }
 
 interface ApplicationInput {
+  // Identity
+  firstName: string;
+  surname: string;
+  idNumber: string;
+  cellNumber: string;
+  // License
   licenseClass: string;
   licenseNumber?: string;
+  // Vehicle
   vehicleMake: string;
   vehicleModel: string;
   vehicleYear?: number;
@@ -68,8 +89,15 @@ interface ApplicationInput {
  */
 export const submitMyDriverApplication = mutation({
   args: {
+    // Identity
+    firstName: v.string(),
+    surname: v.string(),
+    idNumber: v.string(),
+    cellNumber: v.string(),
+    // License
     licenseClass: v.string(),
     licenseNumber: v.optional(v.string()),
+    // Vehicle
     vehicleMake: v.string(),
     vehicleModel: v.string(),
     vehicleYear: v.optional(v.number()),
@@ -89,7 +117,16 @@ export const submitMyDriverApplication = mutation({
       throw new Error("Only driver accounts can submit a driver application");
     }
 
-    const validationError = validateApplicationArgs(args as ApplicationInput);
+    // Normalise identity input before validating and storing.
+    const normalized = {
+      ...args,
+      firstName: args.firstName.trim(),
+      surname: args.surname.trim(),
+      idNumber: args.idNumber.replace(/\s/g, ""),
+      cellNumber: args.cellNumber.trim(),
+    };
+
+    const validationError = validateApplicationArgs(normalized);
     if (validationError) throw new Error(validationError);
 
     const now = Date.now();
@@ -104,7 +141,7 @@ export const submitMyDriverApplication = mutation({
       }
       // Resubmission after rejection — reset to pending.
       await ctx.db.patch(existing._id, {
-        ...args,
+        ...normalized,
         status: "pending",
         reviewNotes: undefined,
         reviewedBy: undefined,
@@ -117,8 +154,17 @@ export const submitMyDriverApplication = mutation({
     const applicationId = await ctx.db.insert("driver_applications", {
       userId,
       status: "pending",
-      ...args,
+      ...normalized,
       createdAt: now,
+    });
+
+    // Keep the account itself current: the full legal name and verified cell
+    // number flow onto the user record so the admin review card, roster and
+    // waybills show the driver's real identity, not just the sign-up name.
+    const displayName = `${normalized.firstName} ${normalized.surname}`;
+    await ctx.db.patch(userId, {
+      name: displayName,
+      phone: normalized.cellNumber,
     });
 
     await ctx.runMutation(internal.audit.service.recordGenericEvent, {
@@ -288,6 +334,7 @@ export const acceptDriverApplication = mutation({
         userId: app.userId,
         licenseClass: app.licenseClass,
         licenseNumber: app.licenseNumber,
+        idNumber: app.idNumber,
         rating: 5,
         totalTrips: 0,
         totalEarnings: 0,
@@ -298,6 +345,7 @@ export const acceptDriverApplication = mutation({
       await ctx.db.patch(profileId, {
         licenseClass: app.licenseClass,
         licenseNumber: app.licenseNumber,
+        idNumber: app.idNumber,
         isAvailable: true,
       });
     }

@@ -33,6 +33,19 @@ function rand() {
 function pick(arr) {
   return arr[Math.floor(rand() * arr.length)];
 }
+
+// Build a valid 13-digit SA ID (Luhn-checksummed) for simulated drivers:
+// 8501{i}15{d}089 where the final check digit makes the checksum pass.
+function validSimIdNumber(i) {
+  const base = `8501${String(i % 10)}15${String(1 + (i % 28)).padStart(2, "0")}089`;
+  let sum = 0;
+  for (let pos = 0; pos < base.length; pos++) {
+    let d = Number(base[base.length - 1 - pos]);
+    if (pos % 2 === 1) { d *= 2; if (d > 9) d -= 9; }
+    sum += d;
+  }
+  return `${base}${(10 - (sum % 10)) % 10}`;
+}
 function between(a, b) {
   return a + rand() * (b - a);
 }
@@ -237,7 +250,9 @@ async function customerJourney(i, opts = {}) {
  * testing elevation) → submit application (Capture phase).
  */
 async function driverSignupAndApply(i) {
-  const name = `${pick(FIRST_NAMES)} ${pick(LAST_NAMES)}`;
+  const firstName = pick(FIRST_NAMES);
+  const surname = pick(LAST_NAMES);
+  const name = `${firstName} ${surname}`;
   const email = `sim.driver${i}.${Date.now()}@lasha-sim.test`;
   const actor = await makeActor(email, name, `+27 7${Math.floor(rand() * 3)} ${Math.floor(100 + rand() * 900)} ${Math.floor(100 + rand() * 900)} ${Math.floor(1000 + rand() * 9000)}`);
 
@@ -245,10 +260,16 @@ async function driverSignupAndApply(i) {
   if (!elev) return null;
 
   const [make, model, cap] = pick(VEHICLES);
+  // Deterministic valid SA ID (passes Luhn): fixed base + index offset.
+  const idNumber = validSimIdNumber(i);
   const app = await call(
     actor,
     api.users.driverApplications.submitMyDriverApplication,
     {
+      firstName,
+      surname,
+      idNumber,
+      cellNumber: `0${7 + (i % 2)}${String(10000000 + i * 137).slice(0, 8)}`,
       licenseClass: pick(["Code 8", "Code 10", "Code 14"]),
       licenseNumber: `${Math.floor(10 + rand() * 89)}${Math.floor(100000 + rand() * 899999)}`,
       vehicleMake: make,

@@ -30,6 +30,11 @@ type ApplicationRow = {
   _id: string;
   userId: string;
   status: "pending" | "approved" | "rejected";
+  // Captured driver identity
+  firstName: string;
+  surname: string;
+  idNumber: string;
+  cellNumber: string;
   licenseClass: string;
   licenseNumber?: string;
   vehicleMake: string;
@@ -179,6 +184,9 @@ function ApplicationCard({
         Captured Driver Details
       </div>
       <div className="dash-info-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" }}>
+        <InfoCard label="Full Name" value={`${app.firstName} ${app.surname}`} />
+        <InfoCard label="ID Number" value={app.idNumber} />
+        <InfoCard label="Cell Number" value={app.cellNumber} />
         <InfoCard label="License Class" value={app.licenseClass} />
         <InfoCard label="License Number" value={app.licenseNumber ?? "—"} muted />
       </div>

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import DriverShell from "@/components/shells/DriverShell";
@@ -11,7 +11,9 @@ import {
   Truck,
   FileText,
   AlertTriangle,
+  User,
 } from "lucide-react";
+import { useAuth } from "@/hooks/use-auth";
 import "@/styles/driver.css";
 
 // ─── Driver Application (Capture step) ───────────────────────────────────────
@@ -90,7 +92,18 @@ function StatusBanner({
 export default function DriverApply() {
   const application = useQuery(api.users.driverApplications.getMyDriverApplication, {});
   const submitApplication = useMutation(api.users.driverApplications.submitMyDriverApplication);
+  const { user } = useAuth();
 
+  // Identity: from the previous application when resubmitting, else prefilled
+  // from the signed-in account so returning drivers start from what we know.
+  const knownFirstName = application?.firstName ?? user?.name?.split(" ")[0] ?? "";
+  const knownSurname = application?.surname ?? user?.name?.split(" ").slice(1).join(" ") ?? "";
+  const knownCell = application?.cellNumber ?? user?.phone ?? "";
+
+  const [firstName, setFirstName] = useState("");
+  const [surname, setSurname] = useState("");
+  const [idNumber, setIdNumber] = useState("");
+  const [cellNumber, setCellNumber] = useState("");
   const [licenseClass, setLicenseClass] = useState("");
   const [licenseNumber, setLicenseNumber] = useState("");
   const [vehicleMake, setVehicleMake] = useState("");
@@ -119,6 +132,16 @@ export default function DriverApply() {
     const yearNum = vehicleYear.trim() === "" ? undefined : Number(vehicleYear);
     const capacityNum = Number(vehicleCapacityKg);
 
+    // Identity validation (client mirror of the backend rules).
+    if (firstName.trim().length === 0) return setError("First name is required");
+    if (surname.trim().length === 0) return setError("Surname is required");
+    const idDigits = idNumber.replace(/\s/g, "");
+    if (!/^\d{13}$/.test(idDigits)) return setError("ID number must be exactly 13 digits");
+    const cellDigits = cellNumber.trim().replace(/[\s()-]/g, "");
+    if (!/^(\+27|0)[6-8]\d{8}$/.test(cellDigits)) {
+      return setError("Enter a valid South African cell number (e.g. 082 123 4567)");
+    }
+
     if (licenseClass.trim().length < 2) return setError("License class is required (e.g. \"B Code 08\")");
     if (vehicleMake.trim().length < 2) return setError("Vehicle make is required");
     if (vehicleModel.trim().length < 2) return setError("Vehicle model is required");
@@ -133,6 +156,10 @@ export default function DriverApply() {
     setSubmitting(true);
     try {
       await submitApplication({
+        firstName: firstName.trim(),
+        surname: surname.trim(),
+        idNumber: idDigits,
+        cellNumber: cellNumber.trim(),
         licenseClass: licenseClass.trim(),
         licenseNumber: licenseNumber.trim() || undefined,
         vehicleMake: vehicleMake.trim(),
@@ -158,6 +185,37 @@ export default function DriverApply() {
   const canEdit = application === undefined || application === null || isRejected;
   // Narrowed non-null application for the pending/approved branches.
   const liveApp = application ?? null;
+
+  // Prefill identity + vehicle fields once data lands: resubmissions start
+  // from the captured application; fresh forms start from the account.
+  const prefillDone = useRef(false);
+  useEffect(() => {
+    if (prefillDone.current || application === undefined) return;
+    prefillDone.current = true;
+    if (application) {
+      setFirstName(application.firstName);
+      setSurname(application.surname);
+      setIdNumber(application.idNumber);
+      setCellNumber(application.cellNumber);
+      setLicenseClass(application.licenseClass);
+      setLicenseNumber(application.licenseNumber ?? "");
+      setVehicleMake(application.vehicleMake);
+      setVehicleModel(application.vehicleModel);
+      setVehicleYear(application.vehicleYear != null ? String(application.vehicleYear) : "");
+      setVehicleCapacityKg(String(application.vehicleCapacityKg));
+      setVehicleRegistration(application.vehicleRegistration);
+      setCapabilities({
+        vehicleBreaking: application.vehicleBreaking,
+        vehicleExpress: application.vehicleExpress,
+        vehicleFlammable: application.vehicleFlammable,
+        vehicleTrailer: application.vehicleTrailer,
+      });
+    } else {
+      setFirstName(knownFirstName);
+      setSurname(knownSurname);
+      setCellNumber(knownCell);
+    };
+  }, [application, knownFirstName, knownSurname, knownCell]);
 
   return (
     <DriverShell activeItem="Driver Application">
@@ -195,8 +253,9 @@ export default function DriverApply() {
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                     <Truck size={18} color="#0794B5" />
                     <div style={{ fontSize: 13.5, color: "#202020" }}>
-                      {liveApp.vehicleMake} {liveApp.vehicleModel} ·{" "}
-                      {liveApp.vehicleRegistration} — on file with Lasha.
+                      {liveApp.firstName} {liveApp.surname} · {liveApp.vehicleMake}{" "}
+                      {liveApp.vehicleModel} · {liveApp.vehicleRegistration} — on file
+                      with Lasha.
                     </div>
                   </div>
                 </div>
@@ -210,6 +269,11 @@ export default function DriverApply() {
                     </div>
                   </div>
                   <div style={{ fontSize: 13, color: "#444", lineHeight: 1.9 }}>
+                    Driver: <strong>{liveApp.firstName} {liveApp.surname}</strong>
+                    <br />
+                    ID number: <strong>{liveApp.idNumber}</strong> · Cell:{" "}
+                    <strong>{liveApp.cellNumber}</strong>
+                    <br />
                     License: <strong>{liveApp.licenseClass}</strong>
                     {liveApp.licenseNumber ? ` (${liveApp.licenseNumber})` : ""}
                     <br />
@@ -241,30 +305,66 @@ export default function DriverApply() {
                   )}
 
                   <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                    <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                      <span style={{ fontSize: 13, fontWeight: 600, color: "#202020" }}>Driver license class *</span>
-                      <input
-                        className="dash-search"
-                        style={{ height: 44, paddingLeft: 12 }}
-                        placeholder='e.g. "B Code 08" or "C Code 10"'
-                        value={licenseClass}
-                        onChange={(e) => setLicenseClass(e.target.value)}
-                        disabled={!canEdit}
-                      />
-                    </label>
-                    <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                      <span style={{ fontSize: 13, fontWeight: 600, color: "#202020" }}>
-                        License number <span style={{ color: "#9A9A9A", fontWeight: 400 }}>(optional)</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <User size={16} color="#0794B5" />
+                      <span style={{ fontSize: 13.5, fontWeight: 700, color: "#202020" }}>
+                        Your details
                       </span>
-                      <input
-                        className="dash-search"
-                        style={{ height: 44, paddingLeft: 12 }}
-                        placeholder="License number"
-                        value={licenseNumber}
-                        onChange={(e) => setLicenseNumber(e.target.value)}
-                        disabled={!canEdit}
-                      />
-                    </label>
+                    </div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                      <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: "#202020" }}>First name *</span>
+                        <input
+                          className="dash-search"
+                          style={{ height: 44, paddingLeft: 12 }}
+                          placeholder="Thabo"
+                          autoComplete="given-name"
+                          value={firstName}
+                          onChange={(e) => setFirstName(e.target.value)}
+                          disabled={!canEdit}
+                        />
+                      </label>
+                      <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: "#202020" }}>Surname *</span>
+                        <input
+                          className="dash-search"
+                          style={{ height: 44, paddingLeft: 12 }}
+                          placeholder="Mokoena"
+                          autoComplete="family-name"
+                          value={surname}
+                          onChange={(e) => setSurname(e.target.value)}
+                          disabled={!canEdit}
+                        />
+                      </label>
+                      <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: "#202020" }}>ID number *</span>
+                        <input
+                          className="dash-search"
+                          style={{ height: 44, paddingLeft: 12 }}
+                          placeholder="13-digit ID number"
+                          inputMode="numeric"
+                          autoComplete="off"
+                          maxLength={16}
+                          value={idNumber}
+                          onChange={(e) => setIdNumber(e.target.value.replace(/[^\d\s]/g, ""))}
+                          disabled={!canEdit}
+                        />
+                      </label>
+                      <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: "#202020" }}>Cell number *</span>
+                        <input
+                          className="dash-search"
+                          style={{ height: 44, paddingLeft: 12 }}
+                          placeholder="082 123 4567"
+                          inputMode="tel"
+                          autoComplete="tel"
+                          value={cellNumber}
+                          onChange={(e) => setCellNumber(e.target.value)}
+                          disabled={!canEdit}
+                        />
+                      </label>
+                    </div>
 
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
                       <Truck size={16} color="#0794B5" />

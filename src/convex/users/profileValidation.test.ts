@@ -13,10 +13,15 @@ import {
   PROTECTED_USER_FIELDS,
   NAME_MAX_LENGTH,
   BUSINESS_NAME_MAX_LENGTH,
+  SA_ID_LENGTH,
+  CELL_MAX_LENGTH,
   validateName,
   validatePhone,
   validateOptionalText,
   validateBusinessName,
+  validateSaIdNumber,
+  validateCellNumber,
+  validatePersonName,
 } from "./profileValidation";
 import { ROLES } from "../schema";
 
@@ -154,6 +159,79 @@ test("optional text validator caps length but allows empty", () => {
   expect(validateOptionalText("", "Address", 200)).toBeNull();
   expect(validateOptionalText("12 Main Road", "Address", 200)).toBeNull();
   expect(validateOptionalText("x".repeat(201), "Address", 200)).toBeTruthy();
+});
+
+// ─── SA ID Number Validation ─────────────────────────────────────────────────
+
+// 8501125120088 = birthdate 85-01-12, valid Luhn checksum (see Luhn below).
+const VALID_SIM_ID = "8501125120088";
+
+test(`accepts a valid 13-digit SA ID (Luhn checksum verified, SA_ID_LENGTH = ${SA_ID_LENGTH})`, () => {
+  expect(SA_ID_LENGTH).toBe(13);
+  expect(validateSaIdNumber(VALID_SIM_ID)).toBeNull();
+});
+
+test("tolerates spaces in ID input and stores digits", () => {
+  expect(validateSaIdNumber("850112 5120088")).toBeNull();
+  expect(validateSaIdNumber("8501 1251 2008 8")).toBeNull();
+});
+
+test("rejects ID numbers that are not exactly 13 digits", () => {
+  expect(validateSaIdNumber("85011251200")).toBeTruthy();
+  expect(validateSaIdNumber("850112512008899")).toBeTruthy();
+});
+
+test("rejects non-digit ID input", () => {
+  expect(validateSaIdNumber("85011251A0088")).toBeTruthy();
+  expect(validateSaIdNumber("")).toBeTruthy();
+});
+
+test("rejects implausible birth month or day in ID", () => {
+  expect(validateSaIdNumber("8513125120088")).toBeTruthy(); // month 13
+  expect(validateSaIdNumber("8500325120088")).toBeTruthy(); // day 32
+  expect(validateSaIdNumber("8501005120088")).toBeTruthy(); // day 0
+});
+
+test("rejects ID numbers with a bad Luhn checksum", () => {
+  // Last digit off by one breaks the checksum.
+  expect(validateSaIdNumber("8501125120089")).toBeTruthy();
+});
+
+// ─── Cell Number Validation ──────────────────────────────────────────────────
+
+test(`accepts SA cell formats (CELL_MAX_LENGTH = ${CELL_MAX_LENGTH})`, () => {
+  expect(CELL_MAX_LENGTH).toBe(20);
+  expect(validateCellNumber("082 123 4567")).toBeNull();
+  expect(validateCellNumber("0821234567")).toBeNull();
+  expect(validateCellNumber("+27821234567")).toBeNull();
+  expect(validateCellNumber("072 123 4567")).toBeNull();
+  expect(validateCellNumber("+27-82-123-4567")).toBeNull();
+});
+
+test("rejects invalid cell numbers", () => {
+  expect(validateCellNumber("")).toBeTruthy(); // required
+  expect(validateCellNumber("052 123 4567")).toBeTruthy(); // 05 prefix not a cell
+  expect(validateCellNumber("082 123 456")).toBeTruthy(); // too short
+  expect(validateCellNumber("082 123 45678")).toBeTruthy(); // too long
+  expect(validateCellNumber("not-a-number")).toBeTruthy();
+  expect(validateCellNumber("+44821234567")).toBeTruthy(); // not SA
+});
+
+// ─── Person Name Validation ──────────────────────────────────────────────────
+
+test("person name validator accepts normal names", () => {
+  expect(validatePersonName("Thabo", "First name")).toBeNull();
+  expect(validatePersonName("Mokoena", "Surname")).toBeNull();
+  expect(validatePersonName("  Thabo  ", "First name")).toBeNull();
+});
+
+test("person name validator rejects empty input", () => {
+  expect(validatePersonName("", "First name")).toBeTruthy();
+  expect(validatePersonName("   ", "Surname")).toBeTruthy();
+});
+
+test("person name validator rejects overly long input", () => {
+  expect(validatePersonName("a".repeat(NAME_MAX_LENGTH + 1), "First name")).toBeTruthy();
 });
 
 // ─── Authorization Model ─────────────────────────────────────────────────────
