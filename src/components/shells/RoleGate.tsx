@@ -69,8 +69,13 @@ function AreaGuard({ area, children }: RoleGateProps) {
   // onboarding entirely. This is UX routing only; the backend remains the
   // authorization authority.
   const admitted = canAccessArea(role, area);
+  // A roleless account (brand-new sign-up, before any role is provisioned) is
+  // also a walk-in for staffed areas: without the elevation claim it is
+  // bounced straight back to its home route, so cross-area sidebar clicks
+  // appear completely dead. The backend claim is safe for roleless accounts —
+  // it remembers the previous (empty) role and release restores them to the
+  // customer portal.
   const needsElevation =
-    role !== undefined &&
     area !== APP_AREAS.CUSTOMER &&
     role !== elevationRoleForArea(area);
 
