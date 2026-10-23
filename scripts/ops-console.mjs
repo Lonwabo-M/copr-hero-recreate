@@ -11,7 +11,11 @@ import {
   summarizeFailures,
 } from "./agent-harness.mjs";
 
-const PASSWORD = "Lasha!Pump2026";
+const PASSWORD = process.env.DEMO_ACCOUNTS_PASSWORD ?? "";
+if (!PASSWORD) {
+  console.error("DEMO_ACCOUNTS_PASSWORD is not set — export it before running this script.");
+  process.exit(1);
+}
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const ops = new AgentClient();

@@ -22,7 +22,13 @@
 
 const DEPLOYMENT_URL =
   process.env.LASHA_CONVEX_URL ?? "https://incredible-warbler-335.convex.cloud";
-const DEV_PASSWORD = "Lasha!Pump2026";
+// Demo password for the accounts this pass creates. Never hardcoded: the same
+// credential signs in to the seeded staff accounts, so it belongs in the
+// deployment's env (DEMO_ACCOUNTS_PASSWORD), not in the repository.
+const DEV_PASSWORD = process.env.DEMO_ACCOUNTS_PASSWORD ?? "";
+// Must match the deployment's SEED_ACCESS_KEY — the role-provisioning mutation
+// is disabled without it.
+const SEED_ACCESS_KEY = process.env.SEED_ACCESS_KEY ?? "";
 const RUN_ID = Date.now().toString(36);
 
 /** Gentle pacing: delay between every HTTP call. */
@@ -173,7 +179,12 @@ async function signUp(email: string, password: string, name: string): Promise<To
 /** Dev-only role provisioning (shipped with this pass). */
 async function provisionRole(token: string, role: string) {
   await throttle();
-  await call("mutation", "dev/seed_accounts:provisionSeedAccountRole", { role }, token);
+  await call(
+    "mutation",
+    "dev/seed_accounts:provisionSeedAccountRole",
+    { role, seedKey: SEED_ACCESS_KEY },
+    token,
+  );
 }
 
 // ─── Accounts ────────────────────────────────────────────────────────────────

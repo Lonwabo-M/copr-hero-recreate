@@ -26,3 +26,20 @@ export async function computePaystackSignature(
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
 }
+
+/**
+ * Constant-time string comparison. Used for webhook signature verification so
+ * a caller cannot recover the expected digest one byte at a time from response
+ * timing. Both inputs here are fixed-length hex digests.
+ */
+export function timingSafeEqual(a: string, b: string): boolean {
+  const encoder = new TextEncoder();
+  const left = encoder.encode(a);
+  const right = encoder.encode(b);
+  if (left.length !== right.length) return false;
+  let diff = 0;
+  for (let i = 0; i < left.length; i += 1) {
+    diff |= left[i] ^ right[i];
+  }
+  return diff === 0;
+}

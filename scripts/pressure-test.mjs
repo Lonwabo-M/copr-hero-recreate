@@ -28,6 +28,12 @@ const CUSTOMERS = Number(process.env.PT_CUSTOMERS ?? 6);
 const ORDERS_PER = Number(process.env.PT_ORDERS_PER ?? 8);
 const GPS_STEPS = Number(process.env.PT_GPS_STEPS ?? 2);
 
+const PASSWORD = process.env.DEMO_ACCOUNTS_PASSWORD ?? "";
+if (!PASSWORD) {
+  console.error("DEMO_ACCOUNTS_PASSWORD is not set — export it before running this script.");
+  process.exit(1);
+}
+
 const counters = { orders: 0, raceWinner: 0, raceLosers: 0 };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const log = (m) => console.log(m);
@@ -209,14 +215,14 @@ async function main() {
   console.log(`customers=${CUSTOMERS} ordersPer=${ORDERS_PER} gpsSteps=${GPS_STEPS}`);
 
   const ops = new AgentClient();
-  await ops.signUp("agent.ops@lasha.test", "Lasha!Pump2026", "Lasha Operations");
+  await ops.signUp("agent.ops@lasha.test", PASSWORD, "Lasha Operations");
 
   const roster = [];
   for (let d = 1; d <= 3; d++) {
     const a = new AgentClient();
     try {
       // signUp handles both paths: real sign-in when the account exists.
-      await a.signUp(`agent.driver${d}@lasha.test`, "Lasha!Pump2026", `re-login`);
+      await a.signUp(`agent.driver${d}@lasha.test`, PASSWORD, `re-login`);
       roster.push({ name: `driver#${d}`, agent: a });
     } catch (e) {
       log(`  · driver${d} unavailable — skipping (${e instanceof Error ? e.message.slice(0, 60) : e})`);
@@ -236,7 +242,7 @@ async function main() {
   const orderSets = await Promise.all(
     Array.from({ length: CUSTOMERS }, async (_, c) => {
       const a = new AgentClient();
-      await a.signUp(`agent.customer${c + 1}@lasha.test`, "Lasha!Pump2026", "re-login");
+      await a.signUp(`agent.customer${c + 1}@lasha.test`, PASSWORD, "re-login");
       return orderBurst(a, c);
     })
   );
@@ -249,7 +255,7 @@ async function main() {
   if (target) {
     log("\nrace-to-accept:");
     const customerA = new AgentClient();
-    await customerA.signUp("agent.customer1@lasha.test", "Lasha!Pump2026", "re-login");
+    await customerA.signUp("agent.customer1@lasha.test", PASSWORD, "re-login");
     const winner = await raceToAccept(ops, roster, customerA, target.deliveryId);
     if (winner) {
       const did = target.deliveryId;

@@ -22,7 +22,11 @@ import {
   SA_CITIES,
 } from "./agent-harness.mjs";
 
-const PASSWORD = "Lasha!Pump2026";
+const PASSWORD = process.env.DEMO_ACCOUNTS_PASSWORD ?? "";
+if (!PASSWORD) {
+  console.error("DEMO_ACCOUNTS_PASSWORD is not set — export it before running this script.");
+  process.exit(1);
+}
 const CUSTOMERS_TOTAL = Number(process.env.CUSTOMERS ?? 25);
 const DRIVERS_TOTAL = Number(process.env.DRIVERS ?? 3);
 const ONBOARD_CONCURRENCY = Number(process.env.CONCURRENCY ?? 6);

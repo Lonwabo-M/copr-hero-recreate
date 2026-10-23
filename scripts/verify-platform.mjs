@@ -1,7 +1,11 @@
 // ─── Platform-wide verification from every role's real queries ───────────────
 import { AgentClient, summarizeFailures } from "./agent-harness.mjs";
 
-const PASSWORD = "Lasha!Pump2026";
+const PASSWORD = process.env.DEMO_ACCOUNTS_PASSWORD ?? "";
+if (!PASSWORD) {
+  console.error("DEMO_ACCOUNTS_PASSWORD is not set — export it before running this script.");
+  process.exit(1);
+}
 
 const ops = new AgentClient();
 await ops.signUp("agent.ops@lasha.test", PASSWORD, "Lasha Operations");

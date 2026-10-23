@@ -34,8 +34,24 @@ import { AUDIT_ACTIONS } from "./audit/service";
 
 const BOOTSTRAP_VERSION = 1;
 
-/** The dev quick sign-in password (matches pages/Auth.tsx DEV_PASSWORD). */
-const DEV_PASSWORD = "Lasha!Pump2026";
+/**
+ * The demo quick sign-in password.
+ *
+ * SECURITY: never hardcode this. The seeded accounts include a super_admin,
+ * so a literal in the source tree (and therefore in the shipped bundle) is a
+ * public backdoor into every deployment that ran the bootstrap. Operators set
+ * DEMO_ACCOUNTS_PASSWORD on the Convex deployment; when it is absent the
+ * mutation refuses to run rather than seed a known-password admin account.
+ */
+function demoPasswordFromEnv(): string {
+  const password = process.env.DEMO_ACCOUNTS_PASSWORD;
+  if (!password || password.length < 8) {
+    throw new Error(
+      "Platform bootstrap is disabled: set DEMO_ACCOUNTS_PASSWORD (min 8 chars) on the deployment before seeding demo accounts.",
+    );
+  }
+  return password;
+}
 
 const SEED_ACCOUNTS = [
   {
@@ -87,8 +103,8 @@ export const seedPlatformBootstrap = mutation({
     }
 
     // ── Seed ─────────────────────────────────────────────────────────────────
-    const scrypt = new Scrypt();
-    const secret = await scrypt.hash(DEV_PASSWORD);
+    // Fail closed: no deploy-time password ⇒ no demo credentials exist.
+    const secret = await new Scrypt().hash(demoPasswordFromEnv());
     const now = Date.now();
     const created: Array<{ email: string; role: string }> = [];
     let adminUserId: Id<"users"> | null = null;

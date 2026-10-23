@@ -54,6 +54,24 @@ export interface OwnershipCheck {
   businessField?: string;
 }
 
+// ─── Reserved test-account gate ──────────────────────────────────────────────
+// Privilege elevation for manual testing (users.testAccess, dev/seed_accounts)
+// must never be available to a self-registered account: anyone can sign up,
+// and elevation grants staff/admin power. The only accounts allowed through
+// are the ones an operator explicitly lists in the deployment's
+// TEST_ACCESS_EMAILS environment variable (comma-separated, case-insensitive).
+// Unset ⇒ nobody can elevate. Never fall back to an email-domain pattern:
+// anyone can register inside a domain they do not control.
+export function isTestAccessAccount(email: string | null | undefined): boolean {
+  if (!email) return false;
+  const allowlist = (process.env.TEST_ACCESS_EMAILS ?? "")
+    .split(",")
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean);
+  if (allowlist.length === 0) return false;
+  return allowlist.includes(email.trim().toLowerCase());
+}
+
 // ─── Core Auth Functions ──────────────────────────────────────────────────────
 
 /**

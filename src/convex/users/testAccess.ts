@@ -2,7 +2,7 @@ import { getAuthUserId } from "@convex-dev/auth/server";
 import { mutation, query } from "../_generated/server";
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
-import { requireAuth } from "../auth/authorization";
+import { requireAuth, isTestAccessAccount } from "../auth/authorization";
 import { ROLES } from "../schema";
 import { AUDIT_ACTIONS } from "../audit/service";
 
@@ -42,6 +42,13 @@ export const claimTestAreaAccess = mutation({
     const userId = await requireAuth(ctx);
     const user = await ctx.db.get(userId);
     if (!user) throw new Error("User not found");
+
+    // SECURITY: this mutation writes a staff role onto the caller's own user
+    // record. Without this gate any self-registered account could call it and
+    // become super_admin. Only operator-allowlisted test accounts pass.
+    if (!isTestAccessAccount(user.email)) {
+      throw new Error("Access denied: test access is not enabled for this account");
+    }
 
     const area = args.area ?? "operations";
     const elevatedRole = elevatedRoleForArea(area);

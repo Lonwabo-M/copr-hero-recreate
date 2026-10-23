@@ -9,6 +9,9 @@
 //  - The caller may ONLY modify their OWN account (session-derived user).
 //  - The account's email MUST match the seeding pass's reserved pattern
 //    (@seed.lasha.test). Real accounts are structurally unreachable.
+//  - The caller MUST present the deployment's SEED_ACCESS_KEY. An email
+//    pattern alone is satisfiable by anyone (sign-up accepts any address),
+//    so it cannot be the only gate on a self-service role assignment.
 //  - The role MUST be one of the two non-staff roles the pass creates
 //    (customer | driver) — no staff elevation through this path.
 //
@@ -22,11 +25,35 @@ import { ROLES } from "../schema";
 
 const SEED_EMAIL_PATTERN = /^[a-z0-9.]+\.[a-z0-9]+@seed\.lasha\.test$/;
 
+/** Constant-time comparison so the seed key cannot be probed byte-by-byte. */
+function safeEqual(a: string, b: string): boolean {
+  const encoder = new TextEncoder();
+  const left = encoder.encode(a);
+  const right = encoder.encode(b);
+  if (left.length !== right.length) return false;
+  let diff = 0;
+  for (let i = 0; i < left.length; i += 1) diff |= left[i] ^ right[i];
+  return diff === 0;
+}
+
 export const provisionSeedAccountRole = mutation({
   args: {
     role: v.union(v.literal(ROLES.CUSTOMER), v.literal(ROLES.DRIVER)),
+    // Shared secret configured on the deployment; the seeding script reads it
+    // from its own environment. Absent on the deployment ⇒ path disabled.
+    seedKey: v.string(),
   },
   handler: async (ctx, args) => {
+    const expectedKey = process.env.SEED_ACCESS_KEY;
+    if (!expectedKey || expectedKey.length < 16) {
+      throw new Error(
+        "Seed role provisioning is disabled: set SEED_ACCESS_KEY (min 16 chars) on the deployment.",
+      );
+    }
+    if (!safeEqual(args.seedKey, expectedKey)) {
+      throw new Error("Access denied: invalid seed key");
+    }
+
     const userId = await getAuthUserId(ctx);
     if (!userId) throw new Error("Authentication required");
 

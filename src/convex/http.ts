@@ -2,7 +2,7 @@ import { httpRouter } from "convex/server";
 import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { auth } from "./auth";
-import { computePaystackSignature } from "./payments/_provider";
+import { computePaystackSignature, timingSafeEqual } from "./payments/_provider";
 
 const http = httpRouter();
 
@@ -170,7 +170,9 @@ http.route({
     }
 
     const expected = await computePaystackSignature(rawBody, secretKey);
-    if (expected !== signatureHeader) {
+    // Constant-time: a byte-wise early-exit comparison lets an attacker derive
+    // the expected digest from response timing.
+    if (!timingSafeEqual(expected, signatureHeader.trim().toLowerCase())) {
       return new Response(JSON.stringify({ error: "Invalid signature" }), {
         status: 401,
         headers: { "Content-Type": "application/json" },

@@ -3,10 +3,11 @@
  *
  * Route: /track-delivery (see src/main.tsx, RoleGate CUSTOMER area)
  *
- * Backend contract — the public, session-free lookup query only:
- *   - deliveries.state_machine.getDeliveryByTracking → case-insensitive
- *     lookup with server-resolved display details, milestone timestamps,
- *     and the milestone-adjacent event timeline (location blips excluded).
+ * Backend contract — the entitlement-scoped lookup query:
+ *   - deliveries.state_machine.getDeliveryByTracking → authenticated lookup
+ *     (the caller must own the order, be its assigned courier, or be staff)
+ *     with server-resolved display details, milestone timestamps, and the
+ *     milestone-adjacent event timeline (location blips excluded).
  *
  * UI parity: this page renders the exact same composition as the
  * activity-centre detail page (/deliveries/:deliveryId) — shared cyan

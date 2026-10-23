@@ -1747,40 +1747,58 @@ export const getDelivery = query({
 });
 
 /**
- * Get delivery by tracking number (public query).
+ * Get delivery by tracking number.
  *
- * Resolution is case-insensitive (tracking codes are displayed uppercase and
- * are hand-typed), and trailing whitespace is tolerated. A miss returns null
- * so the UI can show its own not-found state instead of a raw server error.
+ * SECURITY: this lookup is authenticated and entitlement-scoped. The payload
+ * resolves the order's display details server-side — sender name, email and
+ * phone, recipient name and phone, pickup/drop-off street addresses, the
+ * courier's phone and the vehicle registration. A tracking number is a
+ * forwardable/guessable identifier, not a credential, so it must never be
+ * sufficient on its own: an anonymous caller could otherwise harvest the full
+ * contact graph of every shipment.
  *
- * Enriched with the order's display details (route addresses, parcel info,
- * schedule) resolved server-side from the order's authoritative address
- * records — the same fields the customer saw at creation.
+ * Callers entitled to a delivery: operations/super_admin, the owning business
+ * (company_admin / fleet_manager), the assigned courier, and the customer who
+ * created the order.
+ *
+ * A miss and a denial both return null, so the query cannot be used to probe
+ * which tracking numbers exist. Input is normalized (trim + uppercase) because
+ * codes are displayed uppercase and hand-typed; stored codes are uppercase.
  */
 export const getDeliveryByTracking = query({
   args: {
     trackingNumber: v.string(),
   },
   handler: async (ctx, args) => {
+    const user = await getCurrentAuthUser(ctx);
+    if (!user) throw new Error("Authentication required");
+
     const code = args.trackingNumber.trim().toUpperCase();
     if (!code) return null;
 
-    // Exact (normalized) match first — index lookup.
-    let delivery = await ctx.db
+    const delivery = await ctx.db
       .query("deliveries")
       .withIndex("by_tracking", (q) => q.eq("trackingNumber", code))
       .unique();
 
-    // Case-insensitive fallback for hand-typed variants.
-    if (!delivery) {
-      const all = await ctx.db
-        .query("deliveries")
-        .withIndex("by_tracking", (q) => q.eq("trackingNumber", args.trackingNumber.trim()))
-        .unique();
-      delivery = all;
-    }
-
     if (!delivery) return null;
+
+    // Entitlement check before any detail is assembled. Denials are silent.
+    const order = await ctx.db.get(delivery.orderId);
+    const isStaff =
+      user.role === ROLES.SUPER_ADMIN || user.role === ROLES.OPERATIONS;
+    const isOwningBusiness =
+      (user.role === ROLES.COMPANY_ADMIN || user.role === ROLES.FLEET_MANAGER) &&
+      order != null &&
+      order.businessId != null &&
+      order.businessId === user.businessId;
+    const isCourier =
+      user.role === ROLES.DRIVER && delivery.courierId === user.userId;
+    const isSender = order != null && order.senderId === user.userId;
+
+    if (!isStaff && !isOwningBusiness && !isCourier && !isSender) {
+      return null;
+    }
 
     const details = await resolveDeliveryDetails(ctx, delivery);
 
@@ -1809,7 +1827,7 @@ export const getDeliveryByTracking = query({
     };
     const pickupEvents = events.filter((e) => e.type === "picked_up" && isPickupMilestone(e));
 
-    // Return limited information for public tracking
+    // Entitled caller: return the tracking view (no location blips).
     return {
       trackingNumber: delivery.trackingNumber,
       status: delivery.status,
@@ -1897,7 +1915,39 @@ export const getMyDeliveries = query({
       user.role === ROLES.COMPANY_ADMIN ||
       user.role === ROLES.FLEET_MANAGER
     ) {
-      q = ctx.db.query("deliveries");
+      // Business-scoped: only deliveries belonging to THIS business's orders.
+      // A company account must never read the global table — that would expose
+      // other companies' consignments, recipients and routes.
+      if (!user.businessId) return [];
+
+      const orders = await ctx.db
+        .query("orders")
+        .withIndex("by_business", (q) => q.eq("businessId", user.businessId))
+        .collect();
+
+      const collected: Doc<"deliveries">[] = [];
+      for (const order of orders) {
+        const rows = await ctx.db
+          .query("deliveries")
+          .withIndex("by_order", (q) => q.eq("orderId", order._id))
+          .collect();
+        collected.push(...rows);
+      }
+
+      collected.sort((a, b) =>
+        (b.startedAt ?? b.assignedAt ?? b._creationTime) -
+        (a.startedAt ?? a.assignedAt ?? a._creationTime),
+      );
+      const scopedLimit = args.limit ?? 50;
+      const scoped = args.status
+        ? collected.filter((d) => d.status === args.status)
+        : collected;
+      return await Promise.all(
+        scoped.slice(0, scopedLimit).map(async (d) => ({
+          ...d,
+          details: await resolveDeliveryDetails(ctx, d),
+        })),
+      );
     } else {
       // Super admin and operations see all
       q = ctx.db.query("deliveries");

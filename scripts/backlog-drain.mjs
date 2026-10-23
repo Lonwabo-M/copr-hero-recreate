@@ -14,7 +14,11 @@ import {
   SA_CITIES,
 } from "./agent-harness.mjs";
 
-const PASSWORD = "Lasha!Pump2026";
+const PASSWORD = process.env.DEMO_ACCOUNTS_PASSWORD ?? "";
+if (!PASSWORD) {
+  console.error("DEMO_ACCOUNTS_PASSWORD is not set — export it before running this script.");
+  process.exit(1);
+}
 const EMAIL_DOMAIN = "lasha.test";
 const CUSTOMER_COUNT = Number(process.env.CUSTOMER_COUNT ?? 280);
 const DRIVER_COUNT = Number(process.env.DRIVER_COUNT ?? 25);

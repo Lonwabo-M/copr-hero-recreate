@@ -112,7 +112,12 @@ const VEHICLES = [
   ["Kia", "K2500", 900], ["Toyota", "Quantum", 1200], ["VW", "Transporter", 1100],
 ];
 
-const PASSWORD = "Lasha!Sim2026";
+// Simulated-account password — supplied by the operator, never committed.
+const PASSWORD = process.env.DEMO_ACCOUNTS_PASSWORD ?? "";
+if (!PASSWORD) {
+  console.error("DEMO_ACCOUNTS_PASSWORD is not set — export it before running this script.");
+  process.exit(1);
+}
 
 // ─── Harness plumbing ────────────────────────────────────────────────────────
 const issues = [];

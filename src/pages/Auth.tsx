@@ -852,9 +852,15 @@ export default function AuthPage({ redirectAfterAuth = "/post-auth" }: AuthProps
 // Development/testing affordance: one-click sign-in to the REAL seeded agent
 // accounts from the stress-test waves (all platform data lives on them). It
 // uses the standard password sign-in flow — no backend changes, no elevated
-// privileges. Gated to non-production builds; hidden once the app is built
-// for production.
-const DEV_PASSWORD = "Lasha!Pump2026";
+// privileges.
+//
+// SECURITY: the demo password is NOT hardcoded. Anything in this file ships in
+// the client bundle, and one of the seeded accounts is a super_admin — a
+// literal password here would be a public backdoor into every deployment.
+// It comes from VITE_DEMO_PASSWORD at build/dev time (matching the
+// deployment's DEMO_ACCOUNTS_PASSWORD), and the panel is hidden entirely in
+// production builds or when the value is absent.
+const DEV_PASSWORD = import.meta.env.VITE_DEMO_PASSWORD ?? "";
 const DEV_ACCOUNTS: { label: string; email: string; dest: string }[] = [
   { label: "Admin", email: "agent.admin@lasha.test", dest: "/admin/driver-approvals" },
   { label: "Operations", email: "agent.ops@lasha.test", dest: "/operations" },
@@ -867,7 +873,7 @@ function DevQuickSignIn({ onError, setLoading }: { onError: (m: string) => void;
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [busy, setBusy] = useState<string | null>(null);
-  if (import.meta.env.PROD) return null;
+  if (import.meta.env.PROD || !DEV_PASSWORD) return null;
 
   const quickSignIn = async (acct: (typeof DEV_ACCOUNTS)[number]) => {
     onError("");

@@ -63,10 +63,12 @@ export const submitDemoRequest = mutation({
 
     // Rate limit: one request per email per 10 minutes.
     const tenMinutesAgo = Date.now() - 10 * 60 * 1000;
+    // Bounded read: the window only needs the newest handful of rows for this
+    // address, so a spammed mailbox can never turn the check into a full scan.
     const recent = await ctx.db
       .query("demo_requests")
       .withIndex("by_email", (q) => q.eq("email", email))
-      .collect();
+      .take(25);
     if (recent.some((r) => r.submittedAt >= tenMinutesAgo)) {
       throw new Error("You already submitted a request recently — we'll be in touch shortly.");
     }
@@ -86,7 +88,9 @@ export const submitDemoRequest = mutation({
 
     // Notify every operations + company-admin account through the same
     // notification inbox staff already watch for operational alerts.
-    const staff = await ctx.db.query("users").collect();
+    // Bounded scan: this write path is public, so it must never be able to
+    // walk an unbounded users table.
+    const staff = await ctx.db.query("users").take(500);
     for (const staffUser of staff) {
       const role = (staffUser as { role?: string }).role;
       if (role === ROLES.OPERATIONS || role === ROLES.COMPANY_ADMIN || role === ROLES.SUPER_ADMIN) {
