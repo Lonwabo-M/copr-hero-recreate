@@ -1,0 +1,44 @@
+# POPIA regression scan.
+#
+# Runs the popia-compliance scanner on every push and pull request and uploads
+# SARIF to the Security tab. Findings are leads for review, not legal
+# conclusions — a critical does not automatically mean a breach, and a clean run
+# does not mean compliance.
+#
+# fail-on is deliberately "critical" for now, not "high": the scanner flags the
+# synthetic South African ID numbers in the validation tests and the
+# gitignored .env.local as high. Triage those once, then either add a baseline
+# (popia-kit scan --write-baseline popia-baseline.json, passed as `baseline`) or
+# tighten fail-on to high.
+#
+# The repository's version control is managed by the Vly platform; this file
+# takes effect wherever the code is exported to GitHub.
+
+name: POPIA scan
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  popia:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: POPIA scan
+        id: popia
+        uses: VenusOne-Lee/popia-compliance@0192dd213a41c62c2cfeb9e11221bad4af7bc729 # v1.0.0
+        with:
+          path: .
+          fail-on: critical
+          min-severity: low
+
+      - name: Show counts
+        if: always()
+        run: echo "critical=${{ steps.popia.outputs.critical }} high=${{ steps.popia.outputs.high }}"

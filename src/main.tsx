@@ -44,6 +44,12 @@ import AdminAuditLog from "./pages/AdminAuditLog.tsx";
 import AdminPlatformHealth from "./pages/AdminPlatformHealth.tsx";
 import DriverApply from "./pages/DriverApply.tsx";
 import BookDemo from "./pages/BookDemo.tsx";
+import PrivacyNotice from "./pages/legal/PrivacyNotice.tsx";
+import PaiaManual from "./pages/legal/PaiaManual.tsx";
+import CookieNotice from "./pages/legal/CookieNotice.tsx";
+import TermsOfService from "./pages/legal/TermsOfService.tsx";
+import PrivacyRights from "./pages/PrivacyRights.tsx";
+import AdminPrivacyRequests from "./pages/AdminPrivacyRequests.tsx";
 
 /** Silent error boundary — if VlyToolbar crashes it renders nothing instead of
  *  crashing the whole app (e.g. hook errors in WebContainer environment). */
@@ -158,6 +164,15 @@ createRoot(document.getElementById("root")!).render(
               <Route path="/auth" element={<AuthPage />} />
               <Route path="/book-demo" element={<BookDemo />} />
               <Route path="/post-auth" element={<PostAuthRedirect />} />
+
+              {/* ─── Public legal documents (POPIA s18 notice at collection) ──
+                   Deliberately public: a privacy notice behind a login is not a
+                   notice. Every form and the landing footer link here. */}
+              <Route path="/privacy" element={<PrivacyNotice />} />
+              <Route path="/paia" element={<PaiaManual />} />
+              <Route path="/cookies" element={<CookieNotice />} />
+              <Route path="/terms" element={<TermsOfService />} />
+              <Route path="/privacy-rights" element={<PrivacyRights />} />
 
               {/* ─── Customer Onboarding ───────────────────────────────── */}
               <Route
@@ -387,6 +402,19 @@ createRoot(document.getElementById("root")!).render(
                 element={
                   <RoleGate area={APP_AREAS.ADMIN}>
                     <AdminPlatformHealth />
+                  </RoleGate>
+                }
+              />
+              {/* Gated on the Operations area, not Admin: the DSAR queue is
+                  worked by Operations and Super Admin (the backend admits only
+                  those two roles), and Operations staff do not hold either
+                  admin role. The page itself shows a restricted notice to any
+                  other role that reaches it. */}
+              <Route
+                path="/admin/privacy-requests"
+                element={
+                  <RoleGate area={APP_AREAS.OPERATIONS}>
+                    <AdminPrivacyRequests />
                   </RoleGate>
                 }
               />

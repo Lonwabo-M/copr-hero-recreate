@@ -505,6 +505,12 @@ export default function DriverApply() {
                       )}
                       {isRejected ? "Resubmit application" : "Submit application"}
                     </button>
+                    <p style={{ fontSize: 12, color: "var(--lasha-muted)", lineHeight: 1.6, marginTop: 4 }}>
+                      We use your identity, licence and vehicle information to verify
+                      that you may drive for Lasha and to pay you. Never for marketing.
+                      See our <a href="/privacy" style={{ color: "var(--lasha-cyan)", fontWeight: 600 }}>Privacy Notice</a>{" "}
+                      and <a href="/privacy-rights" style={{ color: "var(--lasha-cyan)", fontWeight: 600 }}>your rights</a>.
+                    </p>
                   </div>
                 </div>
               )}

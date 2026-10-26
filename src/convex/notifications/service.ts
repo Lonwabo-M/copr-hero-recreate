@@ -12,6 +12,7 @@ import { Id, Doc } from "../_generated/dataModel";
 import { ROLES, DELIVERY_STATUS } from "../schema";
 import { requireAuth, getCurrentAuthUser } from "../auth/authorization";
 import { createLogger, LOG_CATEGORIES } from "../logging/service";
+import { CONSENT_WORDING, PRIVACY_POLICY_VERSION } from "../privacy/policy";
 
 // ─── Notification Event Types ─────────────────────────────────────────────────
 
@@ -443,6 +444,35 @@ export const updatePreferences = mutation({
         deliveryUpdates: args.deliveryUpdates ?? true,
         marketingEmails: args.marketingEmails ?? false,
       });
+    }
+
+    // POPIA s69: turning marketing on is a consent decision and must leave the
+    // same evidence as the privacy centre does. `marketingEmails` is a mirror of
+    // the consent registry, never an independent permission.
+    if (args.marketingEmails !== undefined) {
+      const latest = await ctx.db
+        .query("consent_records")
+        .withIndex("by_user_purpose", (q) =>
+          q.eq("userId", user).eq("purpose", "marketing"),
+        )
+        .order("desc")
+        .first();
+
+      if (
+        !latest ||
+        latest.granted !== args.marketingEmails ||
+        latest.policyVersion !== PRIVACY_POLICY_VERSION
+      ) {
+        await ctx.db.insert("consent_records", {
+          userId: user,
+          purpose: "marketing",
+          granted: args.marketingEmails,
+          policyVersion: PRIVACY_POLICY_VERSION,
+          wording: CONSENT_WORDING.marketing,
+          source: "account-settings",
+          createdAt: now,
+        });
+      }
     }
 
     return { success: true };

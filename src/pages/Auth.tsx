@@ -1,6 +1,9 @@
 import { useAuthActions } from "@convex-dev/auth/react";
 import { useEffect, useState } from "react";
 import { useSearchParams, Link, useNavigate } from "react-router";
+import { useMutation } from "convex/react";
+import { api } from "@/convex/_generated/api";
+import { PRIVACY_POLICY_VERSION } from "@/convex/privacy/policy";
 import { ArrowRight, ArrowLeft, Eye, EyeOff } from "lucide-react";
 
 type Mode = "login" | "signup" | "forgot" | "reset";
@@ -88,6 +91,15 @@ export default function AuthPage({ redirectAfterAuth = "/post-auth" }: AuthProps
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  // POPIA s18/s11(1)(a): notice acknowledgement is required; marketing is a
+  // separate, unticked opt-in. Neither is pre-ticked, and marketing is never
+  // bundled into creating the account.
+  const [acceptedPolicy, setAcceptedPolicy] = useState(false);
+  const [marketingOptIn, setMarketingOptIn] = useState(false);
+
+  // Consent evidence is written server-side with the published wording and
+  // policy version; the client only says which purpose changed.
+  const recordConsent = useMutation(api.privacy.mutations.recordConsent);
 
   const goTo = (next: Mode) => {
     setMode(next);
@@ -128,6 +140,10 @@ export default function AuthPage({ redirectAfterAuth = "/post-auth" }: AuthProps
       setError(firstError);
       return;
     }
+    if (!acceptedPolicy) {
+      setError("Please accept the Terms of Service and the Privacy Notice to create an account.");
+      return;
+    }
     setLoading(true);
     setError("");
     try {
@@ -136,6 +152,27 @@ export default function AuthPage({ redirectAfterAuth = "/post-auth" }: AuthProps
         password,
         flow: "signUp",
       });
+      // Session token is stored by now, so these writes authenticate as the new
+      // user. A consent-write failure must not strand a created account: the
+      // notice remains linked and the record can be captured from settings.
+      try {
+        await recordConsent({
+          purpose: "service",
+          granted: true,
+          source: "web-signup",
+          policyVersion: PRIVACY_POLICY_VERSION,
+        });
+        if (marketingOptIn) {
+          await recordConsent({
+            purpose: "marketing",
+            granted: true,
+            source: "web-signup",
+            policyVersion: PRIVACY_POLICY_VERSION,
+          });
+        }
+      } catch {
+        console.warn("[auth] consent record could not be saved after sign-up");
+      }
       navigate(returnTo ?? redirectAfterAuth, { replace: true });
     } catch (err: unknown) {
       setError(safeAuthError(err, "Could not create your account"));
@@ -420,8 +457,8 @@ export default function AuthPage({ redirectAfterAuth = "/post-auth" }: AuthProps
             lineHeight: 1.6,
           }}
         >
-          By continuing, you agree to Lasha's Terms of Service and
-          Privacy Policy.
+          By continuing, you agree to Lasha&apos;s <Link to="/terms">Terms of Service</Link>{" "}
+          and <Link to="/privacy">Privacy Notice</Link>.
         </p>
 
         <DevQuickSignIn onError={setError} setLoading={setLoading} />
@@ -496,7 +533,61 @@ export default function AuthPage({ redirectAfterAuth = "/post-auth" }: AuthProps
               At least {PASSWORD_MIN_LENGTH} characters.
             </p>
           </>
-          {submitButton("Create Account", "Creating account...", !email || !password || !confirmPassword)}
+
+          <div style={{ marginTop: 18, display: "flex", flexDirection: "column", gap: 10 }}>
+            <label
+              style={{
+                display: "flex",
+                gap: 10,
+                alignItems: "flex-start",
+                fontSize: 12.5,
+                lineHeight: 1.5,
+                color: "var(--lasha-muted)",
+                cursor: "pointer",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={acceptedPolicy}
+                onChange={(e) => setAcceptedPolicy(e.target.checked)}
+                required
+                style={{ marginTop: 2, accentColor: "var(--lasha-navy)", width: 15, height: 15 }}
+              />
+              <span>
+                I have read and agree to the <Link to="/terms">Terms of Service</Link> and
+                the <Link to="/privacy">Privacy Notice</Link>, including how my
+                information is used to run my account and deliver parcels.
+              </span>
+            </label>
+            <label
+              style={{
+                display: "flex",
+                gap: 10,
+                alignItems: "flex-start",
+                fontSize: 12.5,
+                lineHeight: 1.5,
+                color: "var(--lasha-muted)",
+                cursor: "pointer",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={marketingOptIn}
+                onChange={(e) => setMarketingOptIn(e.target.checked)}
+                style={{ marginTop: 2, accentColor: "var(--lasha-navy)", width: 15, height: 15 }}
+              />
+              <span>
+                Optional: send me Lasha news and offers by email. I can unsubscribe at
+                any time.
+              </span>
+            </label>
+          </div>
+
+          {submitButton(
+            "Create Account",
+            "Creating account...",
+            !email || !password || !confirmPassword || !acceptedPolicy,
+          )}
         </form>
 
         <p
@@ -860,7 +951,10 @@ export default function AuthPage({ redirectAfterAuth = "/post-auth" }: AuthProps
 // It comes from VITE_DEMO_PASSWORD at build/dev time (matching the
 // deployment's DEMO_ACCOUNTS_PASSWORD), and the panel is hidden entirely in
 // production builds or when the value is absent.
-const DEV_PASSWORD = import.meta.env.VITE_DEMO_PASSWORD ?? "";
+// Gated on DEV as well as PROD: in a production build the branch folds to "",
+// so the env value is dead code and dropped from the bundle rather than merely
+// hidden behind a runtime check.
+const DEV_PASSWORD = import.meta.env.DEV ? (import.meta.env.VITE_DEMO_PASSWORD ?? "") : "";
 const DEV_ACCOUNTS: { label: string; email: string; dest: string }[] = [
   { label: "Admin", email: "agent.admin@lasha.test", dest: "/admin/driver-approvals" },
   { label: "Operations", email: "agent.ops@lasha.test", dest: "/operations" },

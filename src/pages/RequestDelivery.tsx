@@ -432,6 +432,11 @@ export default function RequestDelivery() {
                     "Request Delivery"
                   )}
                 </button>
+                <p style={{ fontSize: 12, color: "var(--lasha-muted)", lineHeight: 1.6, marginTop: 10 }}>
+                  We give the assigned driver the recipient’s name, phone number and
+                  addresses so the parcel can be collected and handed over. See our{" "}
+                  <a href="/privacy" style={{ color: "var(--lasha-cyan)", fontWeight: 600 }}>Privacy Notice</a>.
+                </p>
               </div>
             </form>
           </div>

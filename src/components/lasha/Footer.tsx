@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { useMutation } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import { Phone, Mail, Instagram, Twitter, Facebook } from "lucide-react";
 
 const footerColumns = [
@@ -14,10 +16,12 @@ const footerColumns = [
   {
     title: "Support",
     links: [
-      { label: "Help Center", href: "#" },
+      { label: "Help Center", href: "/help" },
       { label: "Contact Us", href: "#about" },
-      { label: "Terms of Service", href: "#" },
-      { label: "Privacy Policy", href: "#" },
+      { label: "Terms of Service", href: "/terms" },
+      { label: "Privacy Notice", href: "/privacy" },
+      { label: "PAIA Manual", href: "/paia" },
+      { label: "Your Privacy Rights", href: "/privacy-rights" },
     ],
   },
   {
@@ -33,11 +37,32 @@ const footerColumns = [
 
 export default function Footer() {
   const [email, setEmail] = useState("");
+  // POPIA s69: the opt-in must be unticked, separate and provable. The server
+  // stores the exact wording and notice version with the subscription.
+  const [consent, setConsent] = useState(false);
+  const [honeypot, setHoneypot] = useState("");
+  const [state, setState] = useState<"idle" | "busy" | "done">("idle");
+  const [error, setError] = useState("");
+  const subscribe = useMutation(api.privacy.mutations.subscribeToMarketing);
 
-  const handleSubscribe = (e: React.FormEvent) => {
+  const handleSubscribe = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Handle subscription
-    setEmail("");
+    setError("");
+    if (!consent) {
+      setError("Please tick the consent box so we may email you.");
+      return;
+    }
+    setState("busy");
+    try {
+      await subscribe({ email, companyWebsite: honeypot });
+      setState("done");
+      setEmail("");
+    } catch (err) {
+      setState("idle");
+      setError(
+        err instanceof Error ? err.message : "Could not subscribe. Please try again.",
+      );
+    }
   };
 
   return (
@@ -79,13 +104,18 @@ export default function Footer() {
             onSubmit={handleSubscribe}
             style={{
               display: "flex",
-              alignItems: "center",
+              flexDirection: "column",
               gap: 12,
+              maxWidth: 470,
             }}
           >
+            <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
             <input
               type="email"
               placeholder="Enter your email"
+              required
+              aria-label="Email address for product updates"
+              autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               style={{
@@ -103,6 +133,7 @@ export default function Footer() {
             />
             <button
               type="submit"
+              disabled={state !== "idle" || !consent}
               style={{
                 height: 48,
                 padding: "0 28px",
@@ -113,14 +144,63 @@ export default function Footer() {
                 fontSize: 14,
                 fontWeight: 700,
                 fontFamily: "Inter, sans-serif",
-                cursor: "pointer",
-                transition: "background 0.2s",
+                cursor: state !== "idle" || !consent ? "not-allowed" : "pointer",
+                opacity: state !== "idle" || !consent ? 0.55 : 1,
+                transition: "background 0.2s, opacity 0.2s",
               }}
               onMouseEnter={(e) => (e.currentTarget.style.background = "#d4e23a")}
               onMouseLeave={(e) => (e.currentTarget.style.background = "var(--lasha-lime)")}
             >
-              Subscribe
+              {state === "done" ? "Subscribed" : state === "busy" ? "Subscribing…" : "Subscribe"}
             </button>
+            <div aria-hidden="true" style={{ position: "absolute", left: -9999 }}>
+              <label htmlFor="footer-company-website">Company website</label>
+              <input
+                id="footer-company-website"
+                tabIndex={-1}
+                autoComplete="off"
+                value={honeypot}
+                onChange={(e) => setHoneypot(e.target.value)}
+              />
+            </div>
+            </div>
+
+            <label
+              style={{
+                display: "flex",
+                gap: 9,
+                alignItems: "flex-start",
+                fontSize: 12,
+                lineHeight: 1.55,
+                color: "rgba(255,255,255,0.55)",
+                cursor: "pointer",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={consent}
+                onChange={(e) => setConsent(e.target.checked)}
+                style={{ marginTop: 2, accentColor: "var(--lasha-lime)", width: 14, height: 14 }}
+              />
+              <span>
+                I agree to receive product news and offers from Lasha by email, and I
+                can stop them at any time. Read our{" "}
+                <a href="/privacy" style={{ color: "rgba(255,255,255,0.8)" }}>
+                  Privacy Notice
+                </a>
+                .
+              </span>
+            </label>
+
+            {error ? (
+              <p role="alert" style={{ fontSize: 12, color: "#ffb4a8" }}>
+                {error}
+              </p>
+            ) : state === "done" ? (
+              <p style={{ fontSize: 12, color: "var(--lasha-lime)" }}>
+                You&apos;re on the list. Every email will include a way to stop them.
+              </p>
+            ) : null}
           </form>
         </div>
       </div>
@@ -298,10 +378,15 @@ export default function Footer() {
             © {new Date().getFullYear()} Lasha Logistics. All rights reserved.
           </p>
           <div style={{ display: "flex", gap: 24 }}>
-            {["Terms", "Privacy", "Cookies"].map((item) => (
+            {[
+              { label: "Terms", href: "/terms" },
+              { label: "Privacy", href: "/privacy" },
+              { label: "Cookies", href: "/cookies" },
+              { label: "PAIA", href: "/paia" },
+            ].map((item) => (
               <a
-                key={item}
-                href="#"
+                key={item.label}
+                href={item.href}
                 style={{
                   fontSize: 13,
                   color: "rgba(255,255,255,0.35)",
@@ -315,7 +400,7 @@ export default function Footer() {
                   (e.currentTarget.style.color = "rgba(255,255,255,0.35)")
                 }
               >
-                {item}
+                {item.label}
               </a>
             ))}
           </div>

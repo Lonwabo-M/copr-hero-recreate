@@ -37,4 +37,18 @@ crons.interval(
   {},
 );
 
+// ── POPIA retention sweep (s14) ─────────────────────────────────────────────
+// Deletes records whose published retention period has expired: resolved
+// privacy requests after 24 months, unconverted demo enquiries after 12
+// months, and consent history for purposes withdrawn more than 36 months ago.
+// Bounded per run; see privacy/retention.ts for what is deliberately manual.
+// Weekly rather than daily: the periods are measured in months, and a weekly
+// sweep keeps the read cost negligible.
+crons.interval(
+  "purge expired personal information",
+  { hours: 24 * 7 },
+  internal.privacy.retention.purgeExpiredPersonalInformation,
+  {},
+);
+
 export default crons;

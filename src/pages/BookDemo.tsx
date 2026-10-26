@@ -287,7 +287,8 @@ export default function BookDemo() {
                 )}
               </button>
               <p style={{ marginTop: 14, fontSize: 12, color: "rgba(244,242,233,0.45)", textAlign: "center" }}>
-                We use your details only to arrange the demo — no marketing lists.
+                We use your details only to arrange the demo — no marketing lists. Read
+                our <a href="/privacy" style={{ color: "rgba(244,242,233,0.75)", textDecoration: "underline" }}>Privacy Notice</a>.
               </p>
             </form>
           )}

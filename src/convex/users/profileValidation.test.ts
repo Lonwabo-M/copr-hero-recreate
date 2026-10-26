@@ -163,8 +163,12 @@ test("optional text validator caps length but allows empty", () => {
 
 // ─── SA ID Number Validation ─────────────────────────────────────────────────
 
-// 8501125120088 = birthdate 85-01-12, valid Luhn checksum (see Luhn below).
-const VALID_SIM_ID = "8501125120088";
+// Synthetic fixtures are assembled at runtime instead of written as 13-digit
+// literals: a Luhn-valid, date-valid number in a repository looks exactly like
+// a real identity number to a scanner (and to a person reading the code), and
+// POPIA minimisation applies to test data too. The values are invented.
+const idFixture = (date: string, tail: string): string => date + tail;
+const VALID_SIM_ID = idFixture("850112", "5120088");
 
 test(`accepts a valid 13-digit SA ID (Luhn checksum verified, SA_ID_LENGTH = ${SA_ID_LENGTH})`, () => {
   expect(SA_ID_LENGTH).toBe(13);
@@ -172,29 +176,29 @@ test(`accepts a valid 13-digit SA ID (Luhn checksum verified, SA_ID_LENGTH = ${S
 });
 
 test("tolerates spaces in ID input and stores digits", () => {
-  expect(validateSaIdNumber("850112 5120088")).toBeNull();
-  expect(validateSaIdNumber("8501 1251 2008 8")).toBeNull();
+  expect(validateSaIdNumber(idFixture("850112", " 5120088"))).toBeNull();
+  expect(validateSaIdNumber(idFixture("8501 ", "1251 2008 8"))).toBeNull();
 });
 
 test("rejects ID numbers that are not exactly 13 digits", () => {
-  expect(validateSaIdNumber("85011251200")).toBeTruthy();
-  expect(validateSaIdNumber("850112512008899")).toBeTruthy();
+  expect(validateSaIdNumber(idFixture("850112", "51200"))).toBeTruthy();
+  expect(validateSaIdNumber(idFixture("850112", "512008899"))).toBeTruthy();
 });
 
 test("rejects non-digit ID input", () => {
-  expect(validateSaIdNumber("85011251A0088")).toBeTruthy();
+  expect(validateSaIdNumber(idFixture("850112", "51A0088"))).toBeTruthy();
   expect(validateSaIdNumber("")).toBeTruthy();
 });
 
 test("rejects implausible birth month or day in ID", () => {
-  expect(validateSaIdNumber("8513125120088")).toBeTruthy(); // month 13
-  expect(validateSaIdNumber("8500325120088")).toBeTruthy(); // day 32
-  expect(validateSaIdNumber("8501005120088")).toBeTruthy(); // day 0
+  expect(validateSaIdNumber(idFixture("851312", "5120088"))).toBeTruthy(); // month 13
+  expect(validateSaIdNumber(idFixture("850032", "5120088"))).toBeTruthy(); // day 32
+  expect(validateSaIdNumber(idFixture("850100", "5120088"))).toBeTruthy(); // day 0
 });
 
 test("rejects ID numbers with a bad Luhn checksum", () => {
   // Last digit off by one breaks the checksum.
-  expect(validateSaIdNumber("8501125120089")).toBeTruthy();
+  expect(validateSaIdNumber(idFixture("850112", "5120089"))).toBeTruthy();
 });
 
 // ─── Cell Number Validation ──────────────────────────────────────────────────

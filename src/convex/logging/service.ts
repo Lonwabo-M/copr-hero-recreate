@@ -15,6 +15,7 @@
 import { query, mutation, internalMutation } from "../_generated/server";
 import { v } from "convex/values";
 import { getCurrentAuthUser } from "../auth/authorization";
+import { redactMetadata, redactPII } from "./redact";
 
 // ─── Log Levels ──────────────────────────────────────────────────────────────
 
@@ -128,23 +129,35 @@ export function createLogger(category: LogCategory, correlationId?: string) {
 
   function logToConsole(entry: StructuredLogEntry) {
     const prefix = `[${entry.level.toUpperCase()}][${entry.category}][${entry.correlationId}]`;
-    const suffix = entry.metadata
-      ? ` ${JSON.stringify(entry.metadata)}`
-      : "";
+
+    // POPIA s19: logs are copied off-platform and outlive the record they
+    // describe, so personal information and credentials are scrubbed before
+    // anything is written. See logging/redact.ts. Stringify defensively: a
+    // cyclic metadata object must never turn a log call into a thrown error.
+    const message = redactPII(entry.message);
+    const metadata = redactMetadata(entry.metadata);
+    let suffix = "";
+    if (metadata) {
+      try {
+        suffix = ` ${JSON.stringify(metadata)}`;
+      } catch {
+        suffix = " [metadata unserializable]";
+      }
+    }
 
     switch (entry.level) {
       case LOG_LEVELS.DEBUG:
-        console.log(`${prefix} ${entry.message}${suffix}`);
+        console.log(`${prefix} ${message}${suffix}`);
         break;
       case LOG_LEVELS.INFO:
-        console.log(`${prefix} ${entry.message}${suffix}`);
+        console.log(`${prefix} ${message}${suffix}`);
         break;
       case LOG_LEVELS.WARN:
-        console.warn(`${prefix} ${entry.message}${suffix}`);
+        console.warn(`${prefix} ${message}${suffix}`);
         break;
       case LOG_LEVELS.ERROR:
       case LOG_LEVELS.CRITICAL:
-        console.error(`${prefix} ${entry.message}${suffix}`);
+        console.error(`${prefix} ${message}${suffix}`);
         break;
     }
   }

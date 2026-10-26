@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { ArrowRight, ArrowLeft, Loader2, Check, MapPin } from "lucide-react";
@@ -610,6 +610,17 @@ export default function CustomerOnboarding() {
               </button>
             )}
           </div>
+
+          {/* POPIA s18 notice at collection: the business/contact details entered
+              here are personal information, so the notice is linked where it is
+              collected, not only in the footer. */}
+          <p style={{ marginTop: 18, fontSize: 12, color: "var(--lasha-muted)", lineHeight: 1.6 }}>
+            We use these details to set up your account and deliver your parcels. See our{" "}
+            <Link to="/privacy" style={{ color: "var(--lasha-cyan)", fontWeight: 600 }}>
+              Privacy Notice
+            </Link>{" "}
+            for what we collect, why, and how to exercise your rights.
+          </p>
 
           {/* Step dots — visual progress indicator */}
           <div style={{ display: "flex", gap: 8, marginTop: 32, justifyContent: "center" }}>

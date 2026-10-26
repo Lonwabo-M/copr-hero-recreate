@@ -1037,6 +1037,95 @@ const schema = defineSchema(
       reason: v.string(),
       version: v.number(),
     }),
+
+    // ─── POPIA: Consent Records ────────────────────────────────────────────
+    // Append-only evidence of what a person agreed to and when (POPIA
+    // s11(1)(a), s18, s24). Rows are never updated in place: granting and
+    // withdrawing a consent are separate rows, so the history survives and a
+    // withdrawal can never erase the fact that consent was once given.
+    //
+    // `wording` is stamped server-side from privacy/policy.ts, never accepted
+    // from the client, so a record always reflects published wording.
+    // Personal information held here is the minimum needed to prove consent:
+    // user, purpose, decision, version, wording, source and time. No IP
+    // address, no device fingerprint.
+    consent_records: defineTable({
+      userId: v.id("users"),
+      purpose: v.union(
+        v.literal("service"),
+        v.literal("marketing"),
+        v.literal("analytics"),
+      ),
+      granted: v.boolean(),
+      policyVersion: v.string(),
+      wording: v.string(),
+      source: v.string(),
+      createdAt: v.number(),
+    })
+      .index("by_user", ["userId", "createdAt"])
+      .index("by_user_purpose", ["userId", "purpose", "createdAt"])
+      .index("by_purpose", ["purpose", "createdAt"]),
+
+    // ─── POPIA: Data Subject Requests (DSAR) ───────────────────────────────
+    // Every access, correction, deletion, objection, opt-out and complaint
+    // request (s23, s24, s11(3), s69) lands here from /privacy-rights or the
+    // privacy desk email. Public-submittable, so the mutation validates and
+    // bounds everything; `dueAt` starts the 30-day clock the DSAR runbook and
+    // the Admin Portal both read.
+    //
+    // `userId` is attached when the submitter is signed in. Records are
+    // deleted 24 months after resolution by privacy/retention.ts.
+    privacy_requests: defineTable({
+      reference: v.string(),
+      type: v.union(
+        v.literal("access"),
+        v.literal("correction"),
+        v.literal("deletion"),
+        v.literal("objection"),
+        v.literal("marketing_opt_out"),
+        v.literal("complaint"),
+      ),
+      name: v.string(),
+      email: v.string(),
+      phone: v.optional(v.string()),
+      details: v.string(),
+      status: v.union(
+        v.literal("received"),
+        v.literal("in_progress"),
+        v.literal("completed"),
+        v.literal("refused"),
+      ),
+      userId: v.optional(v.id("users")),
+      submittedAt: v.number(),
+      dueAt: v.number(),
+      resolvedAt: v.optional(v.number()),
+      resolutionNote: v.optional(v.string()),
+      handledBy: v.optional(v.id("users")),
+    })
+      .index("by_reference", ["reference"])
+      .index("by_status", ["status", "dueAt"])
+      .index("by_email", ["email", "submittedAt"])
+      .index("by_user", ["userId", "submittedAt"])
+      .index("by_submitted", ["submittedAt"]),
+
+    // ─── POPIA: Marketing subscriptions (s69) ──────────────────────────────
+    // The landing footer's product-updates form. Electronic direct marketing
+    // needs prior opt-in, and the opt-in must be provable: every row stores the
+    // exact wording and notice version that was on screen, the source, and the
+    // decision. Rows are append-only; unsubscribing writes a new row.
+    //
+    // No other marketing channel exists yet. If one is added, it must read the
+    // latest row per email and send only where status === "subscribed".
+    marketing_subscriptions: defineTable({
+      email: v.string(),
+      status: v.union(v.literal("subscribed"), v.literal("unsubscribed")),
+      wording: v.string(),
+      policyVersion: v.string(),
+      source: v.string(),
+      createdAt: v.number(),
+    })
+      .index("by_email", ["email", "createdAt"])
+      .index("by_status", ["status", "createdAt"]),
   },
   {
     schemaValidation: false,

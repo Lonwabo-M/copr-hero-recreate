@@ -1,0 +1,7 @@
+Contact: mailto:security@lasha.co.za
+Contact: mailto:privacy@lasha.co.za
+Expires: 2027-10-26T00:00:00.000Z
+Preferred-Languages: en
+Canonical: https://lasha.co.za/.well-known/security.txt
+Policy: https://lasha.co.za/privacy
+Acknowledgments: https://lasha.co.za/privacy-rights
