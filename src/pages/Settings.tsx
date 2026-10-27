@@ -1,4 +1,6 @@
 import { useState, useEffect } from "react";
+import { useAction } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import { useCurrentUser, useNotificationPreferences, useUpdateNotificationPreferences, useUpdateMyProfile, useMyBusiness, useUpdateMyBusiness } from "@/hooks/use-lasha";
 import CustomerShell from "@/components/shells/CustomerShell";
 import {
@@ -14,6 +16,7 @@ import {
   MapPin,
   Save,
   Loader2,
+  KeyRound,
 } from "lucide-react";
 import "@/styles/dashboard.css";
 import "@/styles/settings.css";
@@ -40,6 +43,7 @@ export default function Settings() {
   const updateMyProfile = useUpdateMyProfile();
   const myBusiness = useMyBusiness();
   const updateMyBusiness = useUpdateMyBusiness();
+  const changePassword = useAction(api.auth.passwordChange.changePassword);
 
   // Profile state (initialized from Convex)
   const [firstName, setFirstName] = useState("");
@@ -66,6 +70,9 @@ export default function Settings() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordSaving, setPasswordSaving] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [passwordNotice, setPasswordNotice] = useState("");
   const [twoFactor, setTwoFactor] = useState(false);
 
   // Initialize form from Convex user data
@@ -135,6 +142,50 @@ export default function Settings() {
       setError(err instanceof Error ? err.message : "Failed to save changes");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasswordError(null);
+    setPasswordNotice("");
+
+    if (!currentPassword) {
+      setPasswordError("Enter your current password.");
+      return;
+    }
+    if (newPassword.length < 8) {
+      setPasswordError("Password must be at least 8 characters.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError("New passwords do not match.");
+      return;
+    }
+    if (newPassword === currentPassword) {
+      setPasswordError("Choose a new password that is different from your current one.");
+      return;
+    }
+
+    setPasswordSaving(true);
+    try {
+      const result = await changePassword({ currentPassword, newPassword });
+      if (!result.success) {
+        setPasswordError(result.message);
+        return;
+      }
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setPasswordNotice(
+        result.otherSessionsSignedOut
+          ? "Password updated. Your other sessions have been signed out."
+          : "Password updated.",
+      );
+    } catch {
+      setPasswordError("Could not update your password. Please try again.");
+    } finally {
+      setPasswordSaving(false);
     }
   };
 
@@ -447,41 +498,121 @@ export default function Settings() {
                       </p>
 
                       {/* Change password */}
-                      <div className="settings-security-card">
+                      <form
+                        className="settings-security-card"
+                        onSubmit={handleChangePassword}
+                        noValidate
+                      >
                         <h3 className="settings-security-title">Change Password</h3>
+                        <p
+                          style={{
+                            fontSize: 13,
+                            color: "var(--text-muted)",
+                            marginTop: -10,
+                            marginBottom: 18,
+                          }}
+                        >
+                          Use at least 8 characters. Other signed-in devices will be signed out.
+                        </p>
                         <div className="settings-form-grid">
                           <div className="settings-field full-width">
-                            <label className="settings-label">Current Password</label>
+                            <label className="settings-label" htmlFor="current-password">
+                              Current Password
+                            </label>
                             <input
+                              id="current-password"
                               type="password"
                               className="settings-input"
                               placeholder="Enter current password"
+                              autoComplete="current-password"
                               value={currentPassword}
                               onChange={(e) => setCurrentPassword(e.target.value)}
                             />
                           </div>
                           <div className="settings-field">
-                            <label className="settings-label">New Password</label>
+                            <label className="settings-label" htmlFor="new-password">
+                              New Password
+                            </label>
                             <input
+                              id="new-password"
                               type="password"
                               className="settings-input"
                               placeholder="Enter new password"
+                              autoComplete="new-password"
                               value={newPassword}
                               onChange={(e) => setNewPassword(e.target.value)}
                             />
                           </div>
                           <div className="settings-field">
-                            <label className="settings-label">Confirm Password</label>
+                            <label className="settings-label" htmlFor="confirm-password">
+                              Confirm Password
+                            </label>
                             <input
+                              id="confirm-password"
                               type="password"
                               className="settings-input"
                               placeholder="Confirm new password"
+                              autoComplete="new-password"
                               value={confirmPassword}
                               onChange={(e) => setConfirmPassword(e.target.value)}
                             />
                           </div>
                         </div>
-                      </div>
+
+                        {passwordError && (
+                          <p
+                            role="alert"
+                            style={{
+                              marginTop: 16,
+                              padding: "10px 14px",
+                              borderRadius: 8,
+                              background: "rgba(220, 38, 38, 0.08)",
+                              border: "1px solid rgba(220, 38, 38, 0.3)",
+                              color: "#b91c1c",
+                              fontSize: 13,
+                              fontWeight: 500,
+                            }}
+                          >
+                            {passwordError}
+                          </p>
+                        )}
+                        {passwordNotice && (
+                          <p
+                            role="status"
+                            style={{
+                              marginTop: 16,
+                              padding: "10px 14px",
+                              borderRadius: 8,
+                              background: "rgba(15, 118, 110, 0.08)",
+                              border: "1px solid rgba(15, 118, 110, 0.28)",
+                              color: "#0f766e",
+                              fontSize: 13,
+                              fontWeight: 500,
+                            }}
+                          >
+                            {passwordNotice}
+                          </p>
+                        )}
+
+                        <div className="settings-actions" style={{ marginTop: 20 }}>
+                          <button
+                            type="submit"
+                            className="settings-save-btn"
+                            disabled={passwordSaving}
+                            style={{ opacity: passwordSaving ? 0.7 : 1 }}
+                          >
+                            {passwordSaving ? (
+                              <Loader2
+                                size={16}
+                                style={{ animation: "spin 1s linear infinite" }}
+                              />
+                            ) : (
+                              <KeyRound size={16} />
+                            )}
+                            {passwordSaving ? "Updating..." : "Update Password"}
+                          </button>
+                        </div>
+                      </form>
 
                       {/* Two-factor auth */}
                       <div className="settings-security-card">
@@ -517,40 +648,47 @@ export default function Settings() {
                     </div>
                   )}
 
-                  {/* Save button */}
-                  {error && (
-                    <div
-                      className="settings-actions"
-                      style={{
-                        padding: "10px 14px",
-                        marginBottom: 12,
-                        borderRadius: 8,
-                        background: "rgba(220, 38, 38, 0.08)",
-                        border: "1px solid rgba(220, 38, 38, 0.3)",
-                        color: "#b91c1c",
-                        fontSize: 13,
-                        fontWeight: 500,
-                      }}
-                      role="alert"
-                    >
-                      {error}
-                    </div>
-                  )}
-                  <div className="settings-actions">
-                    <button
-                      className="settings-save-btn"
-                      onClick={handleSave}
-                      disabled={saving}
-                      style={{ opacity: saving ? 0.7 : 1 }}
-                    >
-                      {saving ? (
-                        <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} />
-                      ) : (
-                        <Save size={16} />
+                  {/* Save button — the password card has its own submit. */}
+                  {activeTab !== "security" && (
+                    <>
+                      {error && (
+                        <div
+                          className="settings-actions"
+                          style={{
+                            padding: "10px 14px",
+                            marginBottom: 12,
+                            borderRadius: 8,
+                            background: "rgba(220, 38, 38, 0.08)",
+                            border: "1px solid rgba(220, 38, 38, 0.3)",
+                            color: "#b91c1c",
+                            fontSize: 13,
+                            fontWeight: 500,
+                          }}
+                          role="alert"
+                        >
+                          {error}
+                        </div>
                       )}
-                      {saved ? "Saved!" : saving ? "Saving..." : "Save Changes"}
-                    </button>
-                  </div>
+                      <div className="settings-actions">
+                        <button
+                          className="settings-save-btn"
+                          onClick={handleSave}
+                          disabled={saving}
+                          style={{ opacity: saving ? 0.7 : 1 }}
+                        >
+                          {saving ? (
+                            <Loader2
+                              size={16}
+                              style={{ animation: "spin 1s linear infinite" }}
+                            />
+                          ) : (
+                            <Save size={16} />
+                          )}
+                          {saved ? "Saved!" : saving ? "Saving..." : "Save Changes"}
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             )}

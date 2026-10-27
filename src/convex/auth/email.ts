@@ -1,5 +1,7 @@
 import { Email } from "@convex-dev/auth/providers/Email";
+import type { GenericActionCtx, GenericDataModel } from "convex/server";
 import { RandomReader, generateRandomString } from "@oslojs/crypto/random";
+import { internal } from "../_generated/api";
 
 /**
  * Email delivery via the platform email API (Freebuff/Vly).
@@ -37,12 +39,34 @@ export const emailDelivery = Email({
     const alphabet = "0123456789";
     return generateRandomString(random, alphabet, 6);
   },
-  async sendVerificationRequest({ identifier: email, token }) {
+  async sendVerificationRequest(
+    { identifier: email, token },
+    // Convex Auth invokes email providers with the action context as a second
+    // argument (the Auth.js type omits it; the library passes it deliberately
+    // so providers can reach the database). Optional here only so this function
+    // remains assignable to the provider config type.
+    ctx?: GenericActionCtx<GenericDataModel>,
+  ) {
     const apiKey = process.env.VLY_INTEGRATION_KEY;
     if (!apiKey) {
       throw new Error(
         "Email delivery is not configured. Add VLY_INTEGRATION_KEY in the project's API keys settings."
       );
+    }
+
+    // Server-side throttle: Convex Auth rate-limits failed password guesses
+    // but not reset-code requests. Every reset email passes through here, so
+    // this is the enforcement point that stops a known inbox being spammed.
+    // Fail closed if the context is ever missing rather than sending unmetered.
+    if (!ctx) {
+      throw new Error("Password reset is temporarily unavailable");
+    }
+    const limit = await ctx.runMutation(
+      internal.auth.resetRateLimit.consumeResetSend,
+      { email },
+    );
+    if (!limit.allowed) {
+      throw new Error(`RESET_RATE_LIMITED:${limit.retryAfterSeconds}`);
     }
 
     const code = token;

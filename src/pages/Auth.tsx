@@ -7,6 +7,7 @@ import { PRIVACY_POLICY_VERSION } from "@/convex/privacy/policy";
 import {
   RESET_CODE_LENGTH,
   RESET_REQUEST_NOTICE,
+  isResetRateLimitedError,
   isUnknownAccountError,
   safeAuthError,
 } from "@/lib/authError";
@@ -177,11 +178,12 @@ export default function AuthPage({ redirectAfterAuth = "/post-auth" }: AuthProps
       setLoading(false);
     } catch (err: unknown) {
       // Convex Auth reports an email with no password account as
-      // InvalidAccountId. Answering differently would turn this form into an
-      // account-existence oracle, so an unknown address gets the same neutral
-      // notice as a known one. Real failures (rate limit, email delivery) are
-      // still reported.
-      if (isUnknownAccountError(err)) {
+      // InvalidAccountId, and the send throttle only exists for addresses that
+      // have an account. Answering either differently would turn this form
+      // into an account-existence oracle, so both get the same neutral notice.
+      // The form states the limits up front instead. Genuine service-wide
+      // failures are still reported.
+      if (isUnknownAccountError(err) || isResetRateLimitedError(err)) {
         setResetCodeSent(true);
         setNotice(RESET_REQUEST_NOTICE);
       } else {
@@ -660,6 +662,16 @@ export default function AuthPage({ redirectAfterAuth = "/post-auth" }: AuthProps
           />
           {submitButton("Send Reset Code", "Sending...", !email)}
         </form>
+        <p
+          style={{
+            fontSize: 12,
+            color: "var(--lasha-muted)",
+            marginTop: 12,
+            lineHeight: 1.6,
+          }}
+        >
+          For security, reset codes are limited to one per minute and five per hour.
+        </p>
 
         {resetCodeSent && (
           <button

@@ -29,6 +29,7 @@ Data sets follow the order of `ropa.md`; the # column is this schedule's own ref
 | 17 | Privacy requests | 24 months | Resolution (`resolvedAt`) | Delete the request and resolution note | **Automated** — weekly sweep for `completed` / `refused` |
 | 18 | Marketing subscriptions | Until withdrawal; the withdrawal record is kept 3 years | Withdrawal | Delete subscription rows; keep the withdrawal as evidence | Manual |
 | 19 | Test and seed accounts | Not applicable | — | Remove before any production export | Manual |
+| 20 | Password-reset send throttle (`password_reset_rate_limits`) | 48 hours | Last reset-code send | Delete row; it holds only a SHA-256 hash of the email, never the address | **Automated** — weekly sweep |
 
 ## How the automated sweep works
 

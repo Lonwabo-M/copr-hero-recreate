@@ -13,6 +13,8 @@
  *   - consent_records: all rows for a user/purpose pair once the pair's latest
  *     decision is a withdrawal older than 36 months. Until then the full
  *     append-only history is evidence and stays.
+ *   - password_reset_rate_limits: security rows untouched for 48 hours. They
+ *     hold only a hashed email and recent send times; no address is stored.
  *
  * NOT covered here, because deletion needs a human decision or another
  * system's record: orders and invoices (5-year tax hold), delivery and
@@ -23,6 +25,7 @@
  */
 
 import { internalMutation } from "../_generated/server";
+import { RESET_RATE_LIMIT_RETENTION_MS } from "../auth/resetRateLimitPolicy";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const REQUEST_RETENTION_MS = 730 * DAY_MS;
@@ -37,6 +40,7 @@ export const purgeExpiredPersonalInformation = internalMutation({
     let deletedPrivacyRequests = 0;
     let deletedDemoRequests = 0;
     let deletedConsentRecords = 0;
+    let deletedPasswordResetRateLimits = 0;
 
     // ── Resolved privacy requests ──────────────────────────────────────────
     const requestCutoff = now - REQUEST_RETENTION_MS;
@@ -101,11 +105,25 @@ export const purgeExpiredPersonalInformation = internalMutation({
       }
     }
 
+    // ── Password-reset throttle rows ──────────────────────────────────────
+    // Security records, not personal data: keyed by a hash and kept only long
+    // enough to enforce the rolling 24-hour limit.
+    const resetRateCutoff = now - RESET_RATE_LIMIT_RETENTION_MS;
+    const resetRateRows = await ctx.db
+      .query("password_reset_rate_limits")
+      .withIndex("by_updated_at", (q) => q.lt("updatedAt", resetRateCutoff))
+      .take(MAX_DELETIONS_PER_RUN);
+    for (const row of resetRateRows) {
+      await ctx.db.delete(row._id);
+      deletedPasswordResetRateLimits += 1;
+    }
+
     return {
       ranAt: now,
       deletedPrivacyRequests,
       deletedDemoRequests,
       deletedConsentRecords,
+      deletedPasswordResetRateLimits,
     };
   },
 });

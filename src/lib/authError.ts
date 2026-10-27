@@ -64,6 +64,15 @@ export function isUnknownAccountError(err: unknown): boolean {
   return /\bInvalidAccountId\b/.test(authErrorDetail(err));
 }
 
+/**
+ * The reset bridge throttles sends only for addresses that have an account.
+ * The reset page must not surface that distinction, or the form becomes an
+ * account-existence oracle; it treats this like the unknown-account case.
+ */
+export function isResetRateLimitedError(err: unknown): boolean {
+  return /^RESET_RATE_LIMITED(?::\d+)?$/.test(authErrorDetail(err));
+}
+
 /** Map a provider failure to fixed, user-safe copy for the flow that made it. */
 export function safeAuthError(
   err: unknown,
@@ -78,6 +87,20 @@ export function safeAuthError(
   }
   if (/TooManyFailedAttempts|too many (failed )?attempts/i.test(detail)) {
     return "Too many attempts. Please try again later.";
+  }
+  // Thrown by the reset email bridge before a code is sent, once the
+  // per-account throttle is exhausted (convex/auth/resetRateLimit.ts).
+  const resetLimited = detail.match(/^RESET_RATE_LIMITED(?::(\d+))?$/);
+  if (resetLimited) {
+    const seconds = Number(resetLimited[1] ?? 0);
+    if (seconds >= 60) {
+      const minutes = Math.ceil(seconds / 60);
+      return `Too many reset requests. Please try again in ${minutes} minute${minutes === 1 ? "" : "s"}.`;
+    }
+    if (seconds > 1) {
+      return `Please wait ${seconds} seconds before requesting another code.`;
+    }
+    return "Please wait a moment before requesting another code.";
   }
   if (/already exists/i.test(detail)) {
     // Only sign-up creates an account; never confirm existence elsewhere.

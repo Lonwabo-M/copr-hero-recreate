@@ -1038,6 +1038,21 @@ const schema = defineSchema(
       version: v.number(),
     }),
 
+    // ─── Auth: Password-reset send throttle ────────────────────────────────
+    // Security record, not marketing data. Convex Auth limits failed password
+    // guesses but not reset-code requests, so this table backs a per-account
+    // throttle that stops a known inbox being spammed through the public
+    // reset flow (convex/auth/resetRateLimit.ts). Rows hold a SHA-256 hash of
+    // the normalised email (never the address itself) and the timestamps of
+    // recent sends. The retention sweep deletes rows untouched for 48 hours.
+    password_reset_rate_limits: defineTable({
+      emailHash: v.string(),
+      timestamps: v.array(v.number()),
+      updatedAt: v.number(),
+    })
+      .index("by_email_hash", ["emailHash"])
+      .index("by_updated_at", ["updatedAt"]),
+
     // ─── POPIA: Consent Records ────────────────────────────────────────────
     // Append-only evidence of what a person agreed to and when (POPIA
     // s11(1)(a), s18, s24). Rows are never updated in place: granting and

@@ -72,8 +72,12 @@ test("password policy is not weakened (provider baseline preserved)", () => {
 test("passwords are hashed by the provider — no custom hashing, no plaintext storage", () => {
   assert.ok(!authTs.includes("crypto:"), "no custom password hashing config in project code");
   const schema = read("src/convex/schema.ts");
+  const usersBlock = schema.slice(
+    schema.indexOf("users: defineTable("),
+    schema.indexOf("businesses: defineTable("),
+  );
   assert.ok(
-    !schema.includes("password"),
+    !/password\s*:/.test(usersBlock),
     "users schema has no password field (credentials live in Convex Auth's authAccounts)",
   );
 });
@@ -165,6 +169,10 @@ test("reset does not reveal whether an email exists", () => {
     "unknown emails receive the same notice as known ones",
   );
   assert.ok(
+    forgotHandler.includes("isResetRateLimitedError"),
+    "throttled requests do not become an account-existence oracle",
+  );
+  assert.ok(
     forgotHandler.includes("setNotice(RESET_REQUEST_NOTICE)"),
     "the same notice is shown when the account is not found",
   );
@@ -236,6 +244,44 @@ test("legacy migration: email-linking enabled via the reset provider (no duplica
   assert.ok(authTs.includes("reset: emailDelivery"), "linking precondition present");
   const usersImpl = read("node_modules/@convex-dev/auth/dist/server/implementation/users.js");
   assert.ok(usersImpl.includes("shouldLinkViaEmail"), "Convex Auth supports email linking");
+});
+
+test("change-password action verifies the current password and revokes other sessions", () => {
+  const change = read("src/convex/auth/passwordChange.ts");
+  assert.ok(change.includes("getAuthUserId"), "identity comes from the session");
+  const actionArgs = change.slice(
+    change.indexOf("export const changePassword = action("),
+    change.indexOf("handler: async (ctx, args)"),
+  );
+  assert.ok(!actionArgs.includes("userId"), "no client-supplied user id");
+  assert.ok(change.includes("retrieveAccount"), "current password verified by the provider");
+  assert.ok(
+    change.includes("modifyAccountCredentials"),
+    "new secret written through the provider (no custom hashing)",
+  );
+  assert.ok(change.includes("invalidateSessions"), "other sessions revoked");
+  assert.ok(change.includes("except: [sessionId]"), "current session kept");
+  assert.ok(change.includes("AUTH_PASSWORD_CHANGED"), "audit event recorded");
+  assert.ok(change.includes("PASSWORD_MIN_LENGTH"), "password policy enforced server-side");
+});
+
+test("reset-code sends are throttled server-side per account", () => {
+  const limiter = read("src/convex/auth/resetRateLimit.ts");
+  const schemaSource = read("src/convex/schema.ts");
+  assert.ok(
+    emailBridge.includes("consumeResetSend"),
+    "the email bridge checks the throttle before sending",
+  );
+  assert.ok(
+    emailBridge.indexOf("consumeResetSend") <
+      emailBridge.indexOf("const response = await fetch("),
+    "the throttle runs before the outbound request",
+  );
+  assert.ok(
+    schemaSource.includes("password_reset_rate_limits"),
+    "send history is persisted",
+  );
+  assert.ok(limiter.includes("SHA-256"), "the key is a hash, not a readable email");
 });
 
 test("secrets remain server-side (bridge env var, no VITE_ prefix)", () => {

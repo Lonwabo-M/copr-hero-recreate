@@ -13,6 +13,7 @@
 import {
   RESET_REQUEST_NOTICE,
   authErrorDetail,
+  isResetRateLimitedError,
   isUnknownAccountError,
   safeAuthError,
 } from "./authError";
@@ -64,6 +65,11 @@ Uncaught Error: Email delivery is not configured. Add VLY_INTEGRATION_KEY in the
 const RATE_LIMITED = `[Request ID: d4] Server Error
 Uncaught Error: TooManyFailedAttempts
     at async handler (../../node_modules/@convex-dev/auth/src/server/implementation/index.ts:416:26)
+`;
+
+const RESET_THROTTLED = `[Request ID: e6] Server Error
+Uncaught Error: RESET_RATE_LIMITED:240
+    at async sendVerificationRequest (../../src/convex/auth/email.ts:70:13)
 `;
 
 const RESET_FALLBACK = "We couldn't send the reset email. Please try again in a moment.";
@@ -169,6 +175,27 @@ test("rate limiting is reported without retrying forever", () => {
     safeAuthError(RATE_LIMITED, "reset", RESET_FALLBACK) ===
       "Too many attempts. Please try again later.",
     "rate limit message",
+  );
+});
+
+test("reset throttle is detectable and reports the remaining wait", () => {
+  assert(isResetRateLimitedError(RESET_THROTTLED), "throttle code recognised");
+  assert(!isResetRateLimitedError(WRONG_PASSWORD), "other errors are not throttled");
+  const message = safeAuthError(RESET_THROTTLED, "reset", RESET_FALLBACK);
+  assert(
+    message === "Too many reset requests. Please try again in 4 minutes.",
+    `got: ${message}`,
+  );
+  assert(!/password/i.test(message), "throttle copy never mentions a password");
+
+  const shortWait = safeAuthError(
+    new Error("RESET_RATE_LIMITED:45"),
+    "reset",
+    RESET_FALLBACK,
+  );
+  assert(
+    shortWait === "Please wait 45 seconds before requesting another code.",
+    `got: ${shortWait}`,
   );
 });
 

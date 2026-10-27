@@ -504,7 +504,7 @@ pricing_rules: {
 | `updateBusinessInfo` | Mutation | — | Business updates |
 | `getNotificationPreferences` | Query | — | Notification settings |
 | `updateNotificationPreferences` | Mutation | — | Notification updates |
-| `changePassword` | Mutation | — | Password change |
+| `changePassword` | Action | Convex Auth (`auth.passwordChange`) | currentPassword, newPassword |
 | `enableTwoFactor` | Mutation | — | 2FA setup |
 
 **Settings Tabs:**

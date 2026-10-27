@@ -64,21 +64,63 @@ exists"), surfaced as "An account with this email already exists".
    not reveal whether the email exists. Failed attempts are rate-limited by
    Convex Auth's built-in mechanism ("Too many attempts").
 
+## Changing a password (signed in)
+
+Settings → **Security** posts to the `auth.passwordChange.changePassword`
+action:
+
+1. The user id comes from the session (`getAuthUserId`), never from the
+   client, and the stored email is read from that user's own row.
+2. `retrieveAccount` verifies the current password with the provider's Scrypt
+   hash and the library's failed-attempt limiter — the same path as sign-in.
+3. `modifyAccountCredentials` writes the new hash; hashing stays in the
+   provider configuration.
+4. `invalidateSessions` signs out every other session, keeping the current one.
+5. An `auth.password_changed` audit event is written without password material.
+
+Expected failures are returned as data (`INVALID_CURRENT_PASSWORD`,
+`TOO_MANY_ATTEMPTS`, `WEAK_PASSWORD`, `SAME_PASSWORD`, `NO_PASSWORD_ACCOUNT`,
+`UPDATE_FAILED`) so the UI shows fixed copy. Policy: at least 8 characters,
+at most 128, and different from the current password.
+
 ## Password Reset
 
 Provider-supported flow (no custom reset-token system):
 
 1. **Forgot form** (`/auth` → "Forgot password?") — email submission.
 2. `signIn("password", { email, flow: "reset" })` emails a 6-digit code via
-   the email-delivery bridge. The page never reveals whether the email exists:
-   Convex Auth throws `InvalidAccountId` for an address with no password
-   account, and `/auth` turns that into the same neutral notice a known
-   address receives (`src/lib/authError.ts`).
+   the email-delivery bridge. The page does not reveal whether the email
+   exists: Convex Auth throws `InvalidAccountId` for an address with no
+   password account, and a throttled address is indistinguishable on screen —
+   both receive the same neutral notice (`src/lib/authError.ts`). A genuine
+   delivery failure is still reported.
 3. **Reset form** — code + new password + confirmation.
 4. `signIn("password", { email, code, newPassword, flow: "reset-verification" })`
    verifies the code, replaces the hashed password, invalidates other
    sessions, and signs the user in.
 5. On success the user continues to `/post-auth` (role-aware destination).
+
+### Reset-request rate limit
+
+Convex Auth rate-limits failed password guesses but **not** reset-code
+requests, so the reset email bridge enforces a per-account throttle before
+sending:
+
+| Window | Maximum codes |
+|---|---|
+| 1 minute | 1 |
+| 1 hour | 5 |
+| 24 hours | 10 |
+
+The send is recorded in `password_reset_rate_limits` (SHA-256 of the normalised
+email plus recent send times — no readable address) before the email leaves.
+A blocked request throws `RESET_RATE_LIMITED:<seconds>`. The reset page
+**hides** that distinction and shows the same neutral notice as an unknown
+email, because the throttle only applies to accounts that exist; the limit is
+stated on the form instead. Emails with no password account never reach this
+point, so the table cannot be used to discover addresses. Denied attempts are
+not recorded — otherwise repeated clicking would keep pushing the cooldown
+forward. Rows idle for 48 hours are removed by the POPIA retention sweep.
 
 Error copy is an allowlist keyed by flow — a reset never shows password-policy
 wording, because that step has no password field. Convex wraps failures in a
