@@ -70,13 +70,21 @@ Provider-supported flow (no custom reset-token system):
 
 1. **Forgot form** (`/auth` → "Forgot password?") — email submission.
 2. `signIn("password", { email, flow: "reset" })` emails a 6-digit code via
-   the email-delivery bridge. The response never reveals whether the email
-   exists.
+   the email-delivery bridge. The page never reveals whether the email exists:
+   Convex Auth throws `InvalidAccountId` for an address with no password
+   account, and `/auth` turns that into the same neutral notice a known
+   address receives (`src/lib/authError.ts`).
 3. **Reset form** — code + new password + confirmation.
 4. `signIn("password", { email, code, newPassword, flow: "reset-verification" })`
    verifies the code, replaces the hashed password, invalidates other
    sessions, and signs the user in.
 5. On success the user continues to `/post-auth` (role-aware destination).
+
+Error copy is an allowlist keyed by flow — a reset never shows password-policy
+wording, because that step has no password field. Convex wraps failures in a
+message containing a stack trace, and the previous substring check matched the
+`Password.ts` frame, misreporting a missing account as "Password does not meet
+requirements". Provider text is never rendered directly.
 
 ## Email Delivery
 

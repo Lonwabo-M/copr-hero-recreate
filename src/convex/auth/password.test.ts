@@ -19,6 +19,7 @@ function read(relPath: string): string {
 const authTs = read("src/convex/auth.ts");
 const emailBridge = read("src/convex/auth/email.ts");
 const authPage = read("src/pages/Auth.tsx");
+const authError = read("src/lib/authError.ts");
 const roleAccess = read("src/components/shells/roleAccess.ts");
 const postAuth = read("src/pages/PostAuthRedirect.tsx");
 const config = read("src/convex/auth.config.ts");
@@ -154,8 +155,18 @@ test("reset does not reveal whether an email exists", () => {
     authPage.indexOf("handleCompleteReset"),
   );
   assert.ok(
-    forgotHandler.includes("If an account exists for this email"),
+    authError.includes(
+      '"If an account exists for this email, a reset code has been sent."',
+    ),
     "success notice is account-agnostic",
+  );
+  assert.ok(
+    forgotHandler.includes("isUnknownAccountError"),
+    "unknown emails receive the same notice as known ones",
+  );
+  assert.ok(
+    forgotHandler.includes("setNotice(RESET_REQUEST_NOTICE)"),
+    "the same notice is shown when the account is not found",
   );
 });
 
@@ -173,11 +184,16 @@ test("reset signs the user in and continues to role-aware routing", () => {
 // ─── Error handling ──────────────────────────────────────────────────────────
 
 test("authentication errors are user-safe", () => {
-  assert.ok(authPage.includes("Invalid email or password"), "credential errors are generic");
-  assert.ok(authPage.includes("An account with this email already exists"), "duplicate signup message");
-  assert.ok(authPage.includes("Too many attempts"), "rate-limit message");
+  assert.ok(authError.includes("Invalid email or password"), "credential errors are generic");
+  assert.ok(authPage.includes("@/lib/authError"), "the UI uses the audited mapper");
+  assert.ok(authError.includes("An account with this email already exists"), "duplicate signup message");
+  assert.ok(authError.includes("Too many attempts"), "rate-limit message");
   assert.ok(!authPage.includes("stack"), "no stack traces in UI");
   assert.ok(!authPage.includes("JSON.stringify(err"), "raw errors are not dumped to the user");
+  assert.ok(
+    !/message\.toLowerCase\(\)\.includes\("password"\)/.test(authPage),
+    "no substring heuristic can mislabel an email-field error as a password failure",
+  );
 });
 
 // ─── Role-aware routing ──────────────────────────────────────────────────────
@@ -273,7 +289,7 @@ test("duplicate signup is rejected safely — same email maps to one account", (
     "utf8"
   );
   assert.ok(
-    authPageSource.includes('already exists")) return "An account with this email already exists"')
+    read("src/lib/authError.ts").includes('"An account with this email already exists"')
   );
 });
 

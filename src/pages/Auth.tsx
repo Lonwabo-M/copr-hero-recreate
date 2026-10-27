@@ -4,6 +4,12 @@ import { useSearchParams, Link, useNavigate } from "react-router";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { PRIVACY_POLICY_VERSION } from "@/convex/privacy/policy";
+import {
+  RESET_CODE_LENGTH,
+  RESET_REQUEST_NOTICE,
+  isUnknownAccountError,
+  safeAuthError,
+} from "@/lib/authError";
 import { ArrowRight, ArrowLeft, Eye, EyeOff } from "lucide-react";
 
 type Mode = "login" | "signup" | "forgot" | "reset";
@@ -32,33 +38,6 @@ function validateNewPassword(password: string, confirm: string): string | null {
   }
   if (password !== confirm) return "Passwords do not match";
   return null;
-}
-
-/** User-safe auth error mapping — never surfaces provider internals,
- *  database IDs, or configuration. */
-function safeAuthError(err: unknown, fallback: string): string {
-  const message = err instanceof Error ? err.message : "";
-  if (
-    message.toLowerCase().includes("usage limit") ||
-    message.toLowerCase().includes("exceeded a configured")
-  ) {
-    return "Platform database is paused (usage limit reached). Sign-in is unavailable until the limit is raised in the Convex dashboard settings.";
-  }
-  if (message.includes("already exists")) return "An account with this email already exists";
-  if (message.includes("Invalid credentials") || message.includes("InvalidSecret")) {
-    return "Invalid email or password";
-  }
-  if (message.includes("InvalidAccountId")) return "Invalid email or password";
-  if (message.includes("TooManyFailedAttempts")) {
-    return "Too many attempts. Please try again later.";
-  }
-  if (message.toLowerCase().includes("password")) {
-    return message.length < 120 ? message : "Password does not meet requirements";
-  }
-  if (message.includes("not configured")) {
-    return "Service temporarily unavailable. Please try again later.";
-  }
-  return fallback;
 }
 
 export default function AuthPage({ redirectAfterAuth = "/post-auth" }: AuthProps) {
@@ -126,7 +105,7 @@ export default function AuthPage({ redirectAfterAuth = "/post-auth" }: AuthProps
       await signIn("password", { email: email.trim(), password, flow: "signIn" });
       navigate(returnTo ?? redirectAfterAuth, { replace: true });
     } catch (err: unknown) {
-      setError(safeAuthError(err, "Invalid email or password"));
+      setError(safeAuthError(err, "signIn", "Invalid email or password"));
       setLoading(false);
     }
   };
@@ -175,7 +154,7 @@ export default function AuthPage({ redirectAfterAuth = "/post-auth" }: AuthProps
       }
       navigate(returnTo ?? redirectAfterAuth, { replace: true });
     } catch (err: unknown) {
-      setError(safeAuthError(err, "Could not create your account"));
+      setError(safeAuthError(err, "signUp", "Could not create your account"));
       setLoading(false);
     }
   };
@@ -190,14 +169,30 @@ export default function AuthPage({ redirectAfterAuth = "/post-auth" }: AuthProps
     }
     setLoading(true);
     setError("");
+    setNotice("");
     try {
       await signIn("password", { email: email.trim(), flow: "reset" });
       setResetCodeSent(true);
-      setNotice("If an account exists for this email, a reset code has been sent.");
+      setNotice(RESET_REQUEST_NOTICE);
       setLoading(false);
     } catch (err: unknown) {
-      // Never reveal whether the email exists.
-      setError(safeAuthError(err, "Could not start password reset"));
+      // Convex Auth reports an email with no password account as
+      // InvalidAccountId. Answering differently would turn this form into an
+      // account-existence oracle, so an unknown address gets the same neutral
+      // notice as a known one. Real failures (rate limit, email delivery) are
+      // still reported.
+      if (isUnknownAccountError(err)) {
+        setResetCodeSent(true);
+        setNotice(RESET_REQUEST_NOTICE);
+      } else {
+        setError(
+          safeAuthError(
+            err,
+            "reset",
+            "We couldn't send the reset email. Please try again in a moment.",
+          ),
+        );
+      }
       setLoading(false);
     }
   };
@@ -206,8 +201,8 @@ export default function AuthPage({ redirectAfterAuth = "/post-auth" }: AuthProps
   // (provider "reset-verification" flow).
   const handleCompleteReset = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!resetCode || resetCode.length < 4) {
-      setError("Enter the code from your email");
+    if (resetCode.length !== RESET_CODE_LENGTH) {
+      setError(`Enter the ${RESET_CODE_LENGTH}-digit code from your email`);
       return;
     }
     const passwordError = validateNewPassword(password, confirmPassword);
@@ -227,7 +222,7 @@ export default function AuthPage({ redirectAfterAuth = "/post-auth" }: AuthProps
       // Reset signs the user in — continue to their role-aware destination.
       navigate(returnTo ?? redirectAfterAuth, { replace: true });
     } catch (err: unknown) {
-      setError(safeAuthError(err, "Invalid or expired reset code"));
+      setError(safeAuthError(err, "reset-verification", "Invalid or expired reset code"));
       setLoading(false);
     }
   };
@@ -248,6 +243,7 @@ export default function AuthPage({ redirectAfterAuth = "/post-auth" }: AuthProps
 
   const errorBox = error && (
     <div
+      role="alert"
       style={{
         padding: "12px 16px",
         borderRadius: 10,
@@ -262,6 +258,7 @@ export default function AuthPage({ redirectAfterAuth = "/post-auth" }: AuthProps
 
   const noticeBox = notice && (
     <div
+      role="status"
       style={{
         padding: "12px 16px",
         borderRadius: 10,
@@ -751,10 +748,15 @@ export default function AuthPage({ redirectAfterAuth = "/post-auth" }: AuthProps
             type="text"
             inputMode="numeric"
             value={resetCode}
-            onChange={(e) => setResetCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-            placeholder="000000"
+            onChange={(e) =>
+              setResetCode(
+                e.target.value.replace(/\D/g, "").slice(0, RESET_CODE_LENGTH),
+              )
+            }
+            placeholder={"0".repeat(RESET_CODE_LENGTH)}
             required
-            maxLength={6}
+            maxLength={RESET_CODE_LENGTH}
+            autoComplete="one-time-code"
             autoFocus
             style={{
               ...inputStyle,
@@ -978,7 +980,13 @@ function DevQuickSignIn({ onError, setLoading }: { onError: (m: string) => void;
       const returnTo = searchParams.get("returnTo");
       navigate(returnTo ?? acct.dest, { replace: true });
     } catch (err: unknown) {
-      onError(safeAuthError(err, "Dev sign-in failed — the platform database may be paused (usage limit)."));
+      onError(
+        safeAuthError(
+          err,
+          "signIn",
+          "Dev sign-in failed — the platform database may be paused (usage limit).",
+        ),
+      );
       setBusy(null);
     } finally {
       setLoading(false);
