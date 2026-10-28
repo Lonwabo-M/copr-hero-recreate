@@ -62,6 +62,15 @@ Uncaught Error: Email delivery is not configured. Add VLY_INTEGRATION_KEY in the
     at async sendVerificationRequest (../../src/convex/auth/email.ts:47:13)
 `;
 
+// The live deployment returned this for a reset request while SITE_URL was
+// unset — Convex Auth requires it to build the verification destination.
+const SITE_URL_MISSING = `[Request ID: 1b7b01ac183891d7] Server Error
+Uncaught Error: Missing environment variable \`SITE_URL\`
+    at requireEnv (../../node_modules/@convex-dev/auth/src/server/utils.ts:5:9)
+    at siteUrl (../../node_modules/@convex-dev/auth/src/server/implementation/redirects.ts:57:0)
+    at async handleEmailAndPhoneProvider (../../node_modules/@convex-dev/auth/src/server/implementation/signIn.ts:146:4)
+`;
+
 const RATE_LIMITED = `[Request ID: d4] Server Error
 Uncaught Error: TooManyFailedAttempts
     at async handler (../../node_modules/@convex-dev/auth/src/server/implementation/index.ts:416:26)
@@ -203,8 +212,26 @@ test("email configuration details are not exposed to the browser", () => {
   const message = safeAuthError(EMAIL_UNCONFIGURED, "reset", RESET_FALLBACK);
   assert(!message.includes("VLY_INTEGRATION_KEY"), "secret/config guidance withheld");
   assert(
-    message === "Email delivery is temporarily unavailable. Please try again later.",
+    message === "Password reset is temporarily unavailable. Please try again later.",
     `got: ${message}`,
+  );
+});
+
+test("a missing SITE_URL is reported as an outage, not a send failure", () => {
+  const message = safeAuthError(SITE_URL_MISSING, "reset", RESET_FALLBACK);
+  assert(!/SITE_URL|environment variable/i.test(message), "config internals withheld");
+  assert(
+    message === "Password reset is temporarily unavailable. Please try again later.",
+    `got: ${message}`,
+  );
+});
+
+test("a real send failure keeps the email-delivery message", () => {
+  const failed = new Error("Failed to send email");
+  assert(
+    safeAuthError(failed, "reset", RESET_FALLBACK) ===
+      "Email delivery is temporarily unavailable. Please try again later.",
+    "delivery failure",
   );
 });
 

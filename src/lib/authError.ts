@@ -106,7 +106,13 @@ export function safeAuthError(
     // Only sign-up creates an account; never confirm existence elsewhere.
     return flow === "signUp" ? "An account with this email already exists" : fallback;
   }
-  if (/not configured|Failed to send email|email delivery/i.test(detail)) {
+  // Deployment misconfiguration (a missing SITE_URL or email key) leaves the
+  // reset endpoint unable to send anything. That is an outage on our side, not
+  // something the visitor can retry away, so say so without naming env vars.
+  if (/Missing environment variable|not configured/i.test(detail)) {
+    return "Password reset is temporarily unavailable. Please try again later.";
+  }
+  if (/Failed to send email|email delivery/i.test(detail)) {
     return "Email delivery is temporarily unavailable. Please try again later.";
   }
 
