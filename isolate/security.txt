@@ -1,0 +1,11 @@
+Contact: mailto:security@lasha.co.za
+Contact: mailto:privacy@lasha.co.za
+Expires: 2027-10-26T00:00:00.000Z
+Preferred-Languages: en
+Canonical: https://lasha.co.za/.well-known/security.txt
+Policy: https://lasha.co.za/privacy
+Acknowledgments: https://lasha.co.za/privacy-rights
+
+# Legacy root location. The canonical copy, per RFC 9116, is served from
+# /.well-known/security.txt (source: public/.well-known/security.txt). Keep both
+# in step when the contact or expiry changes.
