@@ -53,9 +53,11 @@ These cannot be completed in code and are **not** done:
 1. **Register the Information Officer** with the Information Regulator
    (eServices portal, s55). The published notices name the role and desk, not a
    person, until the appointment is registered.
-2. **Complete the legal entity fields** in `src/lib/legal.ts`: company
-   registration number and physical address. The PAIA manual renders "available
-   from the Information Officer on request" until they are filled.
+2. **Confirm the published business telephone number**. The entity fields in
+   `src/lib/legal.ts` are now filled from the CIPC certificate (CLADOGRAM,
+   2024/063751/07, 333 Main Street, Lemoenkloof, Paarl). The number shown on the
+   site (`+27 10 123 4567`) is inherited from the template and is not on the
+   certificate — confirm it is a monitored line, or replace it.
 3. **Sign operator agreements** (s20/s21) with every operator in
    `docs/popia/operators.md`, including the s72 cross-border clauses, and record
    the signature dates in that register.

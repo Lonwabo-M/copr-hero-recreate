@@ -8,8 +8,9 @@ This document answers the five questions in the order received. Each answer desc
 actually does, names the document or screen that evidences it, and states the limits plainly — a due
 diligence answer that overstates a control is worse than one that names the gap.
 
-Two items below can only be supplied by Lasha's directors and are deliberately **not** invented here:
-the CIPC company registration number and the registered business address. Both are requested at the end.
+The responsible party is **CLADOGRAM**, a private company registered with the CIPC under
+**2024/063751/07**, trading as **Lasha Logistics**, with its registered office at 333 Main Street,
+Lemoenkloof, Paarl, Western Cape, 7646.
 
 ---
 
@@ -140,7 +141,7 @@ It covers:
 7. **Enforcement** — warning, booking refusal, account suspension, immediate driver suspension, holding
    settlement while an investigation is open, account closure, recovery of losses and criminal referral,
    with a right to respond before a permanent restriction.
-8. **Reporting** — `hello@lasha.co.za` for abuse, `security@lasha.co.za` for vulnerabilities, and the
+8. **Reporting** — `info@lasha.co.za` for abuse, `security@lasha.co.za` for vulnerabilities, and the
    in-platform `/disputes` route for delivery claims.
 
 The policy operates alongside the Terms of Service (`/terms`), which contain the claims and refund
@@ -258,7 +259,7 @@ this document and is listed in §6.
   is taken from the session, never from the request.
 - The claim must be raised within **7 days** of completion (or of a failed/cancelled delivery), matching
   the claims clause in the Terms of Service. Older deliveries are refused by the server, with a route to
-  email `hello@lasha.co.za`.
+  email `info@lasha.co.za`.
 - The customer chooses a category — not delivered, damaged in transit, late, wrong item, incorrect
   charge, driver conduct, other — and describes what happened (20–2,000 characters).
 - One open dispute per customer per delivery. A double submit returns the existing reference instead of
@@ -298,7 +299,7 @@ reference.
 ### 5.4 Escalation
 
 If the customer disagrees with the outcome, the response asks them to reply to the resolution or email
-`hello@lasha.co.za`; unresolved consumer complaints can be taken to the **National Consumer Commission**
+`info@lasha.co.za`; unresolved consumer complaints can be taken to the **National Consumer Commission**
 under the Consumer Protection Act 68 of 2008. Privacy complaints go to the Information Regulator (see
 `/privacy#complaints`). A false claim can lead to account restrictions under the Acceptable Use Policy.
 
@@ -322,16 +323,14 @@ These are the honest gaps a reviewer should see. None of them is disguised by th
 | Bank-account verification for driver payouts | Finance verifies out of band; payout details not in the platform | Payout-destination model with verification status and masked display |
 | Automated refunds and driver payouts | Manual finance step, slower and less auditable | Paystack refund API + payout provider or bank file |
 | Document retention automation | KYC files are deleted through the documented manual retention process | Extend the retention sweep to delete storage objects |
-| CIPC registration number and registered address | Required on the AUP, PAIA manual and counterparty forms | Supply from the CIPC certificate — not invented in this document |
 | Independent penetration test / SOC 2 | No third-party assurance report yet | Commission an annual penetration test before enterprise onboarding |
 
 ## 7. Items only Lasha can supply
 
-1. **CIPC company registration number** and registered name.
-2. **Registered business address** (also required for the PAIA manual).
-3. **Bank confirmation letter** and the account that receives Paystack settlements.
-4. **Paystack merchant/business ID**, if the reviewer needs to match the integration.
-5. **Information Officer** appointment confirmation (registered with the Information Regulator).
+1. **Bank confirmation letter** and the account that receives Paystack settlements.
+2. **Paystack merchant/business ID**, if the reviewer needs to match the integration.
+3. **Information Officer** appointment confirmation (registered with the Information Regulator).
+4. **Business telephone number** — confirm the number published on the site is a monitored line.
 
 ## 8. Evidence index
 

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Phone, Mail, Instagram, Twitter, Facebook } from "lucide-react";
+import { CONTACT_EMAIL } from "@/lib/legal";
 
 const footerColumns = [
   {
@@ -283,7 +284,7 @@ export default function Footer() {
                 +27 10 123 4567
               </a>
               <a
-                href="mailto:hello@lasha.co.za"
+                href={`mailto:${CONTACT_EMAIL}`}
                 style={{
                   display: "flex",
                   alignItems: "center",
@@ -301,7 +302,7 @@ export default function Footer() {
                 }
               >
                 <Mail size={18} strokeWidth={1.5} />
-                hello@lasha.co.za
+                {CONTACT_EMAIL}
               </a>
               <div style={{ display: "flex", gap: 16, marginTop: 8 }}>
                 <a

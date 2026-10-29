@@ -1,7 +1,7 @@
 import { Link } from "react-router";
 import { AlertTriangle } from "lucide-react";
 import LegalLayout, { type LegalSection } from "./LegalLayout";
-import { SECURITY_CONTACT } from "@/lib/legal";
+import { CONTACT_EMAIL, SECURITY_CONTACT } from "@/lib/legal";
 
 /**
  * Acceptable Use Policy.
@@ -40,7 +40,7 @@ export default function AcceptableUse() {
           <AlertTriangle size={15} style={{ flexShrink: 0, marginTop: 2 }} />
           <span>
             If you are unsure whether a parcel is allowed, ask before booking at{" "}
-            <a href="mailto:hello@lasha.co.za">hello@lasha.co.za</a>. A booking
+            <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>. A booking
             does not make a prohibited item acceptable, and a false declaration
             is a breach of this policy and of the{" "}
             <Link to="/terms">Terms of Service</Link>.
@@ -283,7 +283,7 @@ export default function AcceptableUse() {
       <p>
         Report a prohibited consignment, a security problem or driver
         misconduct to{" "}
-        <a href="mailto:hello@lasha.co.za">hello@lasha.co.za</a>. Report a
+        <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>. Report a
         vulnerability in the platform to{" "}
         <a href={`mailto:${SECURITY_CONTACT.email}`}>{SECURITY_CONTACT.email}</a>.
         A delivery dispute is raised in the platform under{" "}

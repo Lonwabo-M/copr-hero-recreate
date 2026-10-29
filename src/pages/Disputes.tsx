@@ -3,6 +3,7 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import CustomerShell from "@/components/shells/CustomerShell";
+import { CONTACT_EMAIL } from "@/lib/legal";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -155,8 +156,8 @@ export default function Disputes() {
               Raising a dispute pauses the driver&apos;s payout for that delivery while we
               investigate. We may ask for photographs, the recipient&apos;s details or the parcel
               itself. If you cannot use this form, email{" "}
-              <a href="mailto:hello@lasha.co.za" style={{ color: "var(--lasha-cyan)", fontWeight: 600 }}>
-                hello@lasha.co.za
+              <a href={`mailto:${CONTACT_EMAIL}`} style={{ color: "var(--lasha-cyan)", fontWeight: 600 }}>
+                {CONTACT_EMAIL}
               </a>{" "}
               with your tracking number. See the{" "}
               <a href="/terms" style={{ color: "var(--lasha-cyan)", fontWeight: 600 }}>
@@ -296,7 +297,7 @@ export default function Disputes() {
               <div className="empty-state-title">No deliveries can be disputed</div>
               <div className="empty-state-desc">
                 A delivery can be disputed within 7 days of being completed, failed or
-                cancelled. If yours is older than that, email hello@lasha.co.za.
+                cancelled. If yours is older than that, email {CONTACT_EMAIL}.
               </div>
             </div>
           ) : (

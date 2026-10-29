@@ -16,19 +16,19 @@ export { PRIVACY_NOTICE_EFFECTIVE_DATE, PRIVACY_POLICY_VERSION };
 export const LEGAL_ENTITY = {
   /** Name the public sees. */
   tradingName: "Lasha Logistics",
-  /** Registered name — used in the PAIA manual. */
-  legalName: "Lasha Logistics",
-  /**
-   * Company registration number. Required in the PAIA manual; leave empty
-   * until the registration is confirmed — never publish a placeholder number.
-   */
-  registrationNumber: "",
+  /** Registered name — used in the PAIA manual and the privacy notice. */
+  legalName: "CLADOGRAM (trading as Lasha Logistics)",
+  /** Company registration number, per the CIPC registration certificate (COR14.3). */
+  registrationNumber: "2024/063751/07",
   website: "https://lasha.co.za",
-  /** Physical address of the head office. Required for a PAIA manual. */
-  physicalAddress: "",
+  /** Registered office, per the CIPC registration certificate (COR14.3). */
+  physicalAddress: "333 Main Street, Lemoenkloof, Paarl, Western Cape, 7646",
   /** South African head office region, used where a full address is not needed. */
-  region: "Gauteng, South Africa",
+  region: "Western Cape, South Africa",
 };
+
+/** General enquiries and the public contact address. */
+export const CONTACT_EMAIL = "info@lasha.co.za";
 
 /** Primary privacy contact — also the Information Officer's desk. */
 export const PRIVACY_CONTACT = {

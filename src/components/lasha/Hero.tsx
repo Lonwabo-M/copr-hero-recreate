@@ -1,4 +1,5 @@
 import { ArrowRight, MapPin } from "lucide-react";
+import { CONTACT_EMAIL } from "@/lib/legal";
 
 export default function Hero() {
   return (
@@ -49,7 +50,7 @@ export default function Hero() {
               <ArrowRight size={16} />
             </a>
             <a
-              href="mailto:hello@lasha.co.za"
+              href={`mailto:${CONTACT_EMAIL}`}
               className="lasha-btn-secondary"
               style={{ color: "var(--lasha-cyan-light)", borderColor: "rgba(7,148,181,0.5)" }}
             >

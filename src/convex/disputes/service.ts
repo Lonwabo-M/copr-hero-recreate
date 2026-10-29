@@ -161,7 +161,7 @@ export const raiseDispute = mutation({
     const now = Date.now();
     if (delivery.completedAt != null && now - delivery.completedAt > CLAIM_WINDOW_MS) {
       throw new Error(
-        "Disputes must be raised within 7 days of delivery completion. Email hello@lasha.co.za if you need this reviewed.",
+        "Disputes must be raised within 7 days of delivery completion. Email info@lasha.co.za if you need this reviewed.",
       );
     }
 
@@ -186,7 +186,7 @@ export const raiseDispute = mutation({
     // Traffic-light guard: an ancient dispute chain on one delivery is a sign
     // of misuse. Five total claims is well beyond normal.
     if (existing.filter((d) => d.raisedBy === user.userId).length >= 5) {
-      throw new Error("Too many disputes on this delivery. Email hello@lasha.co.za.");
+      throw new Error("Too many disputes on this delivery. Email info@lasha.co.za.");
     }
 
     // Hold the driver's settlement while the complaint is investigated. Only a
