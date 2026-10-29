@@ -101,10 +101,10 @@ for (const label of customerOnlyLabels) {
     !driverNavigation.some((n) => n.label === label),
   );
 }
-// Cross-area access points are the deliberate testing loop: the Driver App
-// and Admin Portal list Operations Centre + Dashboard, and the Operations
-// Centre lists Driver App + Admin Portal (all guarded by RoleGate + the
-// reversible test elevation in AppShell).
+// Staff areas are standalone applications with their own URLs. The customer
+// portal never advertises them; staff/testers open them directly in their own
+// tabs and the destination guard owns admission (including the reversible
+// test elevation for allowlisted accounts).
 assert(
   "driver nav lists both return paths (operations + dashboard)",
   driverNavigation.some((n) => n.route === "/operations") &&
@@ -125,15 +125,20 @@ assert(
   "customer nav excludes driver routes",
   !customerNavigation.some((n) => n.route.startsWith("/driver")),
 );
-// The customer sidebar intentionally carries the Operations Centre entry as
-// its access point (reversible test elevation on click).
+// The customer portal is product-only: no staff portal entry points at all.
 assert(
-  "customer nav includes the operations access point",
-  customerNavigation.some((n) => n.route === "/operations"),
+  "customer nav excludes the operations portal",
+  !customerNavigation.some((n) => n.route === "/operations"),
 );
 assert(
   "customer nav excludes driver/admin routes",
   !customerNavigation.some((n) => n.route.startsWith("/driver") || n.route.startsWith("/admin")),
+);
+assert(
+  "customer nav has no staff-portal labels",
+  !customerNavigation.some((n) =>
+    ["Operations Centre", "Driver App", "Admin Portal"].includes(n.label),
+  ),
 );
 
 // Admin nav exists now (driver approvals pipeline + return paths).

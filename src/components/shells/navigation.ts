@@ -19,14 +19,18 @@ export interface NavItem {
 }
 
 // ─── Customer Portal Navigation ──────────────────────────────────────────────
-// Customer/business functionality only. No driver or operations entries.
+// Customer/business functionality only — deliberately NO driver, operations or
+// admin entries. The staff portals are standalone applications at their own
+// URLs (/driver, /operations, /admin/...) and are opened in their own browser
+// tabs; they are never advertised from the customer-facing product. Their
+// routes and guards stay fully wired (RoleGate + test access) for staff and
+// for allowlisted testing accounts.
 export const customerNavigation: NavItem[] = [
   { label: "Activity Center", route: "/dashboard" },
   { label: "Past Deliveries", route: "/past-deliveries" },
   { label: "Request Delivery", route: "/request-delivery" },
   { label: "Track Delivery", route: "/track-delivery" },
   { label: "Address Book", route: "/address-book" },
-  { label: "Operations Centre", route: "/operations" },
   { label: "Invoices", route: "/invoices" },
   { label: "Wallet", route: "/wallet" },
   { label: "Make Payment", route: "/make-payment" },

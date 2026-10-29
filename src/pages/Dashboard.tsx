@@ -16,8 +16,9 @@ import "@/styles/pages.css";
 // Renders the customer's deliveries through the shared dashboard components:
 // OrderPanel (search by order number + status filter pills + route cards with
 // the pickup → drop-off line) and DetailsPanel (Order / Vehicle / Driver /
-// Customer detail tabs). The Operations Centre entry in the sidebar is the
-// access point into the Operations area (see AppShell handleNav).
+// Customer detail tabs). The customer sidebar carries product navigation only:
+// staff portals (Operations, Driver, Admin) are separate applications opened at
+// their own URLs, never linked from the customer-facing product.
 
 // Local row: the shared Order display shape plus the real Convex delivery id
 // used by the Track Order action.
