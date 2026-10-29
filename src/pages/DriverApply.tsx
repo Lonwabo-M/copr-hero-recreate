@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 import DriverShell from "@/components/shells/DriverShell";
 import {
   Loader2,
@@ -92,6 +93,9 @@ function StatusBanner({
 export default function DriverApply() {
   const application = useQuery(api.users.driverApplications.getMyDriverApplication, {});
   const submitApplication = useMutation(api.users.driverApplications.submitMyDriverApplication);
+  const generateUploadUrl = useMutation(
+    api.users.driverApplications.generateApplicationUploadUrl,
+  );
   const { user } = useAuth();
 
   // Identity: from the previous application when resubmitting, else prefilled
@@ -118,12 +122,54 @@ export default function DriverApply() {
     vehicleTrailer: false,
   });
 
+  // KYC documents: copies of the identity document and driving licence. The
+  // ids are what the application stores; the names are only for this form.
+  const [idDocumentId, setIdDocumentId] = useState<string | null>(null);
+  const [licenseDocumentId, setLicenseDocumentId] = useState<string | null>(null);
+  const [idDocumentName, setIdDocumentName] = useState("");
+  const [licenseDocumentName, setLicenseDocumentName] = useState("");
+  const [uploadingDocument, setUploadingDocument] = useState<"id" | "license" | null>(null);
+
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleCapability = (key: CapabilityKey, value: boolean) => {
     setCapabilities((prev) => ({ ...prev, [key]: value }));
+  };
+
+  /**
+   * Upload one KYC document straight to Convex file storage. Only the returned
+   * storage id is kept in form state; the file never passes through a mutation.
+   */
+  const uploadDocument = async (file: File, kind: "id" | "license") => {
+    setError(null);
+    if (file.size > 10 * 1024 * 1024) {
+      setError("Each document must be smaller than 10 MB");
+      return;
+    }
+    setUploadingDocument(kind);
+    try {
+      const uploadUrl = await generateUploadUrl({});
+      const response = await fetch(uploadUrl, {
+        method: "POST",
+        headers: { "Content-Type": file.type || "application/octet-stream" },
+        body: file,
+      });
+      if (!response.ok) throw new Error("The upload failed — please try again");
+      const { storageId } = (await response.json()) as { storageId: string };
+      if (kind === "id") {
+        setIdDocumentId(storageId);
+        setIdDocumentName(file.name);
+      } else {
+        setLicenseDocumentId(storageId);
+        setLicenseDocumentName(file.name);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not upload the document");
+    } finally {
+      setUploadingDocument(null);
+    }
   };
 
   const handleSubmit = async () => {
@@ -152,6 +198,8 @@ export default function DriverApply() {
       return setError("Load capacity (kg) is required");
     }
     if (vehicleRegistration.trim().length < 3) return setError("License plate is required");
+    if (!idDocumentId) return setError("Upload a copy of your identity document");
+    if (!licenseDocumentId) return setError("Upload a copy of your driving licence");
 
     setSubmitting(true);
     try {
@@ -171,6 +219,8 @@ export default function DriverApply() {
         vehicleExpress: capabilities.vehicleExpress,
         vehicleFlammable: capabilities.vehicleFlammable,
         vehicleTrailer: capabilities.vehicleTrailer,
+        idDocumentId: idDocumentId as Id<"_storage">,
+        licenseDocumentId: licenseDocumentId as Id<"_storage">,
       });
       setSubmitted(true);
     } catch (e) {
@@ -213,6 +263,10 @@ export default function DriverApply() {
       setVehicleYear(application.vehicleYear != null ? String(application.vehicleYear) : "");
       setVehicleCapacityKg(String(application.vehicleCapacityKg));
       setVehicleRegistration(application.vehicleRegistration);
+      setIdDocumentId(application.idDocumentId ?? null);
+      setLicenseDocumentId(application.licenseDocumentId ?? null);
+      setIdDocumentName(application.idDocumentId ? "On file" : "");
+      setLicenseDocumentName(application.licenseDocumentId ? "On file" : "");
       setCapabilities({
         vehicleBreaking: application.vehicleBreaking,
         vehicleExpress: application.vehicleExpress,
@@ -372,6 +426,84 @@ export default function DriverApply() {
                           onChange={(e) => setCellNumber(e.target.value)}
                           disabled={!canEdit}
                         />
+                      </label>
+                    </div>
+
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
+                      <FileText size={16} color="#0794B5" />
+                      <span style={{ fontSize: 13.5, fontWeight: 700, color: "#202020" }}>Identity documents</span>
+                    </div>
+                    <p style={{ fontSize: 12, color: "var(--lasha-muted)", margin: 0, lineHeight: 1.55 }}>
+                      Upload a photo or PDF of your identity document and your driving licence.
+                      We check them against the details above before approving your application.
+                      Maximum 10 MB each.
+                    </p>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                      <label
+                        style={{
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 6,
+                          border: "1px dashed #cfd6d9",
+                          borderRadius: 10,
+                          padding: "12px 14px",
+                          background: idDocumentId ? "rgba(10,124,66,0.05)" : "#ffffff",
+                          cursor: canEdit ? "pointer" : "default",
+                        }}
+                      >
+                        <span style={{ fontSize: 13, fontWeight: 600, color: "#202020" }}>
+                          Identity document *
+                        </span>
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp,application/pdf"
+                          disabled={!canEdit || uploadingDocument !== null}
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) void uploadDocument(file, "id");
+                          }}
+                          style={{ fontSize: 12 }}
+                        />
+                        <span style={{ fontSize: 11.5, color: "#666" }}>
+                          {uploadingDocument === "id"
+                            ? "Uploading…"
+                            : idDocumentId
+                              ? `Attached: ${idDocumentName || "document"}`
+                              : "Not uploaded yet"}
+                        </span>
+                      </label>
+                      <label
+                        style={{
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 6,
+                          border: "1px dashed #cfd6d9",
+                          borderRadius: 10,
+                          padding: "12px 14px",
+                          background: licenseDocumentId ? "rgba(10,124,66,0.05)" : "#ffffff",
+                          cursor: canEdit ? "pointer" : "default",
+                        }}
+                      >
+                        <span style={{ fontSize: 13, fontWeight: 600, color: "#202020" }}>
+                          Driving licence *
+                        </span>
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp,application/pdf"
+                          disabled={!canEdit || uploadingDocument !== null}
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) void uploadDocument(file, "license");
+                          }}
+                          style={{ fontSize: 12 }}
+                        />
+                        <span style={{ fontSize: 11.5, color: "#666" }}>
+                          {uploadingDocument === "license"
+                            ? "Uploading…"
+                            : licenseDocumentId
+                              ? `Attached: ${licenseDocumentName || "document"}`
+                              : "Not uploaded yet"}
+                        </span>
                       </label>
                     </div>
 

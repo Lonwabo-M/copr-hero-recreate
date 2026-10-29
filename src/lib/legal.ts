@@ -135,5 +135,6 @@ export const LEGAL_DOCUMENTS = [
   { path: "/paia", label: "PAIA Manual", short: "PAIA" },
   { path: "/cookies", label: "Cookie Notice", short: "Cookies" },
   { path: "/terms", label: "Terms of Service", short: "Terms" },
+  { path: "/acceptable-use", label: "Acceptable Use Policy", short: "Acceptable use" },
   { path: "/privacy-rights", label: "Your Privacy Rights", short: "Your rights" },
 ] as const;

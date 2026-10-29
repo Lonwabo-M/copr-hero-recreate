@@ -19,6 +19,7 @@ const footerColumns = [
       { label: "Help Center", href: "/help" },
       { label: "Contact Us", href: "#about" },
       { label: "Terms of Service", href: "/terms" },
+      { label: "Acceptable Use", href: "/acceptable-use" },
       { label: "Privacy Notice", href: "/privacy" },
       { label: "PAIA Manual", href: "/paia" },
       { label: "Your Privacy Rights", href: "/privacy-rights" },

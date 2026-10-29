@@ -13,6 +13,8 @@ import {
   XCircle,
   Clock,
   X,
+  FileCheck,
+  AlertTriangle,
 } from "lucide-react";
 import "@/styles/dashboard.css";
 import "@/styles/operations.css";
@@ -25,6 +27,15 @@ import "@/styles/operations.css";
 // requires, so an approved driver immediately appears in the Operations
 // Centre's Drivers tab and becomes dispatchable. The flow deliberately does
 // NOT live in the Operations Centre — operations dispatch; admins hire.
+
+type Verification = {
+  idDocumentChecked: boolean;
+  licenseChecked: boolean;
+  vehicleRegistrationChecked: boolean;
+  sanctionsScreened: boolean;
+  pepScreened: boolean;
+  adverseMediaScreened: boolean;
+};
 
 type ApplicationRow = {
   _id: string;
@@ -48,6 +59,20 @@ type ApplicationRow = {
   vehicleExpress: boolean;
   vehicleFlammable: boolean;
   vehicleTrailer: boolean;
+  // KYC documents (signed URLs resolved server-side from storage ids).
+  idDocumentUrl: string | null;
+  licenseDocumentUrl: string | null;
+  // Recorded enhanced due diligence, present once a reviewer has decided.
+  verification?: {
+    idDocumentChecked: boolean;
+    licenseChecked: boolean;
+    vehicleRegistrationChecked: boolean;
+    sanctionsScreened: boolean;
+    pepScreened: boolean;
+    adverseMediaScreened: boolean;
+  };
+  verificationNotes?: string;
+  verifiedAt?: number;
   reviewNotes?: string;
   reviewerName: string | null;
   reviewedAt?: number;
@@ -115,11 +140,28 @@ function ApplicationCard({
 }: {
   app: ApplicationRow;
   decisionPending: boolean;
-  onAccept: (id: string) => void;
+  onAccept: (id: string, verification: Verification, notes: string) => void;
   onReject: (id: string, notes: string) => void;
 }) {
   const [rejecting, setRejecting] = useState(false);
   const [notes, setNotes] = useState("");
+  // Enhanced due diligence: every box must be ticked and the screening result
+  // written down before the Accept button unlocks. The server enforces the
+  // same rule, so this is only fast feedback.
+  const [checks, setChecks] = useState<Verification>({
+    idDocumentChecked: false,
+    licenseChecked: false,
+    vehicleRegistrationChecked: false,
+    sanctionsScreened: false,
+    pepScreened: false,
+    adverseMediaScreened: false,
+  });
+  const [verificationNotes, setVerificationNotes] = useState("");
+
+  const documentsPresent = Boolean(app.idDocumentUrl && app.licenseDocumentUrl);
+  const allChecked = Object.values(checks).every(Boolean);
+  const canApprove =
+    documentsPresent && allChecked && verificationNotes.trim().length >= 10;
 
   const statusPill =
     app.status === "approved"
@@ -208,6 +250,65 @@ function ApplicationCard({
         <InfoCard label="License Number" value={app.licenseNumber ?? "—"} muted />
       </div>
 
+      {/* KYC documents */}
+      <div style={{ margin: "12px 0 8px", fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "#9A9A9A" }}>
+        Identity documents
+      </div>
+      {documentsPresent ? (
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <a
+            href={app.idDocumentUrl ?? undefined}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="ops-btn ops-btn-secondary"
+            style={{ fontSize: 12, padding: "7px 12px", textDecoration: "none" }}
+          >
+            <FileCheck size={14} /> Identity document
+          </a>
+          <a
+            href={app.licenseDocumentUrl ?? undefined}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="ops-btn ops-btn-secondary"
+            style={{ fontSize: 12, padding: "7px 12px", textDecoration: "none" }}
+          >
+            <FileCheck size={14} /> Driving licence
+          </a>
+        </div>
+      ) : (
+        <div
+          style={{
+            display: "flex",
+            gap: 9,
+            alignItems: "flex-start",
+            padding: "10px 12px",
+            borderRadius: 10,
+            background: "rgba(198,40,40,0.06)",
+            border: "1px solid rgba(198,40,40,0.25)",
+            fontSize: 12.5,
+            color: "#8a2020",
+          }}
+        >
+          <AlertTriangle size={15} style={{ flexShrink: 0, marginTop: 1 }} />
+          <span>
+            No KYC documents on file. This application cannot be approved — ask the driver to
+            resubmit with a copy of their identity document and driving licence.
+          </span>
+        </div>
+      )}
+
+      {/* Recorded screening (once a decision exists) */}
+      {app.verification ? (
+        <div style={{ marginTop: 14, fontSize: 12.5, color: "#444", lineHeight: 1.6 }}>
+          <strong>Due diligence recorded:</strong>{" "}
+          {Object.values(app.verification).filter(Boolean).length}/6 checks · ID document, licence
+          and vehicle registration checked; sanctions, PEP and adverse-media screening run.
+          {app.verificationNotes ? (
+            <span style={{ display: "block", color: "#666" }}>{app.verificationNotes}</span>
+          ) : null}
+        </div>
+      ) : null}
+
       {/* Captured vehicle info */}
       <div style={{ margin: "12px 0 8px", fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "#9A9A9A", display: "inline-flex", alignItems: "center", gap: 6 }}>
         <Truck size={13} /> Vehicle
@@ -237,14 +338,69 @@ function ApplicationCard({
         {app.reviewNotes && <> · Notes: {app.reviewNotes}</>}
       </div>
 
+      {/* Enhanced due diligence — pending only */}
+      {app.status === "pending" && (
+        <div
+          style={{
+            marginTop: 16,
+            padding: "14px 16px",
+            borderRadius: 12,
+            border: "1px solid var(--border-light, #E8E8E8)",
+            background: "#fbfaf6",
+          }}
+        >
+          <div style={{ fontSize: 12.5, fontWeight: 700, color: "#202020", marginBottom: 4 }}>
+            Enhanced due diligence
+          </div>
+          <p style={{ fontSize: 12, color: "#666", margin: "0 0 10px", lineHeight: 1.55 }}>
+            Check each item against the documents and an independent screening source. Approval
+            is refused until every check is recorded.
+          </p>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            {(
+              [
+                ["idDocumentChecked", "ID document matches the captured identity"],
+                ["licenseChecked", "Driving licence is valid for this vehicle class"],
+                ["vehicleRegistrationChecked", "Licence disc and plate match the vehicle"],
+                ["sanctionsScreened", "Sanctions / watchlist screening — no match"],
+                ["pepScreened", "PEP screening — no match"],
+                ["adverseMediaScreened", "Adverse media check — nothing material"],
+              ] as [keyof Verification, string][]
+            ).map(([key, label]) => (
+              <label
+                key={key}
+                style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 12.5, color: "#333", cursor: "pointer" }}
+              >
+                <input
+                  type="checkbox"
+                  checked={checks[key]}
+                  onChange={(e) => setChecks((prev) => ({ ...prev, [key]: e.target.checked }))}
+                  style={{ marginTop: 2, accentColor: "#0794B5", width: 15, height: 15 }}
+                />
+                {label}
+              </label>
+            ))}
+          </div>
+          <input
+            className="dash-search"
+            style={{ height: 38, paddingLeft: 12, width: "100%", marginTop: 10 }}
+            placeholder="Screening result and source (required, e.g. 'ID + licence verified 29 Oct; sanctions/PEP cleared on Dow Jones screening')"
+            value={verificationNotes}
+            onChange={(e) => setVerificationNotes(e.target.value)}
+            maxLength={1_000}
+          />
+        </div>
+      )}
+
       {/* Decision actions — pending only */}
       {app.status === "pending" && (
         <div style={{ display: "flex", gap: 10, marginTop: 14, alignItems: "center", flexWrap: "wrap" }}>
           <button
             className="lasha-btn-primary"
-            style={{ height: 40, padding: "0 18px", display: "inline-flex", alignItems: "center", gap: 8, border: "none", cursor: "pointer" }}
-            disabled={decisionPending}
-            onClick={() => onAccept(app._id)}
+            style={{ height: 40, padding: "0 18px", display: "inline-flex", alignItems: "center", gap: 8, border: "none", cursor: canApprove ? "pointer" : "not-allowed", opacity: canApprove ? 1 : 0.55 }}
+            disabled={decisionPending || !canApprove}
+            title={canApprove ? undefined : "Complete the KYC checks and screening note first"}
+            onClick={() => onAccept(app._id, checks, verificationNotes)}
           >
             {decisionPending ? <Loader2 size={15} className="animate-spin" /> : <CheckSquare size={15} />}
             Accept driver
@@ -323,11 +479,15 @@ export default function DriverApprovals() {
   const acceptApplication = useMutation(api.users.driverApplications.acceptDriverApplication);
   const rejectApplication = useMutation(api.users.driverApplications.rejectDriverApplication);
 
-  const handleAccept = async (id: string) => {
+  const handleAccept = async (id: string, verification: Verification, notes: string) => {
     setBusyId(id);
     setError(null);
     try {
-      await acceptApplication({ applicationId: id as any });
+      await acceptApplication({
+        applicationId: id as any,
+        verification,
+        verificationNotes: notes.trim(),
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not accept the application");
     } finally {

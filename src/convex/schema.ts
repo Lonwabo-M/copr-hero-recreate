@@ -561,6 +561,28 @@ const schema = defineSchema(
       vehicleExpress: v.boolean(),
       vehicleFlammable: v.boolean(),
       vehicleTrailer: v.boolean(),
+      // ─── KYC documents (uploaded by the applicant, viewed by reviewers) ──
+      // A copy of the identity document and of the driving licence. Held in
+      // Convex file storage; only the storage ids live on the application.
+      idDocumentId: v.optional(v.id("_storage")),
+      licenseDocumentId: v.optional(v.id("_storage")),
+      // ─── Enhanced due diligence record ───────────────────────────────────
+      // Written down at review time so approval can never happen without a
+      // recorded screening decision. `verification` is unfinished until every
+      // check is true; the accept mutation refuses an unverified application.
+      verification: v.optional(
+        v.object({
+          idDocumentChecked: v.boolean(),
+          licenseChecked: v.boolean(),
+          vehicleRegistrationChecked: v.boolean(),
+          sanctionsScreened: v.boolean(),
+          pepScreened: v.boolean(),
+          adverseMediaScreened: v.boolean(),
+        })
+      ),
+      verificationNotes: v.optional(v.string()),
+      verifiedBy: v.optional(v.id("users")),
+      verifiedAt: v.optional(v.number()),
       // Review outcome
       reviewNotes: v.optional(v.string()),
       reviewedBy: v.optional(v.id("users")),
@@ -785,6 +807,59 @@ const schema = defineSchema(
     })
       .index("by_status", ["status"])
       .index("by_order", ["orderId"]),
+
+    // ─── Disputes ───────────────────────────────────────────────────────────
+    // A customer complaint about a concrete delivery. Raising a dispute puts
+    // the driver's settlement on hold (status "disputed") until operations
+    // resolve it and decide whether the driver is paid. Every record carries a
+    // 7-day response target and is retained as the audit trail for refunds.
+    disputes: defineTable({
+      reference: v.string(),              // "DSP-2026-8F3K2Q"
+      deliveryId: v.id("deliveries"),
+      orderId: v.id("orders"),
+      raisedBy: v.id("users"),
+      category: v.union(
+        v.literal("not_delivered"),
+        v.literal("damaged"),
+        v.literal("late"),
+        v.literal("wrong_item"),
+        v.literal("overcharged"),
+        v.literal("driver_conduct"),
+        v.literal("other"),
+      ),
+      description: v.string(),
+      status: v.union(
+        v.literal("open"),
+        v.literal("investigating"),
+        v.literal("resolved"),
+        v.literal("rejected"),
+      ),
+      // Outcome — required to close, never inferred.
+      resolution: v.optional(
+        v.union(
+          v.literal("refund_full"),
+          v.literal("refund_partial"),
+          v.literal("redelivery"),
+          v.literal("goodwill_credit"),
+          v.literal("no_action"),
+        )
+      ),
+      resolutionAmount: v.optional(v.number()),      // cents
+      resolutionNote: v.optional(v.string()),
+      // Driver-pay decision for the linked settlement.
+      driverPayout: v.optional(v.union(v.literal("released"), v.literal("withheld"))),
+      settlementId: v.optional(v.id("settlements")),
+      settlementPriorStatus: v.optional(v.string()),
+      resolvedBy: v.optional(v.id("users")),
+      resolvedAt: v.optional(v.number()),
+      createdAt: v.number(),
+      updatedAt: v.number(),
+      slaDueAt: v.number(),
+    })
+      .index("by_delivery", ["deliveryId"])
+      .index("by_raised_by", ["raisedBy"])
+      .index("by_status", ["status"])
+      .index("by_reference", ["reference"]),
 
     // ─── Settlements ────────────────────────────────────────────────────────
     // Driver settlement records.

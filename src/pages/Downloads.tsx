@@ -11,6 +11,11 @@ import "@/styles/pages.css";
 const legalDocuments = [
   { path: "/privacy", name: "Privacy Notice", meta: "POPIA notice · always current" },
   { path: "/terms", name: "Terms of Service", meta: "Service contract · always current" },
+  {
+    path: "/acceptable-use",
+    name: "Acceptable Use Policy",
+    meta: "Prohibited goods and conduct · always current",
+  },
   { path: "/paia", name: "PAIA Manual", meta: "Access to records · always current" },
   { path: "/cookies", name: "Cookie Notice", meta: "Cookies and storage · always current" },
 ];

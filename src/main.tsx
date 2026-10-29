@@ -48,8 +48,11 @@ import PrivacyNotice from "./pages/legal/PrivacyNotice.tsx";
 import PaiaManual from "./pages/legal/PaiaManual.tsx";
 import CookieNotice from "./pages/legal/CookieNotice.tsx";
 import TermsOfService from "./pages/legal/TermsOfService.tsx";
+import AcceptableUse from "./pages/legal/AcceptableUse.tsx";
 import PrivacyRights from "./pages/PrivacyRights.tsx";
 import AdminPrivacyRequests from "./pages/AdminPrivacyRequests.tsx";
+import Disputes from "./pages/Disputes.tsx";
+import AdminDisputes from "./pages/AdminDisputes.tsx";
 
 /** Silent error boundary — if VlyToolbar crashes it renders nothing instead of
  *  crashing the whole app (e.g. hook errors in WebContainer environment). */
@@ -172,6 +175,7 @@ createRoot(document.getElementById("root")!).render(
               <Route path="/paia" element={<PaiaManual />} />
               <Route path="/cookies" element={<CookieNotice />} />
               <Route path="/terms" element={<TermsOfService />} />
+              <Route path="/acceptable-use" element={<AcceptableUse />} />
               <Route path="/privacy-rights" element={<PrivacyRights />} />
 
               {/* ─── Customer Onboarding ───────────────────────────────── */}
@@ -278,6 +282,14 @@ createRoot(document.getElementById("root")!).render(
                 element={
                   <RoleGate area={APP_AREAS.CUSTOMER}>
                     <Help />
+                  </RoleGate>
+                }
+              />
+              <Route
+                path="/disputes"
+                element={
+                  <RoleGate area={APP_AREAS.CUSTOMER}>
+                    <Disputes />
                   </RoleGate>
                 }
               />
@@ -415,6 +427,17 @@ createRoot(document.getElementById("root")!).render(
                 element={
                   <RoleGate area={APP_AREAS.OPERATIONS}>
                     <AdminPrivacyRequests />
+                  </RoleGate>
+                }
+              />
+              {/* Same Operations gate as privacy requests: disputes are worked
+                  by Operations and Super Admin, and the page mirrors the
+                  backend's restricted notice for every other role. */}
+              <Route
+                path="/admin/disputes"
+                element={
+                  <RoleGate area={APP_AREAS.OPERATIONS}>
+                    <AdminDisputes />
                   </RoleGate>
                 }
               />

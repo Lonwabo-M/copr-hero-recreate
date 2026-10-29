@@ -421,6 +421,7 @@ export const recordGenericEvent = internalMutation({
     actorId: v.id("users"),
     actorRole: v.string(),
     category: v.union(
+      v.literal("delivery"),
       v.literal("user"),
       v.literal("driver"),
       v.literal("vehicle"),

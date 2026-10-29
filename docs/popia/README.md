@@ -21,6 +21,7 @@ form numbers, Regulator contact details) before publication.
 | PAIA Manual | `/paia` | `src/pages/legal/PaiaManual.tsx` |
 | Cookie Notice | `/cookies` | `src/pages/legal/CookieNotice.tsx` |
 | Terms of Service | `/terms` | `src/pages/legal/TermsOfService.tsx` |
+| Acceptable Use Policy | `/acceptable-use` | `src/pages/legal/AcceptableUse.tsx` |
 
 Company details, the Information Officer's contact desk and the operator list
 are centralised in `src/lib/legal.ts`. Consent wording and the notice version are

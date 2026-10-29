@@ -1,3 +1,4 @@
+import { Link } from "react-router";
 import CustomerShell from "@/components/shells/CustomerShell";
 import { Package, MapPin, CreditCard, Clock, Shield, Users } from "lucide-react";
 import "@/styles/dashboard.css";
@@ -37,7 +38,46 @@ export default function Help() {
               );
             })}
           </div>
-          <div style={{ marginTop: 36, padding: 24, background: "#f8f8f8", borderRadius: 10, border: "1px solid #e8e8e8" }}>
+          <div
+            style={{
+              marginTop: 28,
+              padding: 24,
+              background: "#f8f6ef",
+              borderRadius: 12,
+              border: "1px solid #e6e3d8",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 18,
+              flexWrap: "wrap",
+            }}
+          >
+            <div>
+              <div style={{ fontSize: 15, fontWeight: 600, color: "#202020", marginBottom: 4 }}>
+                Something went wrong with a delivery?
+              </div>
+              <div style={{ fontSize: 13.5, color: "#666" }}>
+                Raise a dispute within 7 days and track the answer. The driver&apos;s payout is
+                held while we investigate.
+              </div>
+            </div>
+            <Link
+              to="/disputes"
+              style={{
+                padding: "10px 18px",
+                borderRadius: 10,
+                background: "var(--lasha-navy)",
+                color: "var(--lasha-ivory)",
+                fontSize: 13.5,
+                fontWeight: 600,
+                textDecoration: "none",
+                whiteSpace: "nowrap",
+              }}
+            >
+              Open a dispute
+            </Link>
+          </div>
+          <div style={{ marginTop: 18, padding: 24, background: "#f8f8f8", borderRadius: 10, border: "1px solid #e8e8e8" }}>
             <div style={{ fontSize: 15, fontWeight: 600, color: "#202020", marginBottom: 6 }}>Still need help?</div>
             <div style={{ fontSize: 14, color: "#666", marginBottom: 14 }}>Contact our support team and we'll get back to you within 24 hours.</div>
             <button style={{ padding: "10px 24px", borderRadius: 10, border: "1px solid #42b4d0", background: "#fff", color: "#42b4d0", fontSize: 14, fontWeight: 500, cursor: "pointer" }}>Contact Support</button>

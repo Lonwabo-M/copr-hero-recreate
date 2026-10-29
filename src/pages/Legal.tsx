@@ -44,6 +44,12 @@ const DOCUMENTS = [
       "The contract for using Lasha: bookings, pricing, delivery, claims, refunds and liability.",
   },
   {
+    path: "/acceptable-use",
+    title: "Acceptable Use Policy",
+    description:
+      "What may not be sent through Lasha, how accounts and vehicles may be used, and how breaches are enforced.",
+  },
+  {
     path: "/cookies",
     title: "Cookie Notice",
     description:

@@ -31,6 +31,7 @@ export const customerNavigation: NavItem[] = [
   { label: "Make Payment", route: "/make-payment" },
   { label: "Notifications", route: "/notifications", hasNotif: true },
   { label: "Help", route: "/help" },
+  { label: "Disputes", route: "/disputes" },
   { label: "Legal", route: "/legal" },
   { label: "Downloads", route: "/downloads" },
   { label: "Settings", route: "/settings" },
@@ -59,6 +60,7 @@ export const driverNavigation: NavItem[] = [
 // reversible test elevation in AppShell handleNav.
 export const operationsNavigation: NavItem[] = [
   { label: "Operations Centre", route: "/operations" },
+  { label: "Disputes", route: "/admin/disputes" },
   { label: "Privacy Requests", route: "/admin/privacy-requests" },
   { label: "Driver App", route: "/driver" },
   { label: "Admin Portal", route: "/admin/driver-approvals" },
@@ -78,6 +80,7 @@ export const adminNavigation: NavItem[] = [
   { label: "Pricing Rules", route: "/admin/pricing-rules" },
   { label: "Platform Health", route: "/admin/platform-health" },
   { label: "Audit Log", route: "/admin/audit-log" },
+  { label: "Disputes", route: "/admin/disputes" },
   // POPIA data subject requests (access, correction, deletion, objection,
   // opt-out, complaint) with their 30-day deadlines — docs/popia/dsar-runbook.md.
   { label: "Privacy Requests", route: "/admin/privacy-requests" },

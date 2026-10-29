@@ -31,6 +31,60 @@ import {
 const MAX_CAPACITY_KG = 50_000;
 const MIN_CAPACITY_KG = 1;
 
+/** KYC upload limits — a copy of the ID and of the driving licence. */
+const MAX_DOCUMENT_BYTES = 10 * 1024 * 1024;
+const ALLOWED_DOCUMENT_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/heic",
+  "image/heif",
+  "application/pdf",
+];
+
+const VERIFICATION_CHECKS = [
+  "idDocumentChecked",
+  "licenseChecked",
+  "vehicleRegistrationChecked",
+  "sanctionsScreened",
+  "pepScreened",
+  "adverseMediaScreened",
+] as const;
+
+/**
+ * Upload ticket for a driver's KYC documents. The client uploads the file
+ * straight to Convex file storage with the returned URL and sends the storage
+ * id back on submit; no file bytes pass through a Convex function.
+ */
+export const generateApplicationUploadUrl = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await requireAuth(ctx);
+    const user = await ctx.db.get(userId);
+    if (!user) throw new Error("Authentication required");
+    if (user.role !== ROLES.DRIVER) {
+      throw new Error("Only driver accounts can upload driver documents");
+    }
+    return await ctx.storage.generateUploadUrl();
+  },
+});
+
+async function assertDocument(
+  ctx: { storage: { getMetadata: (id: any) => Promise<any> } },
+  storageId: any,
+  label: string,
+): Promise<string | null> {
+  const meta = await ctx.storage.getMetadata(storageId);
+  if (!meta) return `${label} upload was not found — please upload it again`;
+  if (typeof meta.size === "number" && meta.size > MAX_DOCUMENT_BYTES) {
+    return `${label} must be smaller than 10 MB`;
+  }
+  if (meta.contentType && !ALLOWED_DOCUMENT_TYPES.includes(meta.contentType)) {
+    return `${label} must be a photo (JPG, PNG, WebP, HEIC) or a PDF`;
+  }
+  return null;
+}
+
 function validateApplicationArgs(args: ApplicationInput): string | null {
   // Identity: first name, surname, SA ID number, cell number.
   const firstNameError = validatePersonName(args.firstName, "First name");
@@ -107,6 +161,9 @@ export const submitMyDriverApplication = mutation({
     vehicleExpress: v.boolean(),
     vehicleFlammable: v.boolean(),
     vehicleTrailer: v.boolean(),
+    // KYC documents (required — see the identity-verification policy).
+    idDocumentId: v.id("_storage"),
+    licenseDocumentId: v.id("_storage"),
   },
   handler: async (ctx, args) => {
     const userId = await requireAuth(ctx);
@@ -129,6 +186,17 @@ export const submitMyDriverApplication = mutation({
     const validationError = validateApplicationArgs(normalized);
     if (validationError) throw new Error(validationError);
 
+    // KYC documents are part of the application, not optional extras: an
+    // application cannot enter the review queue without both copies on file.
+    const idDocumentError = await assertDocument(ctx, args.idDocumentId, "Identity document");
+    if (idDocumentError) throw new Error(idDocumentError);
+    const licenseDocumentError = await assertDocument(
+      ctx,
+      args.licenseDocumentId,
+      "Driving licence",
+    );
+    if (licenseDocumentError) throw new Error(licenseDocumentError);
+
     const now = Date.now();
     const existing = await ctx.db
       .query("driver_applications")
@@ -139,10 +207,17 @@ export const submitMyDriverApplication = mutation({
       if (existing.status === "pending") {
         throw new Error("You already have an application under review");
       }
-      // Resubmission after rejection — reset to pending.
+      // Resubmission after rejection — reset to pending and clear the previous
+      // screening record, which applied to the old submission, not this one.
       await ctx.db.patch(existing._id, {
         ...normalized,
+        idDocumentId: args.idDocumentId,
+        licenseDocumentId: args.licenseDocumentId,
         status: "pending",
+        verification: undefined,
+        verificationNotes: undefined,
+        verifiedBy: undefined,
+        verifiedAt: undefined,
         reviewNotes: undefined,
         reviewedBy: undefined,
         reviewedAt: undefined,
@@ -155,6 +230,8 @@ export const submitMyDriverApplication = mutation({
       userId,
       status: "pending",
       ...normalized,
+      idDocumentId: args.idDocumentId,
+      licenseDocumentId: args.licenseDocumentId,
       createdAt: now,
     });
 
@@ -290,6 +367,12 @@ export const getApplicationsForReview = query({
           applicantEmail: applicant?.email ?? null,
           applicantPhone: applicant?.phone ?? null,
           reviewerName: reviewer?.name ?? null,
+          // Short-lived signed URLs for the KYC copies. The ids themselves are
+          // not useful to a reviewer; the documents are what must be checked.
+          idDocumentUrl: app.idDocumentId ? await ctx.storage.getUrl(app.idDocumentId) : null,
+          licenseDocumentUrl: app.licenseDocumentId
+            ? await ctx.storage.getUrl(app.licenseDocumentId)
+            : null,
         };
       }),
     );
@@ -302,7 +385,21 @@ export const getApplicationsForReview = query({
  * Idempotent: re-approving an already-approved application is a no-op.
  */
 export const acceptDriverApplication = mutation({
-  args: { applicationId: v.id("driver_applications") },
+  args: {
+    applicationId: v.id("driver_applications"),
+    // Enhanced due diligence, recorded by the reviewer at the moment of
+    // approval. Every check must be true; an unchecked box is a refusal to
+    // approve, not a skipped field.
+    verification: v.object({
+      idDocumentChecked: v.boolean(),
+      licenseChecked: v.boolean(),
+      vehicleRegistrationChecked: v.boolean(),
+      sanctionsScreened: v.boolean(),
+      pepScreened: v.boolean(),
+      adverseMediaScreened: v.boolean(),
+    }),
+    verificationNotes: v.string(),
+  },
   handler: async (ctx, args) => {
     const userId = await requireAuth(ctx);
     const admin = await ctx.db.get(userId);
@@ -316,6 +413,27 @@ export const acceptDriverApplication = mutation({
     }
     if (app.status === "rejected") {
       throw new Error("This application was rejected — the driver must resubmit");
+    }
+
+    // Identity verification requires the documents. An application captured
+    // before document capture existed must be resubmitted, never approved on
+    // unchecked identity data.
+    if (!app.idDocumentId || !app.licenseDocumentId) {
+      throw new Error(
+        "KYC documents are missing from this application — ask the driver to resubmit with an identity document and driving licence",
+      );
+    }
+    const missing = VERIFICATION_CHECKS.filter((key) => !args.verification[key]);
+    if (missing.length > 0) {
+      throw new Error(
+        `Complete every due-diligence check before approving (missing: ${missing.join(", ")})`,
+      );
+    }
+    const verificationNotes = args.verificationNotes.trim();
+    if (verificationNotes.length < 10) {
+      throw new Error(
+        "Record what the screening found (at least 10 characters) — it is the evidence for this approval",
+      );
     }
 
     const now = Date.now();
@@ -394,6 +512,10 @@ export const acceptDriverApplication = mutation({
 
     await ctx.db.patch(app._id, {
       status: "approved",
+      verification: args.verification,
+      verificationNotes,
+      verifiedBy: userId,
+      verifiedAt: now,
       reviewedBy: userId,
       reviewedAt: now,
     });
@@ -406,7 +528,13 @@ export const acceptDriverApplication = mutation({
       entityType: "driver_applications",
       entityId: app._id,
       before: JSON.stringify({ status: "pending" }),
-      after: JSON.stringify({ status: "approved", profileId, vehicleId }),
+      after: JSON.stringify({
+        status: "approved",
+        profileId,
+        vehicleId,
+        verification: args.verification,
+        verificationNotes,
+      }),
       metadata: `Driver approved: ${applicant.name ?? applicant.email ?? app.userId}`,
     });
 

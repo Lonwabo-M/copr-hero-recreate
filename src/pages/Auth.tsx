@@ -456,8 +456,9 @@ export default function AuthPage({ redirectAfterAuth = "/post-auth" }: AuthProps
             lineHeight: 1.6,
           }}
         >
-          By continuing, you agree to Lasha&apos;s <Link to="/terms">Terms of Service</Link>{" "}
-          and <Link to="/privacy">Privacy Notice</Link>.
+          By continuing, you agree to Lasha&apos;s <Link to="/terms">Terms of Service</Link>,
+          the <Link to="/acceptable-use">Acceptable Use Policy</Link> and the{" "}
+          <Link to="/privacy">Privacy Notice</Link>.
         </p>
 
         <DevQuickSignIn onError={setError} setLoading={setLoading} />
@@ -553,9 +554,10 @@ export default function AuthPage({ redirectAfterAuth = "/post-auth" }: AuthProps
                 style={{ marginTop: 2, accentColor: "var(--lasha-navy)", width: 15, height: 15 }}
               />
               <span>
-                I have read and agree to the <Link to="/terms">Terms of Service</Link> and
-                the <Link to="/privacy">Privacy Notice</Link>, including how my
-                information is used to run my account and deliver parcels.
+                I have read and agree to the <Link to="/terms">Terms of Service</Link>, the{" "}
+                <Link to="/acceptable-use">Acceptable Use Policy</Link> and the{" "}
+                <Link to="/privacy">Privacy Notice</Link>, including how my information is
+                used to run my account and deliver parcels.
               </span>
             </label>
             <label
