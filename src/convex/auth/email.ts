@@ -10,13 +10,18 @@ import { internal } from "../_generated/api";
  * email + password and needs no email delivery at all.
  *
  * How it sends:
- *   POST https://integrations.vly.ai/v1/email/send
+ *   POST <VLY_INTEGRATION_BASE_URL>/v1/email/send
  *   Authorization: Bearer <VLY_INTEGRATION_KEY>
  *   { to: [...], from: "noreply@project.freebuff.dev", subject, html, text }
  *
  * This is the same endpoint the platform's own `@vly-ai/integrations`
  * email client uses, authenticated with the deployment's already-provisioned
  * `VLY_INTEGRATION_KEY` — no separate email provider or extra key required.
+ *
+ * The host MUST come from `VLY_INTEGRATION_BASE_URL` (the platform sets it per
+ * project and the key is scoped to it). Posting to a hardcoded gateway host
+ * instead makes a valid key look invalid: the gateway answers 401/403 and the
+ * reset page can only say "email delivery is temporarily unavailable".
  *
  * Secret hygiene:
  * - The key is read only from the server-side Convex environment; it is
@@ -70,7 +75,10 @@ export const emailDelivery = Email({
     }
 
     const code = token;
-    const response = await fetch("https://integrations.vly.ai/v1/email/send", {
+    const baseUrl = (
+      process.env.VLY_INTEGRATION_BASE_URL ?? "https://integrations.vly.ai"
+    ).replace(/\/+$/, "");
+    const response = await fetch(`${baseUrl}/v1/email/send`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,

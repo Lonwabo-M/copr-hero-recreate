@@ -194,25 +194,44 @@ export function buildSteps(
   m: Milestones,
   expectedTs: number | null | undefined,
 ): TrackStepVM[] {
+  // Steps are a ladder, so completion is monotonic: a recorded later
+  // milestone means every earlier one happened, even when the intermediate
+  // event was never stored (deliveries routinely jump from a pickup event
+  // straight to "delivered"). Treating a delivered delivery's "In transit"
+  // step as incomplete made the first incomplete step the active one, so a
+  // delivered shipment still showed "Currently here" under In transit.
   // Exception states (failed/cancelled/reassignment) keep completed steps
   // factual and never mark Delivered as done.
   const deliveredDone = m.delivered !== null;
-  const inTransitDone = m.inTransit !== null && !deliveredDone;
-  const pickedUpDone = m.pickedUp !== null;
-  const placedDone = m.placed !== null || status === DELIVERY_STATUS.REQUESTED;
+  const placedAt = m.placed;
+  const placedDone = placedAt !== null || status === DELIVERY_STATUS.REQUESTED;
 
-  const raw: Array<{ key: string; label: string; done: boolean; ts: number | null; activeLabel?: string }> = [
-    { key: "placed", label: "Order placed", done: placedDone, ts: m.placed },
-    { key: "picked-up", label: "Picked up", done: pickedUpDone, ts: m.pickedUp },
-    { key: "in-transit", label: "In transit", done: inTransitDone, ts: m.inTransit, activeLabel: "Currently here" },
+  const steps: Array<{
+    key: string;
+    label: string;
+    ts: number | null;
+    activeLabel?: string;
+  }> = [
+    { key: "placed", label: "Order placed", ts: placedAt },
+    { key: "picked-up", label: "Picked up", ts: m.pickedUp },
+    { key: "in-transit", label: "In transit", ts: m.inTransit, activeLabel: "Currently here" },
     {
       key: "delivered",
       label: "Delivered",
-      done: deliveredDone,
       ts: m.delivered,
       activeLabel: expectedTs ? `Expected ${formatEventDate(expectedTs)}` : "Expected shortly",
     },
   ];
+
+  // Index of the furthest milestone actually reached (-1 = nothing recorded).
+  const reached = [
+    placedDone,
+    m.pickedUp !== null,
+    m.inTransit !== null,
+    deliveredDone,
+  ].lastIndexOf(true);
+
+  const raw = steps.map((s, i) => ({ ...s, done: i <= reached }));
 
   const firstIncomplete = raw.findIndex((s) => !s.done);
 
