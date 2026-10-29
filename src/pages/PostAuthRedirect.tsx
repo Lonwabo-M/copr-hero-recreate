@@ -9,11 +9,12 @@ import { ROLES } from "@/convex/schema";
 
 // ─── PostAuthRedirect ────────────────────────────────────────────────────────
 // Role-aware post-auth entry point. After sign-in with no specific returnTo,
-// users are routed to the home of the application area their role maps to:
-// customer → /dashboard, driver → /driver, operations/fleet_manager →
-// /operations, company_admin/super_admin → /operations (no admin pages yet).
-// Unknown/missing roles default to the Customer experience; Convex remains the
-// authoritative authorization layer regardless of where the UI sends users.
+// users land in the Activity Center (/dashboard) — the platform's daily home —
+// except drivers, who go straight to the Driver App (/driver) because their
+// jobs and status actions live there. Operations and Admin workspaces stay one
+// click away in the customer sidebar. Unknown/missing roles default to the
+// Customer experience; Convex remains the authoritative authorization layer
+// regardless of where the UI sends users.
 //
 // Customer onboarding: a customer (or unprovisioned account, which the backend
 // defaults to the customer experience) whose onboarding is incomplete is sent
@@ -73,8 +74,12 @@ function AuthenticatedDestination({
   useEffect(() => {
     if (!roleResolved) return; // role not yet known — never route early
     if (!isCustomerExperience) {
-      // Driver/Operations/Admin routing unchanged.
-      navigate(homeRouteForRole(role), { replace: true });
+      // Staff land in the Activity Center. Drivers keep the Driver App: the
+      // customer sidebar has no Driver App entry, so sending them to
+      // /dashboard would strand them away from their active delivery.
+      navigate(role === ROLES.DRIVER ? homeRouteForRole(role) : "/dashboard", {
+        replace: true,
+      });
       return;
     }
     // `unauthenticated` means the status query ran before the fresh session

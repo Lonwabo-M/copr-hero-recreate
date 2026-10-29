@@ -113,7 +113,7 @@ class RootErrorBoundary extends React.Component<
 
 const convex = convexClient; // single source of truth from src/lib/convex.ts (migrated deployment)
 /** Role-aware post-auth entry: resolves the signed-in user's home route via
- *  PostAuthRedirect (customer → /dashboard, driver → /driver, ops → /operations). */
+ *  PostAuthRedirect (everyone lands in /dashboard except drivers → /driver). */
 
 function RouteSyncer() {
   const location = useLocation();
