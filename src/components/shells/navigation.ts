@@ -25,6 +25,7 @@ export const customerNavigation: NavItem[] = [
   { label: "Past Deliveries", route: "/past-deliveries" },
   { label: "Request Delivery", route: "/request-delivery" },
   { label: "Track Delivery", route: "/track-delivery" },
+  { label: "Address Book", route: "/address-book" },
   { label: "Operations Centre", route: "/operations" },
   { label: "Invoices", route: "/invoices" },
   { label: "Wallet", route: "/wallet" },

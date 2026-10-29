@@ -3,6 +3,7 @@ import { useAction } from "convex/react";
 import { useNavigate } from "react-router";
 import { api } from "@/convex/_generated/api";
 import CustomerShell from "@/components/shells/CustomerShell";
+import AddressField from "@/components/addresses/AddressField";
 import { useCreateOrderAndDelivery } from "@/hooks/use-lasha";
 import {
   Package,
@@ -285,22 +286,15 @@ export default function RequestDelivery() {
                 {/* Right column */}
                 <div className="form-column form-column-right">
                   <div className="location-connector">
-                    {/* Pick-up Point */}
-                    <div className="form-field">
-                      <label className="form-label">
-                        Pick-up Point <span className="required">*</span>
-                      </label>
-                      <div className="form-input-wrapper">
-                        <MapPin className="form-input-icon location-icon" size={18} />
-                        <input
-                          type="text"
-                          className="form-input"
-                          placeholder="Enter pickup location"
-                          value={pickupLocation}
-                          onChange={(e) => setPickupLocation(e.target.value)}
-                        />
-                      </div>
-                    </div>
+                    {/* Pick-up Point — saved addresses appear on focus / typing */}
+                    <AddressField
+                      label="Pick-up Point"
+                      required
+                      icon={MapPin}
+                      placeholder="Enter pickup location"
+                      value={pickupLocation}
+                      onChange={setPickupLocation}
+                    />
 
                     {/* Connector line */}
                     <div className="location-connector-line">
@@ -309,22 +303,15 @@ export default function RequestDelivery() {
                       <div className="connector-dot" />
                     </div>
 
-                    {/* Drop-off Point */}
-                    <div className="form-field">
-                      <label className="form-label">
-                        Drop-off Point <span className="required">*</span>
-                      </label>
-                      <div className="form-input-wrapper">
-                        <Navigation className="form-input-icon location-icon" size={18} />
-                        <input
-                          type="text"
-                          className="form-input"
-                          placeholder="Enter drop-off location"
-                          value={dropoffLocation}
-                          onChange={(e) => setDropoffLocation(e.target.value)}
-                        />
-                      </div>
-                    </div>
+                    {/* Drop-off Point — same saved-address suggestions */}
+                    <AddressField
+                      label="Drop-off Point"
+                      required
+                      icon={Navigation}
+                      placeholder="Enter drop-off location"
+                      value={dropoffLocation}
+                      onChange={setDropoffLocation}
+                    />
                   </div>
 
                   {/* Recipient — who the package is being sent to */}

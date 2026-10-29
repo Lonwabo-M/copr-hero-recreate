@@ -16,6 +16,7 @@ import Dashboard from "./pages/Dashboard.tsx";
 import RequestDelivery from "./pages/RequestDelivery.tsx";
 import Checkout from "./pages/Checkout.tsx";
 import TrackDelivery from "./pages/TrackDelivery.tsx";
+import AddressBook from "./pages/AddressBook.tsx";
 import DeliveryTracking from "./pages/DeliveryTracking.tsx";
 import Wallet from "./pages/Wallet.tsx";
 import Settings from "./pages/Settings.tsx";
@@ -226,6 +227,14 @@ createRoot(document.getElementById("root")!).render(
                 element={
                   <RoleGate area={APP_AREAS.CUSTOMER}>
                     <DeliveryTracking />
+                  </RoleGate>
+                }
+              />
+              <Route
+                path="/address-book"
+                element={
+                  <RoleGate area={APP_AREAS.CUSTOMER}>
+                    <AddressBook />
                   </RoleGate>
                 }
               />
