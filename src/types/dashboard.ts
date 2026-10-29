@@ -4,6 +4,7 @@
  * These types define the shape of order data displayed in the dashboard.
  * The Dashboard.tsx page transforms Convex delivery data into this shape.
  */
+import type { OrderStatus } from "@/lib/orderStatus";
 
 export interface PickupInfo {
   name: string;
@@ -52,7 +53,7 @@ export interface CustomerInfo {
 
 export interface Order {
   id: string;
-  status: "In Transit" | "Pending";
+  status: OrderStatus;
   pickup: PickupInfo;
   dropoff: DropoffInfo;
   vehicle: VehicleInfo;

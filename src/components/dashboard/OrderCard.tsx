@@ -1,5 +1,6 @@
 import { Circle, MapPin, Truck } from "lucide-react";
 import type { Order } from "@/types/dashboard";
+import { orderStatusTone } from "@/lib/orderStatus";
 
 interface OrderCardProps {
   order: Order;
@@ -28,11 +29,7 @@ export default function OrderCard({ order, isActive, onClick, onTrack }: OrderCa
       {/* Header: Order ID + Status */}
       <div className="dash-order-card-header">
         <span className="dash-order-id">{order.id}</span>
-        <span
-          className={`dash-order-status ${
-            order.status === "In Transit" ? "in-transit" : "pending"
-          }`}
-        >
+        <span className={`dash-order-status ${orderStatusTone(order.status)}`}>
           {order.status}
         </span>
       </div>

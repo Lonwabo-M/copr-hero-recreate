@@ -1,4 +1,4 @@
-const filters = ["All", "Pending", "In Transit"] as const;
+const filters = ["All", "Pending", "In Transit", "Delivered"] as const;
 
 interface OrderFiltersProps {
   activeFilter: string;

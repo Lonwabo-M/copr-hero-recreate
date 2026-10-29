@@ -8,6 +8,7 @@ import DetailsPanel from "@/components/dashboard/DetailsPanel";
 import ActivityOverview from "@/components/dashboard/ActivityOverview";
 import { Loader2 } from "lucide-react";
 import type { Order } from "@/types/dashboard";
+import { orderStatusFromDelivery } from "@/lib/orderStatus";
 import "@/styles/dashboard.css";
 import "@/styles/pages.css";
 
@@ -30,7 +31,7 @@ function transformDeliveryToOrder(delivery: any, accountBusinessName?: string): 
   return {
     id: `#${delivery.trackingNumber}`,
     deliveryId: delivery._id,
-    status: delivery.status === "in_transit" ? "In Transit" : "Pending",
+    status: orderStatusFromDelivery(delivery.status),
     pickup: {
       name: "Pickup Point",
       address: details.pickupAddress ?? "Address on file",

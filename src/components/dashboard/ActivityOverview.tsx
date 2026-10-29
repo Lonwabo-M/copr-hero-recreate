@@ -6,6 +6,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import type { Order } from "@/types/dashboard";
+import { orderStatusTone } from "@/lib/orderStatus";
 
 // ─── Activity Overview ───────────────────────────────────────────────────────
 // The Activity Centre's default (no-order-selected) view. Mirrors the
@@ -19,11 +20,6 @@ interface ActivityOverviewProps {
   onRequestDelivery: () => void;
 }
 
-function overviewStatus(order: Order): { label: string; tone: "active" | "pending" | "done" } {
-  if (order.status === "In Transit") return { label: "In Transit", tone: "active" };
-  return { label: "Pending", tone: "pending" };
-}
-
 export default function ActivityOverview({
   orders,
   onSelectOrder,
@@ -31,18 +27,14 @@ export default function ActivityOverview({
 }: ActivityOverviewProps) {
   const inTransit = orders.filter((o) => o.status === "In Transit").length;
   const pending = orders.filter((o) => o.status === "Pending").length;
+  const delivered = orders.filter((o) => o.status === "Delivered").length;
   const total = orders.length;
 
   const stats = [
     { icon: <Package size={22} />, label: "Total Orders", value: total, color: "#42B4D0" },
     { icon: <Truck size={22} />, label: "In Transit", value: inTransit, color: "#0A7C42" },
     { icon: <Clock size={22} />, label: "Pending", value: pending, color: "#856404" },
-    {
-      icon: <CheckCircle2 size={22} />,
-      label: "Completed",
-      value: Math.max(total - inTransit - pending, 0),
-      color: "#666666",
-    },
+    { icon: <CheckCircle2 size={22} />, label: "Delivered", value: delivered, color: "#666666" },
   ];
 
   const recent = orders.slice(0, 5);
@@ -78,10 +70,10 @@ export default function ActivityOverview({
         ) : (
           <div className="dash-recent-list">
             {recent.map((order) => {
-              const s = overviewStatus(order);
+              const tone = orderStatusTone(order.status);
               return (
                 <button key={order.id} className="dash-recent-row" onClick={() => onSelectOrder(order.id)}>
-                  <div className={`dash-recent-icon ${s.tone}`}>
+                  <div className={`dash-recent-icon ${tone}`}>
                     <Package size={16} />
                   </div>
                   <div className="dash-recent-main">
@@ -90,9 +82,7 @@ export default function ActivityOverview({
                       {order.pickup.address} → {order.dropoff.address}
                     </span>
                   </div>
-                  <span className={`dash-order-status ${s.tone === "active" ? "in-transit" : "pending"}`}>
-                    {s.label}
-                  </span>
+                  <span className={`dash-order-status ${tone}`}>{order.status}</span>
                   <ChevronRight size={16} className="dash-recent-chevron" />
                 </button>
               );

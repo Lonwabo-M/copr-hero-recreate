@@ -30,10 +30,7 @@ export default function OrderPanel<T extends Order>({
 }: OrderPanelProps<T>) {
   // Filter and search
   const filtered = orders.filter((order) => {
-    const matchesFilter =
-      activeFilter === "All" ||
-      (activeFilter === "Pending" && order.status === "Pending") ||
-      (activeFilter === "In Transit" && order.status === "In Transit");
+    const matchesFilter = activeFilter === "All" || order.status === activeFilter;
     const matchesSearch = order.id.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesFilter && matchesSearch;
   });

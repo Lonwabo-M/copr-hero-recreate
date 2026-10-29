@@ -338,6 +338,7 @@
    ═══════════════════════════════════════════ */
 .dash-filters {
   display: flex !important;
+  flex-wrap: wrap;
   gap: 10px;
   margin-bottom: 20px;
 }
@@ -428,7 +429,20 @@
   color: var(--status-pending);
 }
 
-.dash-order-card.active .dash-order-status.pending {
+.dash-order-status.delivered {
+  background: rgba(10, 124, 66, 0.12);
+  color: #0A7C42;
+}
+
+.dash-order-status.failed {
+  background: rgba(198, 40, 40, 0.12);
+  color: #C62828;
+}
+
+.dash-order-card.active .dash-order-status.pending,
+.dash-order-card.active .dash-order-status.in-transit,
+.dash-order-card.active .dash-order-status.delivered,
+.dash-order-card.active .dash-order-status.failed {
   background: rgba(255, 255, 255, 0.2);
   color: #FFFFFF;
 }
@@ -1105,7 +1119,7 @@
   flex-shrink: 0;
 }
 
-.dash-recent-icon.active {
+.dash-recent-icon.in-transit {
   background: rgba(10, 124, 66, 0.1);
   color: #0A7C42;
 }
@@ -1113,6 +1127,16 @@
 .dash-recent-icon.pending {
   background: rgba(133, 100, 4, 0.1);
   color: #856404;
+}
+
+.dash-recent-icon.delivered {
+  background: rgba(10, 124, 66, 0.12);
+  color: #0A7C42;
+}
+
+.dash-recent-icon.failed {
+  background: rgba(198, 40, 40, 0.1);
+  color: #C62828;
 }
 
 .dash-recent-main {
