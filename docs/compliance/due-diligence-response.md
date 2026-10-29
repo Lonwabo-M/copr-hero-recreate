@@ -9,7 +9,7 @@ actually does, names the document or screen that evidences it, and states the li
 diligence answer that overstates a control is worse than one that names the gap.
 
 The responsible party is **CLADOGRAM**, a private company registered with the CIPC under
-**2024/063751/07**, trading as **Lasha Logistics**, with its registered office at 333 Main Street,
+**2024/063751/07**, trading as **Lasha**, with its registered office at 333 Main Street,
 Lemoenkloof, Paarl, Western Cape, 7646.
 
 ---
@@ -153,7 +153,7 @@ rules, and the Privacy Notice (`/privacy`), which contains the POPIA processing 
 
 ### 4.1 Who is who
 
-- **Lasha Logistics** is the merchant of record and the counterparty to the customer. It sets the price,
+- **CLADOGRAM (trading as Lasha)** is the merchant of record and the counterparty to the customer. It sets the price,
   performs the delivery (through approved drivers) and bears the customer refund obligation.
 - **The client/customer** pays Lasha for the delivery.
 - **The driver** is paid by Lasha for performing the delivery. The driver is **not** a Paystack merchant

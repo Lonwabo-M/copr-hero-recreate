@@ -50,7 +50,7 @@ export default function AcceptableUse() {
     >
       <h2 id="scope">1. Scope</h2>
       <p>
-        This policy forms part of your agreement with Lasha Logistics
+        This policy forms part of your agreement with CLADOGRAM, trading as Lasha
         (&ldquo;Lasha&rdquo;). It applies to everyone who books, sends, receives
         or carries a parcel through the platform, and to every person who holds
         a Lasha account, including business and fleet accounts.

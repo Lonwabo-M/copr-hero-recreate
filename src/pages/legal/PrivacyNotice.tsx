@@ -51,11 +51,11 @@ export default function PrivacyNotice() {
     >
       <h2 id="who-we-are">1. Who we are</h2>
       <p>
-        Lasha Logistics is the trading name of CLADOGRAM, a private company
-        registered in South Africa (<strong>“Lasha”</strong>, “we”, “us”). CLADOGRAM
-        is the responsible party for the personal information described in this
-        notice. We operate the Lasha delivery platform: quoting, booking, dispatch,
-        tracking, proof of delivery, invoicing and payment.
+        Lasha is the trading name of CLADOGRAM, a private company registered in
+        South Africa (<strong>“Lasha”</strong>, “we”, “us”). CLADOGRAM is the
+        responsible party for the personal information described in this notice. We
+        operate the Lasha delivery platform: quoting, booking, dispatch, tracking,
+        proof of delivery, invoicing and payment.
       </p>
       <table>
         <tbody>

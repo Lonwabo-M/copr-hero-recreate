@@ -15,9 +15,9 @@ export { PRIVACY_NOTICE_EFFECTIVE_DATE, PRIVACY_POLICY_VERSION };
 
 export const LEGAL_ENTITY = {
   /** Name the public sees. */
-  tradingName: "Lasha Logistics",
+  tradingName: "Lasha",
   /** Registered name — used in the PAIA manual and the privacy notice. */
-  legalName: "CLADOGRAM (trading as Lasha Logistics)",
+  legalName: "CLADOGRAM (trading as Lasha)",
   /** Company registration number, per the CIPC registration certificate (COR14.3). */
   registrationNumber: "2024/063751/07",
   website: "https://lasha.co.za",
