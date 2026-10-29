@@ -1,4 +1,4 @@
-import { ShoppingBag, Warehouse, Stethoscope, Store, ArrowUpRight } from "lucide-react";
+import { ShoppingBag, Warehouse, Stethoscope, Store, CheckCircle2 } from "lucide-react";
 
 const sectors = [
   {
@@ -27,7 +27,23 @@ const sectors = [
   },
 ];
 
+function SectorCard({ sector }: { sector: (typeof sectors)[number] }) {
+  const Icon = sector.icon;
+  return (
+    <div className="sector-card">
+      <div className="sector-icon">
+        <Icon size={26} strokeWidth={1.5} />
+      </div>
+      <h3 className="sector-title">{sector.title}</h3>
+      <p className="sector-copy">{sector.copy}</p>
+    </div>
+  );
+}
+
 export default function SectorIntelligence() {
+  const left = sectors.slice(0, 2);
+  const right = sectors.slice(2);
+
   return (
     <section
       id="sector-intelligence"
@@ -43,15 +59,7 @@ export default function SectorIntelligence() {
         <p className="lasha-label lasha-label--ink mb-12">04 / Sector Intelligence</p>
 
         {/* Two-column header */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1.2fr 1fr",
-            gap: 64,
-            marginBottom: 64,
-            alignItems: "start",
-          }}
-        >
+        <div className="sector-header">
           <h2
             className="lasha-heading"
             style={{ fontSize: "clamp(40px, 4.5vw, 68px)" }}
@@ -74,96 +82,87 @@ export default function SectorIntelligence() {
           </p>
         </div>
 
-        {/* Four sector cards */}
-        <div className="sector-grid">
-          {sectors.map((sector) => {
-            const Icon = sector.icon;
-            return (
-              <div key={sector.number} className="sector-card">
-                <div className="sector-card-top">
-                  <div className="sector-icon">
-                    <Icon size={22} strokeWidth={1.5} />
-                  </div>
-                  <span className="sector-number">{sector.number}</span>
-                </div>
-                <h3 className="sector-title">{sector.title}</h3>
-                <p className="sector-copy">{sector.copy}</p>
-                {/* "Explore" affordance appears on hover to signal the card
-                    is interactive — part of the deepened card treatment. */}
-                <span className="sector-cta" aria-hidden="true">
-                  Explore
-                  <ArrowUpRight size={13} strokeWidth={2} />
-                </span>
-              </div>
-            );
-          })}
+        {/* Two cards, a full-height image, two cards. On narrow screens the
+            image moves above the cards and they fall into a single column. */}
+        <div className="sector-layout">
+          <div className="sector-col">
+            {left.map((sector) => (
+              <SectorCard key={sector.number} sector={sector} />
+            ))}
+          </div>
+
+          <figure className="sector-visual">
+            <img
+              src="https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=1200&q=80"
+              alt="A Lasha courier preparing parcels for dispatch in a warehouse"
+              loading="lazy"
+            />
+            <figcaption className="sector-visual-chip">
+              <CheckCircle2 size={16} strokeWidth={2.2} />
+              Live tracking on every delivery
+            </figcaption>
+          </figure>
+
+          <div className="sector-col">
+            {right.map((sector) => (
+              <SectorCard key={sector.number} sector={sector} />
+            ))}
+          </div>
         </div>
       </div>
 
       <style>{`
-        .sector-grid {
+        .sector-header {
           display: grid;
-          grid-template-columns: repeat(4, 1fr);
-          /* White panel so the cards read crisply against the cyan wash. */
-          background: #ffffff;
-          border: 1px solid rgba(7, 148, 181, 0.18);
-          border-radius: 20px;
-          overflow: hidden;
+          grid-template-columns: 1.2fr 1fr;
+          gap: 64px;
+          margin-bottom: 56px;
+          align-items: start;
+        }
+
+        .sector-layout {
+          display: grid;
+          grid-template-columns: 1fr 0.92fr 1fr;
+          gap: 24px;
+          align-items: stretch;
+        }
+
+        .sector-col {
+          display: flex;
+          flex-direction: column;
+          gap: 24px;
         }
 
         .sector-card {
-          padding: 32px 28px;
-          border-right: 1px solid var(--lasha-border-light);
+          flex: 1;
           display: flex;
           flex-direction: column;
-          min-height: 280px;
-          position: relative;
-          overflow: hidden;
-          transition: background 0.25s ease, box-shadow 0.25s ease;
-        }
-        .sector-card:last-child {
-          border-right: none;
+          align-items: center;
+          justify-content: center;
+          text-align: center;
+          padding: 44px 32px;
+          background: #ffffff;
+          border: 1px solid rgba(7, 148, 181, 0.14);
+          border-radius: 22px;
+          transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
         }
 
-        /* Hover treatment: cyan accent line draws across the card top, the
-           panel lifts on a soft shadow, and the icon inverts — quiet, but
-           clearly interactive. */
-        .sector-card::before {
-          content: "";
-          position: absolute;
-          top: 0;
-          left: 0;
-          right: 0;
-          height: 2px;
-          background: var(--lasha-cyan);
-          transform: scaleX(0);
-          transform-origin: left;
-          transition: transform 0.3s ease;
-        }
         .sector-card:hover {
-          background: rgba(7, 148, 181, 0.06);
-          box-shadow: 0 12px 32px -18px rgba(8, 38, 49, 0.3);
-        }
-        .sector-card:hover::before {
-          transform: scaleX(1);
-        }
-
-        .sector-card-top {
-          display: flex;
-          align-items: flex-start;
-          justify-content: space-between;
-          margin-bottom: 40px;
+          transform: translateY(-2px);
+          border-color: rgba(7, 148, 181, 0.3);
+          box-shadow: 0 18px 40px -26px rgba(8, 38, 49, 0.35);
         }
 
         .sector-icon {
-          width: 48px;
-          height: 48px;
-          border-radius: 14px;
+          width: 58px;
+          height: 58px;
+          border-radius: 16px;
           background: rgba(7, 148, 181, 0.1);
           display: flex;
           align-items: center;
           justify-content: center;
           color: var(--lasha-cyan);
+          margin-bottom: 26px;
           transition: background 0.25s ease, color 0.25s ease;
         }
         .sector-card:hover .sector-icon {
@@ -171,77 +170,97 @@ export default function SectorIntelligence() {
           color: #ffffff;
         }
 
-        .sector-cta {
-          display: inline-flex;
-          align-items: center;
-          gap: 5px;
-          margin-top: 18px;
-          font-size: 12px;
-          font-weight: 600;
-          letter-spacing: 0.08em;
-          text-transform: uppercase;
-          color: var(--lasha-cyan);
-          opacity: 0;
-          transform: translateY(4px);
-          transition: opacity 0.25s ease, transform 0.25s ease;
-        }
-        .sector-card:hover .sector-cta {
-          opacity: 1;
-          transform: translateY(0);
-        }
-
-        .sector-number {
-          font-size: 13px;
-          font-weight: 500;
-          color: var(--lasha-muted);
-          font-family: "Inter", monospace;
-        }
-
         .sector-title {
-          font-size: 18px;
+          font-size: clamp(21px, 1.8vw, 26px);
           font-weight: 700;
           color: var(--lasha-navy);
           letter-spacing: -0.02em;
-          margin-bottom: 12px;
+          margin-bottom: 14px;
         }
 
         .sector-copy {
-          font-size: 14px;
-          line-height: 1.65;
+          font-size: 14.5px;
+          line-height: 1.7;
           color: var(--lasha-body-text);
+          max-width: 34ch;
+          margin: 0;
+        }
+
+        .sector-visual {
+          position: relative;
+          margin: 0;
+          border-radius: 22px;
+          overflow: hidden;
+          background: #dfe7f2;
+          min-height: 420px;
+        }
+
+        .sector-visual img {
+          position: absolute;
+          inset: 0;
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          object-position: center;
+          display: block;
+        }
+
+        .sector-visual-chip {
+          position: absolute;
+          left: 18px;
+          right: 18px;
+          bottom: 18px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 9px;
+          padding: 13px 16px;
+          border-radius: 12px;
+          background: rgba(255, 255, 255, 0.94);
+          backdrop-filter: blur(8px);
+          color: var(--lasha-navy);
+          font-size: 13px;
+          font-weight: 600;
+          letter-spacing: -0.01em;
+          box-shadow: 0 10px 30px -18px rgba(8, 38, 49, 0.5);
+        }
+        .sector-visual-chip svg {
+          color: #0a7c42;
+          flex-shrink: 0;
         }
 
         @media (max-width: 1024px) {
-          .sector-grid {
-            grid-template-columns: repeat(2, 1fr) !important;
+          .sector-header {
+            grid-template-columns: 1fr;
+            gap: 24px;
+            margin-bottom: 40px;
           }
-          .sector-card:nth-child(2) {
-            border-right: none;
+          .sector-layout {
+            grid-template-columns: 1fr 1fr;
           }
-          .sector-card:nth-child(1),
-          .sector-card:nth-child(2) {
-            border-bottom: 1px solid rgba(7, 148, 181, 0.14);
+          .sector-visual {
+            grid-column: 1 / -1;
+            grid-row: 1;
+            min-height: 380px;
           }
         }
 
         @media (max-width: 768px) {
-          .sector-grid {
-            grid-template-columns: 1fr !important;
+          #sector-intelligence {
+            padding: 80px 0 !important;
+          }
+          .sector-layout {
+            grid-template-columns: 1fr;
+            gap: 16px;
+          }
+          .sector-col {
+            gap: 16px;
           }
           .sector-card {
-            border-right: none !important;
-            border-bottom: 1px solid rgba(7, 148, 181, 0.14);
-            min-height: auto;
+            padding: 34px 24px;
           }
-          .sector-card:last-child {
-            border-bottom: none;
-          }
-        }
-
-        @media (max-width: 768px) {
-          #sector-intelligence [style*="grid-template-columns: 1.2fr"] {
-            grid-template-columns: 1fr !important;
-            gap: 24px !important;
+          .sector-visual {
+            min-height: 300px;
           }
         }
       `}</style>
