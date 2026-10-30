@@ -159,7 +159,7 @@ test("wallet payment takes no amount and reads the stored order", () => {
 test("wallet payment action stays server-authoritative", () => {
   const block = actions.slice(
     actions.indexOf("export const payOrderWithWallet"),
-    actions.indexOf("// ─── Direct card charge"),
+    actions.indexOf("// ─── Verification"),
   );
   assertContains(block, "args: { orderId: v.id(\"orders\") }", "order-only args");
   assertContains(block, "getAuthorizedOrderForPayment", "server order resolution");

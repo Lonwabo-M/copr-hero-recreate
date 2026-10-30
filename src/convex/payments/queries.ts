@@ -104,7 +104,6 @@ export const getMyPaymentOverview = query({
           ? {
               status: payment.status,
               provider: payment.provider,
-              providerTransactionId: payment.providerTransactionId ?? null,
               amount: payment.amount,
               createdAt: payment.createdAt,
               completedAt: payment.completedAt ?? null,
@@ -150,10 +149,15 @@ export const getAuthorizedOrderForPayment = internalQuery({
       .collect();
 
     const sorted = existing.sort((a, b) => b.createdAt - a.createdAt);
+    const delivery = await ctx.db
+      .query("deliveries")
+      .withIndex("by_order", (q) => q.eq("orderId", order._id))
+      .first();
 
     return {
       orderId: order._id,
       orderStatus: order.status,
+      deliveryStatus: delivery?.status ?? null,
       // The authoritative amount — never taken from the client.
       amount: order.price,
       senderEmail: email ?? null,

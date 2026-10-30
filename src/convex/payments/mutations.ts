@@ -287,6 +287,17 @@ export const payOrderFromWallet = internalMutation({
     if (order.senderId !== args.userId) {
       throw new Error("Access denied: you can only pay for your own orders");
     }
+    const delivery = await ctx.db
+      .query("deliveries")
+      .withIndex("by_order", (q) => q.eq("orderId", order._id))
+      .first();
+    if (
+      order.status === "cancelled" ||
+      delivery?.status === "cancelled" ||
+      delivery?.status === "failed"
+    ) {
+      throw new Error("This delivery was cancelled or failed — payment is no longer required");
+    }
 
     const existingPayments = await ctx.db
       .query("payment_transactions")
@@ -300,6 +311,9 @@ export const payOrderFromWallet = internalMutation({
         paymentId: completed._id,
         reference: completed.idempotencyKey,
       };
+    }
+    if (existingPayments.some((p) => p.status === "refunded")) {
+      throw new Error("This payment was refunded — no further payment is due");
     }
 
     const amount = order.price;

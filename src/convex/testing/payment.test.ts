@@ -149,6 +149,10 @@ test("payment queries hide customer payment data from drivers/operations", () =>
     "no customer payment visibility",
     "driver/operations role branch returns no payment data"
   );
+  assertTrue(
+    !overviewBlock.includes("providerTransactionId"),
+    "public payment overview does not expose provider transaction IDs"
+  );
 });
 
 test("order payment status comes from payment_transactions", () => {
@@ -162,15 +166,30 @@ test("order payment status comes from payment_transactions", () => {
 
 console.log("\n3. Amount integrity");
 
-test("no client amount parameter exists in initiation or creation", () => {
-  const initArgs = block(actions, "args: {\n    orderId: v.id(\"orders\")", "handler:");
+test("the client cannot supply amount or an arbitrary payment method", () => {
+  const initArgs = block(actions, "export const initiateOrderPayment", "handler:");
   assertTrue(!/amount/.test(initArgs), "initiation accepts no amount from the client");
+  assertContains(
+    initArgs,
+    'method: v.optional(v.literal("card"))',
+    "only the legacy card literal is accepted",
+  );
   // The internal mutation takes an amount — but it is fed from orderCtx.amount.
   assertContains(
     actions,
     "amount: orderCtx.amount",
     "creation amount sourced from the server-read order price"
   );
+  assertContains(actions, 'method: "card"', "server owns the hosted card method");
+});
+
+test("payment eligibility is enforced server-side", () => {
+  assertContains(actions, 'orderCtx.orderStatus === "cancelled"', "cancelled orders rejected");
+  assertContains(actions, 'orderCtx.deliveryStatus === "failed"', "failed deliveries rejected");
+  assertContains(actions, 'latestPayment?.status === "refunded"', "refunded orders rejected");
+  assertContains(mutations, 'order.status === "cancelled"', "wallet path rejects cancelled orders");
+  assertContains(mutations, 'delivery?.status === "failed"', "wallet path rejects failed deliveries");
+  assertContains(mutations, 'p.status === "refunded"', "wallet path rejects refunded payments");
 });
 
 test("provider amount mismatch refuses completion", () => {
@@ -196,14 +215,13 @@ test("pricing is never recalculated in the payment layer", () => {
   );
 });
 
-test("card charge uses Paystack's documented expiry field names", () => {
-  const chargeBlock = block(actions, "PAYSTACK_BASE}/charge", "const tx =");
-  assertContains(chargeBlock, "expiry_month: card.month", "expiry month field");
-  assertContains(chargeBlock, "expiry_year: year", "expiry year field");
-  assertTrue(
-    !/month:\s*parseInt|year:\s*parseInt/.test(chargeBlock),
-    "no undocumented month/year keys"
-  );
+test("hosted Paystack checkout is the only card path", () => {
+  assertContains(actions, "transaction/initialize", "hosted checkout initialization");
+  assertTrue(!actions.includes("chargeOrderPaymentWithCard"), "direct card action removed");
+  assertTrue(!actions.includes("submitPaymentOtp"), "OTP relay action removed");
+  assertTrue(!actions.includes("PAYSTACK_BASE}/charge"), "no direct /charge call");
+  assertTrue(!actions.includes("/submitOTP"), "no OTP submission call");
+  assertTrue(!/card:\s*\{/.test(actions), "no card object crosses the action boundary");
 });
 
 // ─── 4. State machine & provider evidence ────────────────────────────────────
@@ -376,6 +394,13 @@ test("payment is order-scoped and the amount is read-only", () => {
   assertContains(checkout, "row.orderId === orderId", "overview filtered to this order");
   assertContains(checkout, "formatRands(total)", "amount rendered from server data");
   assertTrue(!existsSync("src/pages/MakePayment.tsx"), "duplicate payment page removed");
+});
+
+test("checkout collects no card data or bank OTP", () => {
+  assertTrue(!/cardNumber|cvv|otpReference/i.test(checkout), "no card or OTP fields");
+  assertTrue(!/autoComplete="cc-/.test(checkout), "no browser card autofill hooks");
+  assertContains(checkout, "initiateOrderPayment", "hosted checkout is the card path");
+  assertContains(checkout, "handleHostedCheckout", "hosted handler present");
 });
 
 test("verify runs server-side after checkout return", () => {

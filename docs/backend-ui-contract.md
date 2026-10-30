@@ -557,21 +557,19 @@ pricing_rules: {
 ### 4.8 Checkout Payment
 
 Payment is order-scoped at `/checkout/:orderId`; there is no standalone
-payment page. Card fields post directly to Paystack with the secret key kept
-server-side, or the customer can continue to Paystack hosted checkout. Wallet
-payment debits the authenticated customer's Lasha wallet atomically.
+payment page. Card payment always redirects to Paystack's hosted checkout, so
+PAN, expiry, CVV and bank OTP never enter the app or its Convex function args.
+Wallet payment debits the authenticated customer's Lasha wallet atomically.
 
 | Endpoint | Type | Purpose |
 |----------|------|---------|
 | `payments.queries.getMyPaymentOverview` | Query | Customer-scoped payment state per order |
-| `payments.actions.chargeOrderPaymentWithCard` | Action | Inline card charge (server-side only) |
-| `payments.actions.submitPaymentOtp` | Action | Complete a bank OTP challenge |
 | `payments.actions.initiateOrderPayment` | Action | Start Paystack hosted checkout |
 | `payments.actions.verifyOrderPayment` | Action | Verify the provider return reference |
 | `payments.actions.payOrderWithWallet` | Action | Pay the stored order amount from the wallet |
 
 **Payment Methods:**
-- Credit/Debit Card (inline or Paystack hosted)
+- Credit/Debit Card (Paystack hosted checkout only)
 - Lasha Wallet
 
 EFT and SnapScan are not exposed: the previous standalone page listed them
@@ -962,7 +960,7 @@ interface Transaction {
 - **Settings**: 8 endpoints
 - **Past Deliveries**: 2 endpoints
 - **Invoices**: 4 endpoints
-- **Checkout payments**: 6 endpoints
+- **Checkout payments**: 4 endpoints
 - **Notifications**: 4 endpoints
 
 ### External Integrations Required (6 services)

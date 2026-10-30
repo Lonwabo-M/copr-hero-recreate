@@ -1453,7 +1453,7 @@ Freebuff Platform
 |-----------|------------|
 | Passwords | Not used (OTP auth) |
 | PII | Encrypted at rest (Convex default) |
-| Financial | PCI compliant via Paystack |
+| Financial | Card data hosted by Paystack; Lasha never receives PAN or CVV |
 | Location | Accessible only to assigned parties |
 
 ---

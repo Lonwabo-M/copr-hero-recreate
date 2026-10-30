@@ -59,10 +59,16 @@ the existing action pattern.
 
 Endpoints used:
 - `POST /transaction/initialize` — amount in kobo (= our stored cents), ZAR,
-  deterministic `reference`
+  deterministic `reference`; returns Paystack's hosted checkout URL
 - `GET /transaction/verify/{reference}` — authoritative status check
 - Webhook `POST /payments/paystack/webhook` (Convex HTTP route) —
   `charge.success` / `charge.failed`
+
+**Card data never enters Lasha.** The customer enters card details on
+Paystack's hosted page. There is no direct `/charge` call, no OTP relay, and no
+public action accepting a card number, expiry, CVV, or bank OTP. This keeps the
+application out of card-data scope; Paystack remains responsible for collecting
+and tokenising the instrument.
 
 ---
 
@@ -77,7 +83,7 @@ Existing `payment_transactions` table — reused, not re-created:
 | `userId` | The authenticated payer, resolved server-side |
 | `amount` | Copied from the authoritative `orders.price` (cents ZAR) |
 | `currency` | `ZAR` |
-| `method` | `card` \| `wallet` (the retired standalone page also wrote `eft` / `snapscan`, but those channels were never actually configured) |
+| `method` | `card` (hosted checkout) \| `wallet` (the server sets this; the client cannot choose it) |
 | `provider` | `paystack` |
 | `providerTransactionId` | Paystack transaction ID, attached at verification |
 | `status` | State machine above |
@@ -95,12 +101,21 @@ Indexes: `by_order`, `by_user`, `by_status`, `by_idempotency`, `by_provider`.
 returned to the client, never logged, never stored in records or audit events.
 The client receives only `{ alreadyPaid, reference, authorizationUrl }`.
 
+**Card-data boundary.** Card details are collected only by Paystack's hosted
+checkout. The public payment surface has no card/OTP fields, no direct
+`/charge`/`/submitOTP` calls, and no action args carrying PAN, expiry, CVV, or
+bank codes. Only the server-side secret key can initialize or verify a payment.
+
 **Amount integrity.** The charge is read server-side from the stored order
 (`internal.payments.queries.getAuthorizedOrderForPayment` → `order.price`).
-There is no client amount parameter anywhere; the order Checkout has no
-amount input. If Paystack's verification reports an amount differing from the
-stored charge, completion is refused. Checkout reads payment state from
-`payments.queries.getMyPaymentOverview`, which returns the latest
+The initiation action takes `orderId` plus an optional legacy `"card"` literal
+(kept only for compatibility with the already-deployed action); amount and
+recorded method are resolved server-side. There is no amount input in Checkout.
+If Paystack's verification reports an amount differing from the stored charge,
+completion is refused. Payment is refused server-side for cancelled orders,
+cancelled/failed deliveries, refunded payments, and non-positive amounts.
+Checkout reads payment state from `payments.queries.getMyPaymentOverview`,
+which returns the latest
 `payment_transactions` row for each of the customer's orders; Checkout selects
 the row for the order being paid. Payment state is never inferred from delivery
 status.
@@ -177,7 +192,7 @@ Layer 2 (settlement) documentation: see `docs/driver-earnings-settlement.md`.
 
 ## Testing
 
-`src/convex/testing/payment.test.ts` — 31 assertions covering the model,
+`src/convex/testing/payment.test.ts` — 33 assertions covering the model,
 authorization, amount integrity, state machine, idempotency, webhook security,
 settlement/delivery separation, credential hygiene, and UI integrity. Run:
 `bunx tsx src/convex/testing/payment.test.ts`.
