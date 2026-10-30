@@ -12,6 +12,17 @@ auth.addHttpRoutes(http);
 const APP_VERSION = "1.0.0";
 const startTime = Date.now();
 
+/** Paystack sends amounts as numbers on charge events and strings on some
+ * refund events; normalise to integer cents before passing to Convex. */
+function parseWebhookAmount(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isInteger(value)) return value;
+  if (typeof value === "string" && /^\d+$/.test(value)) {
+    const parsed = Number(value);
+    return Number.isSafeInteger(parsed) ? parsed : undefined;
+  }
+  return undefined;
+}
+
 // ─── Health Check Endpoints ──────────────────────────────────────────────────
 
 /**
@@ -183,7 +194,14 @@ http.route({
 
     let event: {
       event?: string;
-      data?: { reference?: string; id?: number; amount?: number };
+      data?: {
+        reference?: string;
+        id?: number;
+        amount?: number | string;
+        transaction_reference?: string;
+        refund_reference?: string | null;
+        status?: string;
+      };
     };
     try {
       event = JSON.parse(rawBody);
@@ -194,7 +212,10 @@ http.route({
       });
     }
 
-    const reference = event.data?.reference;
+    // Charge webhooks use data.reference. Refund webhooks use the flat
+    // data.transaction_reference field (there is no nested transaction).
+    const reference =
+      event.data?.reference ?? event.data?.transaction_reference;
     if (!event.event || !reference) {
       return new Response(JSON.stringify({ error: "Missing event or reference" }), {
         status: 400,
@@ -207,7 +228,9 @@ http.route({
         reference,
         event: event.event,
         providerTransactionId: event.data?.id ? String(event.data.id) : undefined,
-        amountFromProvider: event.data?.amount,
+        amountFromProvider: parseWebhookAmount(event.data?.amount),
+        refundReference: event.data?.refund_reference ?? undefined,
+        refundStatus: event.data?.status,
       });
     } catch (err) {
       // Return 500 so Paystack retries; the internal mutations are idempotent

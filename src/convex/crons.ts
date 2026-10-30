@@ -37,6 +37,19 @@ crons.interval(
   {},
 );
 
+// ── Automatic duplicate-charge refund backfill ───────────────────────────────
+// Picks up quarantined duplicate/post-refund charges whose refund row was not
+// created (including charges quarantined before the automatic-refund path was
+// deployed). Bounded to 200 failed payment rows per run. Idempotent: existing
+// refund rows are skipped, and the refund action itself checks Paystack for an
+// existing refund before creating one.
+crons.interval(
+  "enqueue missing duplicate refunds",
+  { hours: 1 },
+  internal.payments.refunds.enqueueMissingAutomaticRefunds,
+  {},
+);
+
 // ── POPIA retention sweep (s14) ─────────────────────────────────────────────
 // Deletes records whose published retention period has expired: resolved
 // privacy requests after 24 months, unconverted demo enquiries after 12

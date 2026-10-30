@@ -196,7 +196,9 @@ Controls:
 - `PAYSTACK_SECRET_KEY` lives only in Convex server-side environment variables, never in the client
   bundle or logs.
 - Payment state supports `pending → processing → completed | failed` and a `refunded` terminal state.
-  Refunds themselves are not automated (see §4.4).
+- Verified duplicate charges are quarantined and automatically refunded through Paystack's refund API;
+  a refund clears the review flag only after Paystack reports `refund.processed`. General refunds remain
+  a manual finance decision (see §4.4).
 
 ### 4.3 What the driver is paid
 
@@ -223,11 +225,18 @@ permission, held by company admins and the platform owner, not by drivers or cus
 
 ### 4.4 Refunds
 
-A refund is a decision recorded on a dispute (see §5), not an automatic reversal. Finance executes the
-refund in Paystack against the original transaction reference and records the amount and date against the
-dispute reference. The platform records the approved outcome and amount; it does not currently call
-Paystack's refund API itself. Approved refunds are paid to the original payment method within 5–10
-business days, consistent with the Terms of Service.
+A **general refund** is a decision recorded on a dispute (see §5), not an automatic reversal. Finance
+executes the refund in Paystack against the original transaction reference and records the amount and date
+against the dispute reference. The platform records the approved outcome and amount; the general refund
+workflow does not itself call Paystack's refund API. Approved refunds are paid to the original payment
+method within 5–10 business days, consistent with the Terms of Service.
+
+The exception is a verified **duplicate charge** (or a charge that succeeds after the order was refunded).
+The payment guard quarantines that charge and queues exactly one automatic Paystack refund for the full
+quarantined amount. Before calling Paystack, the system checks for an existing refund so a retry or a
+finance-initiated refund is never duplicated. The quarantined charge remains flagged for manual review
+until Paystack reports `refund.processed`; rejected, ambiguous, or failed refunds stay in the manual queue.
+This does not automate partial, cancellation, or dispute-driven refunds.
 
 ### 4.5 Driver payouts
 
@@ -305,8 +314,9 @@ under the Consumer Protection Act 68 of 2008. Privacy complaints go to the Infor
 
 ### 5.5 Limits — stated plainly
 
-- The platform records the refund decision and amount; it does not initiate the Paystack refund. Finance
-  executes it and marks the dispute resolved.
+- The platform records the general refund decision and amount; it does not initiate the Paystack refund
+  for a dispute. Finance executes it and marks the dispute resolved. The narrow duplicate-charge path is
+  automated as described in §4.4.
 - There is no automated evidence upload inside the dispute form yet; photographs and documents are
   requested and handled by email during investigation.
 - There is no external ombudsman membership claim in this document.
@@ -321,7 +331,7 @@ These are the honest gaps a reviewer should see. None of them is disguised by th
 |---|---|---|
 | Automated sanctions/PEP/adverse-media screening | Manual screening depends on the reviewer | Integrate a screening provider; store the result on the application |
 | Bank-account verification for driver payouts | Finance verifies out of band; payout details not in the platform | Payout-destination model with verification status and masked display |
-| Automated refunds and driver payouts | Manual finance step, slower and less auditable | Paystack refund API + payout provider or bank file |
+| General refunds and driver payouts | Manual finance step, slower and less auditable; duplicate-charge refunds are automated | Paystack refund API for general refunds + payout provider or bank file |
 | Document retention automation | KYC files are deleted through the documented manual retention process | Extend the retention sweep to delete storage objects |
 | Independent penetration test / SOC 2 | No third-party assurance report yet | Commission an annual penetration test before enterprise onboarding |
 

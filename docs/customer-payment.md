@@ -49,12 +49,16 @@ or provider reference. The shared policy lives in
 - A provider success for a second attempt is quarantined as a duplicate: the
   attempt is written as `failed` with `duplicatePayment`, `refundRequired`,
   and `duplicateOf` metadata. It is **not** credited or counted as a second
-  completion. Reconciliation and payout eligibility surface it for refund
-  review; there is no automatic refund.
+  completion. The same transaction writes one `payment_refunds` row and
+  schedules an automatic Paystack refund for the full quarantined amount.
 - An already-open card attempt that succeeds after the order's payment was
-  refunded is quarantined the same way (`paymentAfterRefund`, `refundRequired`).
-  A refunded order must not become paid again through a checkout opened before
-  the refund.
+  refunded is quarantined the same way (`paymentAfterRefund`, `refundRequired`)
+  and enters the same automatic-refund path. A refunded order must not become
+  paid again through a checkout opened before the refund.
+- `refundRequired` clears only when Paystack reports `refund.processed` (or an
+  existing processed refund is found for the transaction). A refund that is
+  pending, rejected, or cannot be requested stays flagged for manual review.
+  Payout eligibility remains blocked while the flag is present.
 
 **Payment state machine** (`payment_transactions.status`, from the schema):
 
@@ -64,7 +68,7 @@ or provider reference. The shared policy lives in
 | `processing` | Reserved by the schema; not currently used by the flow | — |
 | `completed` | Server-verified success (the authoritative "paid") | Provider evidence only (verify `success` / webhook `charge.success`) |
 | `failed` | Provider reported failure | Provider evidence only |
-| `refunded` | Minimal representation; no refund workflow yet | Not currently entered |
+| `refunded` | General refund/reversal terminal state | Reserved; automatic duplicate refunds keep the duplicate as `failed` and track their own `payment_refunds` row, so the original completed payment stays authoritative |
 
 A checkout URL is **not** success. Only provider evidence moves the record to
 `completed`. A record previously marked `failed` may still become `completed`
@@ -215,22 +219,36 @@ Layer 2 (settlement) documentation: see `docs/driver-earnings-settlement.md`.
 
 ## 6. Refund / Reversal
 
-**Currently implemented:** the `refunded` status literal exists in the schema
-(minimal state representation). Nothing enters or processes it. Separately,
-duplicate verified charges are quarantined as `failed` with `refundRequired`
-metadata and surfaced by reconciliation; this is a **refund-review flag**, not
-a refund flow. No money is moved automatically.
+**Implemented — automatic duplicate-charge refunds:** a verified duplicate
+charge (or a charge that succeeds after the order was refunded) is quarantined
+and a `payment_refunds` row is created in the same mutation. A scheduled
+action checks Paystack for an existing refund before calling the refund API,
+so retries and a finance refund already made in the dashboard cannot create a
+second refund. Only `refund.processed` clears `refundRequired`, writes the
+`payment.refunded` audit event, and notifies the customer. The quarantined
+payment stays `failed`; it is not promoted to the authoritative payment.
 
-**Future rules to establish (not yet decided — no amounts or policy fabricated):**
+Paystack refund requests are at-most-once. A failure, ambiguous response, or
+stuck request hands the charge to manual review instead of retrying blindly.
+The `payment_refunds` row records status, provider refund id/reference, amount,
+attempt count, and failure reason for finance. An hourly backfill finds
+quarantined charges that have no refund row (including charges created before
+this path existed) and queues them through the same idempotent processor.
 
-1. A verified refund must transition `payment_transactions → refunded` from
-   provider evidence (webhook `refund.processed` / verify), never client input.
+**General refunds remain manual:** the `refunded` status literal is still
+reserved for a full refund/reversal of the authoritative payment. Dispute
+refunds, partial refunds, cancellation refunds, and wallet/settlement
+claw-backs are policy decisions, not automatic. Their future rules:
+
+1. A verified general refund must transition `payment_transactions → refunded`
+   from provider evidence (webhook `refund.processed` / verify), never client
+   input.
 2. Order financial state after refund (re-chargeable? cancelled?) needs an
    explicit business rule.
 3. If a refund lands on an order whose settlement is `completed` (driver
-   already paid), the payout side needs a claw-back policy. This is exactly
-   why reconciliation is deliberately deferred.
-4. Refunds must be audited (`PAYMENT_REFUNDED` action already exists).
+   already paid), the payout side needs a claw-back policy.
+4. General refunds must be audited. Automatic duplicate refunds already use
+   `PAYMENT_REFUND_REQUESTED`, `PAYMENT_REFUNDED`, and `PAYMENT_REFUND_FAILED`.
 
 ---
 
@@ -246,18 +264,30 @@ a refund flow. No money is moved automatically.
   (`alreadyPaid: true`), including when the latest attempt is a failed
   duplicate-charge record.
 - A second verified provider success is quarantined as `failed` with
-  `refundRequired` rather than becoming a second completion.
+  `refundRequired` rather than becoming a second completion; one
+  `payment_refunds` row is created and the automatic Paystack refund is
+  scheduled.
+- Existing Paystack refunds are checked before a new refund is requested, and
+  only a queued refund can be claimed, so an action retry cannot double-refund.
 
 ## Testing
 
 `src/convex/testing/payment.test.ts` — 35 assertions covering the model,
 authorization, amount integrity, state machine, idempotency, webhook security,
 settlement/delivery separation, credential hygiene, and UI integrity.
-`src/convex/testing/paymentRace.test.ts` — 16 pure policy tests for the
-card/wallet locks, duplicate completion quarantine, late failure recovery, and
-provider status classification. Run:
-`bunx tsx src/convex/testing/payment.test.ts` and
-`bunx tsx src/convex/testing/paymentRace.test.ts`.
+`src/convex/testing/paymentRace.test.ts` — 19 pure policy tests for the
+card/wallet locks, duplicate completion quarantine, late failure recovery,
+provider status classification, and refund-flag semantics.
+`src/convex/testing/refund.test.ts` — 18 assertions covering the refund model,
+at-most-once claim, existing-refund adoption, status transitions, webhook
+authority, and reconciliation behavior.
+`src/convex/testing/refundProvider.test.ts` — 5 mocked Paystack contract tests
+for the refund lookup/create endpoints, amount normalisation, and failure
+handling. Run:
+`bunx tsx src/convex/testing/payment.test.ts`,
+`bunx tsx src/convex/testing/paymentRace.test.ts`,
+`bunx tsx src/convex/testing/refund.test.ts`, and
+`bunx tsx src/convex/testing/refundProvider.test.ts`.
 
 ## Remaining Limitations
 
@@ -269,8 +299,11 @@ provider status classification. Run:
   signature-verified webhook credits the wallet exactly once. A top-up marked
   failed may still be credited by a later verified provider success, so a late
   successful charge is not stranded.
-- No automatic refunds: duplicate card charges are flagged for manual refund
-  review.
+- Automatic refunds cover duplicate/post-refund quarantines only. General,
+  partial, cancellation, and dispute refunds — including settlement/wallet
+  claw-backs — remain manual policy decisions.
+- A duplicate refund that Paystack rejects, cannot be requested, or leaves in
+  an ambiguous state stays flagged for manual refund review.
 - Wallet-to-wallet transfers and external withdrawals are not implemented.
 - No standalone payment-history page: payment state appears on the order
   Checkout and delivery tracking. A customer-wide payment ledger is future work.

@@ -21,7 +21,7 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
 import { DELIVERY_STATUS } from "../schema";
-import { findRefundRequiredAttempts } from "./_paymentAttempts";
+import { findRefundRequiredAttempts, isAutomaticRefundInProgress } from "./_paymentAttempts";
 
 // ─── Reconciliation States ────────────────────────────────────────────────────
 
@@ -120,10 +120,23 @@ export async function evaluateOrderFinancials(
   // A verified duplicate charge stays `failed` with refundRequired metadata.
   // It does not count as a completed payment, but it must still surface: the
   // customer has been charged twice even though only one completion exists.
+  // A completed automatic refund clears the flag; a pending one is surfaced as
+  // in progress, and a failed one remains a manual-review anomaly.
   const refundRequiredAttempts = findRefundRequiredAttempts(allPayments);
-  if (refundRequiredAttempts.length > 0) {
+  const automaticRefundsInProgress = refundRequiredAttempts.filter((p) =>
+    isAutomaticRefundInProgress(p.metadata)
+  );
+  const manualRefundAttempts = refundRequiredAttempts.filter(
+    (p) => !isAutomaticRefundInProgress(p.metadata)
+  );
+  if (automaticRefundsInProgress.length > 0) {
     anomalies.push(
-      `${refundRequiredAttempts.length} provider charge(s) require refund review (duplicate or post-refund)`
+      `${automaticRefundsInProgress.length} duplicate charge(s) have an automatic refund in progress`
+    );
+  }
+  if (manualRefundAttempts.length > 0) {
+    anomalies.push(
+      `${manualRefundAttempts.length} provider charge(s) require manual refund review (duplicate or post-refund)`
     );
   }
 

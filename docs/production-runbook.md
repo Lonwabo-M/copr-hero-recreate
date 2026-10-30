@@ -336,7 +336,8 @@ const metrics = await ctx.db
 2. Check for duplicate charges
 3. Verify idempotency keys are unique
 4. Suspend affected accounts if needed
-5. Initiate refunds through payment provider
+5. Check `payment_refunds`: duplicate/post-refund charges are auto-refunded via Paystack; a `failed` refund is the manual-review queue
+6. For general/partial/dispute refunds, initiate through the payment provider
 
 ---
 

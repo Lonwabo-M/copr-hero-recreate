@@ -5,11 +5,148 @@
  * it holds plain helpers importable by both payments/actions.ts and http.ts.
  */
 
+const PAYSTACK_BASE = "https://api.paystack.co";
+
 export type PaystackVerification = {
   status: string;
   id?: string;
   amount?: number;
 };
+
+export type PaystackRefundStatus =
+  | "pending"
+  | "processing"
+  | "processed"
+  | "failed";
+
+export type PaystackRefundRecord = {
+  id?: string;
+  status?: string;
+  amount?: number;
+  refundReference?: string;
+};
+
+export function normalizePaystackRefundStatus(
+  status: unknown,
+): PaystackRefundStatus | null {
+  if (
+    status === "pending" ||
+    status === "processing" ||
+    status === "processed" ||
+    status === "failed"
+  ) {
+    return status;
+  }
+  return null;
+}
+
+function parseProviderAmount(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isInteger(value)) return value;
+  if (typeof value === "string" && /^\d+$/.test(value)) {
+    const parsed = Number(value);
+    return Number.isSafeInteger(parsed) ? parsed : undefined;
+  }
+  return undefined;
+}
+
+function parseRefundRecord(raw: unknown): PaystackRefundRecord | null {
+  if (!raw || typeof raw !== "object") return null;
+  const record = raw as {
+    id?: unknown;
+    status?: unknown;
+    amount?: unknown;
+    refund_reference?: unknown;
+  };
+  return {
+    id:
+      typeof record.id === "number" || typeof record.id === "string"
+        ? String(record.id)
+        : undefined,
+    status: typeof record.status === "string" ? record.status : undefined,
+    amount: parseProviderAmount(record.amount),
+    refundReference:
+      typeof record.refund_reference === "string"
+        ? record.refund_reference
+        : undefined,
+  };
+}
+
+/**
+ * List existing refunds for one original Paystack transaction. Used before
+ * creating an automatic refund so a retried action, or a manual refund already
+ * made in the Paystack dashboard, cannot lead to a second refund.
+ */
+export async function listPaystackRefunds(
+  secretKey: string,
+  transactionReference: string,
+): Promise<PaystackRefundRecord[]> {
+  const response = await fetch(
+    `${PAYSTACK_BASE}/refund?reference=${encodeURIComponent(transactionReference)}`,
+    { headers: { Authorization: `Bearer ${secretKey}` } },
+  );
+
+  if (!response.ok) {
+    throw new Error(`Refund lookup failed (HTTP ${response.status})`);
+  }
+
+  const data = (await response.json()) as {
+    status: boolean;
+    data?: unknown;
+  };
+  if (!data.status || !Array.isArray(data.data)) {
+    throw new Error("Refund lookup returned an invalid response");
+  }
+
+  return data.data
+    .map(parseRefundRecord)
+    .filter((record): record is PaystackRefundRecord => record !== null);
+}
+
+/** Create a full refund for a verified duplicate charge. */
+export async function createPaystackRefund(
+  secretKey: string,
+  input: {
+    transaction: string;
+    amount: number;
+    currency: "ZAR";
+    merchantNote: string;
+    customerNote: string;
+  },
+): Promise<PaystackRefundRecord> {
+  if (!Number.isInteger(input.amount) || input.amount <= 0) {
+    throw new Error("Refund amount must be a positive integer in cents");
+  }
+
+  const response = await fetch(`${PAYSTACK_BASE}/refund`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${secretKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      transaction: input.transaction,
+      amount: input.amount,
+      currency: input.currency,
+      merchant_note: input.merchantNote,
+      customer_note: input.customerNote,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Refund request failed (HTTP ${response.status})`);
+  }
+
+  const data = (await response.json()) as {
+    status: boolean;
+    data?: unknown;
+  };
+  const record = parseRefundRecord(data.data);
+  if (!data.status || !record || !normalizePaystackRefundStatus(record.status)) {
+    throw new Error("Refund request returned an invalid response");
+  }
+
+  return record;
+}
 
 /**
  * Fetch Paystack's authoritative transaction state. Shared by the customer

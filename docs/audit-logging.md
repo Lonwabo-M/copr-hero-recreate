@@ -77,7 +77,7 @@ Domain Operations (State Machine, Dispatch, POD, Pricing)
 
 ### Payment Events (8 actions)
 
-`payment.initiated`, `payment.confirmed`, `payment.failed`, `payment.refunded`, `settlement.created`, `settlement.processed`, `settlement.completed`, `settlement.failed`
+`payment.initiated`, `payment.confirmed`, `payment.failed`, `payment.refund_requested`, `payment.refunded`, `payment.refund_failed`, `settlement.created`, `settlement.processed`, `settlement.completed`, `settlement.failed`
 
 ### POD Events (4 actions)
 

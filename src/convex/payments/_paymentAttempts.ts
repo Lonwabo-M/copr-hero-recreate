@@ -74,15 +74,76 @@ export function findRefundedPayment<T extends PaymentAttempt>(
   return attempts.find((attempt) => attempt.status === "refunded") ?? null;
 }
 
-/** Metadata written when a verified duplicate charge is quarantined. */
-export function requiresRefund(metadata: string | undefined): boolean {
-  if (!metadata) return false;
+/** Parse our internal payment metadata without ever throwing. */
+export function parseAttemptMetadata(
+  metadata: string | undefined,
+): Record<string, unknown> {
+  if (!metadata) return {};
   try {
-    const parsed = JSON.parse(metadata) as { refundRequired?: unknown };
-    return parsed.refundRequired === true;
+    const parsed = JSON.parse(metadata) as unknown;
+    return parsed && typeof parsed === "object"
+      ? (parsed as Record<string, unknown>)
+      : {};
   } catch {
-    return false;
+    return {};
   }
+}
+
+/** True when this failed attempt is a verified charge the guard quarantined. */
+export function isQuarantinedCharge(metadata: string | undefined): boolean {
+  const parsed = parseAttemptMetadata(metadata);
+  return parsed.duplicatePayment === true || parsed.paymentAfterRefund === true;
+}
+
+/** Refund lifecycle written by the automatic refund processor. */
+export type AutomaticRefundStatus =
+  | "queued"
+  | "requesting"
+  | "pending"
+  | "processing"
+  | "processed"
+  | "failed";
+
+export function automaticRefundStatus(
+  metadata: string | undefined,
+): AutomaticRefundStatus | null {
+  const status = parseAttemptMetadata(metadata).refundStatus;
+  if (
+    status === "queued" ||
+    status === "requesting" ||
+    status === "pending" ||
+    status === "processing" ||
+    status === "processed" ||
+    status === "failed"
+  ) {
+    return status;
+  }
+  return null;
+}
+
+/** A refund is still being requested/processed by the provider. */
+export function isAutomaticRefundInProgress(
+  metadata: string | undefined,
+): boolean {
+  const status = automaticRefundStatus(metadata);
+  return (
+    status === "queued" ||
+    status === "requesting" ||
+    status === "pending" ||
+    status === "processing"
+  );
+}
+
+/**
+ * Metadata written when a verified duplicate charge is quarantined.
+ * A completed automatic refund no longer requires manual review.
+ */
+export function requiresRefund(metadata: string | undefined): boolean {
+  const parsed = parseAttemptMetadata(metadata);
+  return (
+    parsed.refundRequired === true &&
+    automaticRefundStatus(metadata) !== "processed"
+  );
 }
 
 export function findRefundRequiredAttempts<T extends PaymentAttempt>(
@@ -151,7 +212,8 @@ export type CompletionGate<T extends PaymentAttempt> =
  * incoming charge is quarantined instead of producing a second authoritative
  * completion. A refunded payment also blocks completion: an already-open card
  * checkout must not turn a refunded order back into a paid one. The provider
- * may still have charged it, so the attempt is quarantined for refund review.
+ * may still have charged it, so the attempt is quarantined and the automatic
+ * refund path is triggered; a failed refund remains manual review.
  */
 export function evaluateCompletionGate<T extends PaymentAttempt>(
   attempts: readonly T[],

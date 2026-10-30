@@ -44,7 +44,7 @@ stages. Settlement/payout exist as dormant code paths that nothing triggers.
 | Driver balance | ⚠️ Table exists | `wallets` (per user, ZAR cents); `users.getWallet` auto-returns a zero shape when absent | ❌ | No wallet is ever created or credited by app code; driver wallet balance is always the fallback zero |
 | Payment status | ⚠️ Schema only | `payment_transactions` table (status/provider/idempotencyKey) | ❌ **Never written or read** | No Paystack/PayFast/Stripe integration, no payment mutation exists at all |
 | Payment reference | ⚠️ Schema only | `payment_transactions.providerTransactionId` | ❌ | Table is unused |
-| Refund status | ⚠️ Schema only | `payment_transactions.status` includes `"refunded"`; `AUDIT_ACTIONS.PAYMENT_REFUNDED` constant exists | ❌ | No refund logic anywhere |
+| Refund status | ⚠️ Partial | `payment_transactions.status` includes `"refunded"`; `payment_refunds` auto-refunds duplicate quarantines | ❌ | No general refund/reversal path; no settlement or wallet claw-back |
 | Delivery completion | ✅ | `deliveries.completedAt` (state machine) | ✅ | POD-gated; **creates no financial records** |
 | Driver earnings aggregate | ⚠️ | `driver_profiles.totalEarnings` | ❌ | Only incremented by dead `createSettlement`; otherwise permanently 0 |
 | Driver earnings query | ⚠️ | `pricing.service.getDriverEarnings` | ❌ Vacuously correct | Reads `settlements` — always empty; would report 0/0 if called today |
@@ -167,8 +167,9 @@ Principles:
 6. **Cancellation/failure ambiguity** — no policy for driver compensation on
    `failed` (work partially done) or late `cancelled` (driver already en
    route). Undefined today; must be decided before the trigger is wired.
-7. **No refund path** — if a customer payment were refunded after settlement,
-   nothing reverses the driver credit.
+7. **No general refund/reversal path** — duplicate-charge auto-refunds do not
+   reverse a settlement; if an authoritative customer payment were refunded
+   after settlement, nothing reverses the driver credit.
 8. **Date filtering is in JS, not the index** — `getDriverEarnings` filters
    `startDate/endDate` in memory after `.collect()` on `by_driver`; fine at
    current scale, unbounded at scale.

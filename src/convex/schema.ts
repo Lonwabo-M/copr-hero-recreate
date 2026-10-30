@@ -951,6 +951,51 @@ const schema = defineSchema(
       .index("by_idempotency", ["idempotencyKey"])  
       .index("by_provider", ["provider", "providerTransactionId"]),
 
+    // ─── Payment Refunds ────────────────────────────────────────────────────
+    // Automatic refunds for charges quarantined by the payment guard. Today
+    // this is limited to verified duplicate charges (duplicatePayment) and
+    // charges that arrive after the order was refunded (paymentAfterRefund).
+    //
+    // One row per quarantined payment. The row is created atomically with the
+    // quarantine, then a scheduled action calls Paystack's refund API. Provider
+    // webhooks drive the terminal state; a failed refund remains
+    // `refundRequired` on the payment for manual review.
+    payment_refunds: defineTable({
+      paymentTransactionId: v.id("payment_transactions"),
+      orderId: v.id("orders"),
+      userId: v.id("users"),
+      provider: v.string(),
+      // Paystack reference (our payment idempotency key). Used for the
+      // idempotency lookup before creating a refund.
+      transactionReference: v.string(),
+      // Paystack numeric transaction id when provider evidence supplied it.
+      providerTransactionId: v.optional(v.string()),
+      amount: v.number(),
+      currency: v.literal("ZAR"),
+      reason: v.union(
+        v.literal("duplicate_charge"),
+        v.literal("payment_after_refund"),
+      ),
+      status: v.union(
+        v.literal("queued"),
+        v.literal("requesting"),
+        v.literal("pending"),
+        v.literal("processing"),
+        v.literal("processed"),
+        v.literal("failed"),
+      ),
+      providerRefundId: v.optional(v.string()),
+      providerRefundReference: v.optional(v.string()),
+      failureReason: v.optional(v.string()),
+      attempts: v.number(),
+      requestedAt: v.number(),
+      updatedAt: v.number(),
+      processedAt: v.optional(v.number()),
+    })
+      .index("by_payment", ["paymentTransactionId"])
+      .index("by_transaction_reference", ["transactionReference"])
+      .index("by_status", ["status"]),
+
     // ─── Proof of Delivery ──────────────────────────────────────────────────
     // POD records for completed/failed deliveries.
     proof_of_delivery: defineTable({

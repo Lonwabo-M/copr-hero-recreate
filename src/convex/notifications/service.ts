@@ -45,6 +45,7 @@ export type NotificationEventType =
   // Payment events
   | "payment_received"
   | "payment_confirmed"
+  | "payment_refunded"
   | "payment_failed"
   | "invoice_generated"
   | "settlement_completed"
@@ -154,6 +155,12 @@ const NOTIFICATION_TEMPLATES: Record<NotificationEventType, NotificationTemplate
     category: "payment",
     titleTemplate: "Payment Confirmed",
     descriptionTemplate: "Your payment for order #{orderId} has been confirmed.",
+    iconType: "payment",
+  },
+  payment_refunded: {
+    category: "payment",
+    titleTemplate: "Duplicate Payment Refunded",
+    descriptionTemplate: "R{amount} for the duplicate payment on order #{orderId} has been refunded.",
     iconType: "payment",
   },
   payment_received: {

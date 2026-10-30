@@ -125,7 +125,8 @@ No workflow stage relies on mock data, `Math.random()` (except tracking-number/u
 | Driver earnings scoped | ✅ Session-derived driver identity only |
 | Wallet vs payout honesty | ✅ Driver Earnings shows "No external payouts recorded"; internal wallet credit is never labelled as bank payout |
 | **External payout processing** | ❌ Not implemented (intentional — next major workstream) |
-| Refunds | ❌ Not implemented |
+| Duplicate-charge refunds | ✅ Automatic Paystack refund for quarantined duplicate/post-refund charges; only `refund.processed` clears the manual-review flag |
+| General refunds / reversals | ❌ Not implemented (dispute, partial, cancellation, settlement/wallet claw-back remain manual) |
 
 **Classification: production-ready for the internal financial loop; external payout remains the known boundary.**
 
@@ -162,7 +163,7 @@ Works: candidate discovery → scoring (`scoring_service`) → offer creation (d
 
 ## 10. Testing Readiness
 
-30 suites, all passing (this audit re-ran them):
+32 suites, all passing (this audit re-ran them):
 
 | Area | Suites |
 |---|---|
@@ -173,7 +174,8 @@ Works: candidate discovery → scoring (`scoring_service`) → offer creation (d
 | Tracking | 29 (+15 location hook) |
 | Offline | 42 |
 | POD | 17 + 13 |
-| Payment / settlement / reconciliation / payout | 28 / 24 / 18 / 20 |
+| Payment / settlement / reconciliation / payout | 35 + 19 / 24 / 18 / 20 |
+| Automatic refunds | 18 + 5 provider contract |
 | Driver workflows / offers / history / earnings / profile | 8 / 19 / 18 / 25+27 / 15 |
 | Notifications | 21 + 9 |
 | Audit | ✅ + 14 (entity authz) + 13 (actor attribution) |
@@ -191,7 +193,7 @@ Required before real deployment (managed via the project's Keys/API settings and
 
 | Item | Purpose |
 |---|---|
-| `PAYSTACK_SECRET_KEY` | Payment init/verify + webhook signature verification (server-side) |
+| `PAYSTACK_SECRET_KEY` | Payment init/verify, webhook signature verification, and automatic refunds (server-side) |
 | Paystack webhook URL | Register `https://<convex-deployment>.convex.site/payments/paystack/webhook` |
 | `GOOGLE_MAPS_API_KEY` | Geocoding + health-check routing provider |
 | `VLY_INTEGRATION_KEY` | Platform email API key for password-reset codes (server-only Convex env, already provisioned) — replaces the retired `EMAIL_OTP_API_KEY` |
@@ -205,7 +207,7 @@ Observability exists: `/health`, `/health/live`, `/health/ready` + Vly monitorin
 
 ## 12. Deployment Checklist (Pilot)
 
-1. ✅ TypeScript passes; production build succeeds; all 30 suites green.
+1. ✅ TypeScript passes; production build succeeds; all 32 suites green.
 2. Configure `PAYSTACK_SECRET_KEY`, `GOOGLE_MAPS_API_KEY` in Keys settings.
 3. Register the Paystack webhook URL on the Convex deployment; send a test `charge.success` and confirm idempotent completion.
 4. Provision pilot users: customers via sign-up; drivers/ops/company-admin via dashboard role assignment.
@@ -242,7 +244,7 @@ Ranked by production risk → customer impact → operational impact → complex
 4. **Driver payout provider integration** (Paystack Transfers) behind the existing eligibility gate — the largest customer/operational value item after the gates are correct.
 5. **Admin role-management mutation** (super_admin-only, audited) to replace dashboard provisioning.
 6. **Tracking-retention cron** (`cleanupTrackingData`).
-7. Post-pilot: browser E2E suite; wallet top-up via Paystack; refund flow.
+7. Post-pilot: browser E2E suite; wallet top-up via Paystack; general refund flow (automatic duplicate-charge refunds are already implemented).
 
 ---
 

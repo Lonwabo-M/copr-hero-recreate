@@ -12,7 +12,9 @@
  *   processing — provider reports success; confirmation being finalized
  *   completed  — server-verified success (authoritative "paid")
  *   failed     — provider reported failure or verification failed
- *   refunded   — minimal representation only; no refund workflow yet
+ *   refunded   — reserved for a general refund/reversal of the authoritative
+ *                payment; automatic duplicate-charge refunds are tracked in
+ *                payment_refunds and keep the duplicate as failed
  *
  * Financial invariants (docs/customer-payment.md §5):
  *   - amount integrity: the stored order/quote charge is used; never client data
@@ -27,9 +29,11 @@ import { AUDIT_ACTIONS } from "../audit/service";
 import { internal } from "../_generated/api";
 import {
   CARD_CHECKOUT_OPEN_MESSAGE,
+  automaticRefundStatus,
   evaluateCardCreationGate,
   evaluateCompletionGate,
   evaluateWalletPaymentGate,
+  parseAttemptMetadata,
 } from "./_paymentAttempts";
 
 // ─── Transaction Creation ─────────────────────────────────────────────────────
@@ -202,7 +206,9 @@ export const attachProviderTransaction = internalMutation({
  *  - Before any completion, the whole order is checked. If a DIFFERENT
  *    payment is already completed, the incoming charge is not allowed to
  *    become a second successful payment. It is quarantined as `failed` with
- *    `refundRequired` metadata so reconciliation flags it for refund review.
+ *    `refundRequired`, one `payment_refunds` row is created, and an automatic
+ *    Paystack refund is scheduled. Reconciliation tracks the refund until the
+ *    provider reports `refund.processed`; a failed request stays manual.
  */
 export const completePaymentTransaction = internalMutation({
   args: {
@@ -274,17 +280,61 @@ export const completePaymentTransaction = internalMutation({
       const isDuplicate = completionGate.kind === "duplicate";
       const blockingPayment = completionGate.payment;
       const quarantineReason = isDuplicate
-        ? "A second payment completed after this order was already paid — duplicate charge requires refund review"
-        : "A provider charge succeeded after this order's payment was refunded — refund review required";
+        ? "A second payment completed after this order was already paid — duplicate charge; automatic refund queued"
+        : "A provider charge succeeded after this order's payment was refunded — automatic refund queued";
+
+      const priorMetadata = parseAttemptMetadata(tx.metadata);
+      const priorRefundStatus = automaticRefundStatus(tx.metadata);
+      const refundReason = isDuplicate
+        ? ("duplicate_charge" as const)
+        : ("payment_after_refund" as const);
+
+      // Create exactly one automatic-refund record with the quarantine, then
+      // schedule the provider call. The transaction itself stays `failed`: a
+      // refunded duplicate is not the order's authoritative payment.
+      const existingRefund = await ctx.db
+        .query("payment_refunds")
+        .withIndex("by_payment", (q) =>
+          q.eq("paymentTransactionId", args.transactionId),
+        )
+        .first();
+      let refundId = existingRefund?._id;
+      if (!refundId && tx.provider === "paystack") {
+        refundId = await ctx.db.insert("payment_refunds", {
+          paymentTransactionId: args.transactionId,
+          orderId: tx.orderId,
+          userId: tx.userId,
+          provider: tx.provider,
+          transactionReference: tx.idempotencyKey,
+          providerTransactionId: args.providerTransactionId,
+          amount: tx.amount,
+          currency: tx.currency,
+          reason: refundReason,
+          status: "queued",
+          attempts: 0,
+          requestedAt: now,
+          updatedAt: now,
+        });
+        await ctx.scheduler.runAfter(
+          0,
+          internal.payments.refunds.processAutomaticRefund,
+          { refundId },
+        );
+      }
 
       await ctx.db.patch(args.transactionId, {
         status: "failed",
         providerTransactionId: args.providerTransactionId,
         completedAt: now,
         metadata: JSON.stringify({
+          ...priorMetadata,
           duplicatePayment: isDuplicate || undefined,
           paymentAfterRefund: !isDuplicate || undefined,
-          refundRequired: true,
+          // A completed refund no longer needs manual review. Until then the
+          // flag deliberately stays on, including while a refund is pending.
+          refundRequired: priorRefundStatus !== "processed",
+          refundStatus: priorRefundStatus ?? (refundId ? "queued" : undefined),
+          refundId,
           duplicateOf: isDuplicate ? blockingPayment._id : undefined,
           duplicateReference: isDuplicate ? blockingPayment.idempotencyKey : undefined,
           refundedPaymentId: !isDuplicate ? blockingPayment._id : undefined,
@@ -307,7 +357,9 @@ export const completePaymentTransaction = internalMutation({
           reason: quarantineReason,
           duplicateOf: isDuplicate ? blockingPayment._id : undefined,
           refundedPaymentId: !isDuplicate ? blockingPayment._id : undefined,
-          refundRequired: true,
+          refundRequired: priorRefundStatus !== "processed",
+          refundStatus: priorRefundStatus ?? (refundId ? "queued" : undefined),
+          refundId,
           providerTransactionId: args.providerTransactionId,
         }),
         orderId: tx.orderId,

@@ -1,9 +1,11 @@
 # Lasha — Payment ↔ Settlement Reconciliation Audit & Design
 
-> Status: **audit/design only** (2026-09-12). No reconciliation engine, Earnings
-> UI, payout automation, or refund workflow was implemented. One minimal
-> security correction was made (documented in §10). Every claim below was
-> verified against the repository code.
+> Status: **historical audit/design** (2026-09-12), with later implementation
+> notes in §5, §12, and §13. No reconciliation engine, Earnings UI, or payout
+> automation was implemented by that audit. General refunds/reversals remain
+> unimplemented policy work; automatic refunds for duplicate-charge quarantines
+> were added afterwards (`payment_refunds` + Paystack refund API). Every claim
+> below was verified against the repository code at the time noted.
 
 ---
 
@@ -132,7 +134,7 @@ place, reversible by policy change).
 | **Payment fails after delivery** | Settlement remains `pending`/payable; payment `failed`. Driver entitlement and customer non-payment coexist | Under Model B, payout stays blocked — correct. Escalation (retry payment / cancel) needs ops tooling |
 | **Refund after successful payment** | Schema has a `refunded` literal; nothing enters it. No effect on settlement/wallet today | Requires full policy: payment → refunded; wallet claw-back if settlement already `completed`; settlement reversal handling. **Unresolved** |
 | **Partial payment** | **Unsupported** — Paystack is initialized for the full charge; `completePaymentTransaction` refuses any provider amount ≠ stored charge | Explicitly: partial payments are unsupported until a policy and amount-tracking model exist |
-| **Duplicate payment** | **Prevented across methods, quarantined if provider already charged.** One completed payment per order is authoritative. Wallet debits are refused while a card attempt can still succeed (open attempts are re-verified first); card creation is refused after any completion. A second verified provider success is written as `failed` with `duplicatePayment` / `refundRequired` / `duplicateOf` metadata, flagged by reconciliation, and blocks payout eligibility. No automatic refund exists. Webhook replays remain no-ops | **Manual refund review** for the quarantined duplicate. Future refund workflow must consume the flag; current code never silently treats two completed payments as cleanly paid. Late verified success can recover a prematurely failed attempt, because provider success is authoritative |
+| **Duplicate payment** | **Prevented across methods, quarantined if provider already charged, auto-refunded.** One completed payment per order is authoritative. Wallet debits are refused while a card attempt can still succeed (open attempts are re-verified first); card creation is refused after any completion. A second verified provider success is written as `failed` with `duplicatePayment` / `refundRequired` / `duplicateOf` metadata, one `payment_refunds` row is created, and Paystack is asked to refund the full quarantined amount. Reconciliation reports the refund as in progress; payout eligibility stays blocked until the refund is processed. Webhook replays remain no-ops | **Automatic refund**, with manual review only if the request is rejected, ambiguous, or Paystack reports failure. Existing provider refunds are checked first so an action retry or finance-initiated refund is adopted instead of duplicated. Late verified success can still recover a prematurely failed attempt, because provider success is authoritative |
 | **Duplicate settlement** | Safe (verified): `settlement-${deliveryId}` deterministic key, `by_idempotency` + `by_delivery` double-check, completion gated by `processing` state | — |
 
 ---
@@ -179,7 +181,9 @@ Verified missing:
 
 1. Reconciliation *state* (derivable today; durable fields optional later)
 2. Customer-payment gate at the payout boundary (Model B) — pending business decision
-3. Refund / reversal policy + flow (payment, settlement, wallet claw-back)
+3. General refund / reversal policy + flow (payment, settlement, wallet
+   claw-back). Duplicate/post-refund quarantine auto-refunds are implemented;
+   partial, dispute, cancellation, and settlement claw-back flows are not.
 4. Payout destination model (bank accounts / recipients)
 5. Payout processing (provider Transfers integration, references, retries)
 6. Payout failure/reversal handling
@@ -204,7 +208,8 @@ Smallest safe path from the current state:
 6. **Payout destination model** — driver bank/recipient records (privileged writes).
 7. **Payout processing** — provider Transfers integration with payout
    references, idempotency, failure states.
-8. **Refund/reversal policy + implementation** — including wallet claw-back.
+8. **General refund/reversal policy + implementation** — including wallet
+   claw-back. Duplicate/post-refund quarantine refunds are already automatic.
 9. **Payout reconciliation** — link payouts ↔ settlements ↔ payments.
 
 Nothing in this document implements steps 1–9; they are sequenced, not built.
@@ -312,7 +317,10 @@ The query checks and reports (without modifying anything):
    never silently collapsed)
 5. failed duplicate or post-refund charges carrying `refundRequired`
    metadata (the customer was charged twice, or charged after a refund,
-   even though only one completion exists)
+   even though only one completion exists). A pending automatic refund is
+   reported as in progress; a failed/unrequested refund remains a manual-review
+   anomaly; a provider-processed refund clears the flag. Duplicate-charge
+   refund states live in `payment_refunds` and the payment metadata.
 6. multiple settlements for one order (idempotency violation)
 7. order not found; multiple quotes (informational)
 
@@ -383,8 +391,10 @@ A settlement is **payout-eligible** only when ALL of the following hold:
    row whose amount equals `orders.price` (the same `customerPaid` rule the
    reconciliation model uses).
 6. **Zero reconciliation anomalies** (amount mismatches, duplicate completed
-   payments, `refundRequired` duplicate charges, duplicate settlements,
-   disputed states). `ANOMALY` always blocks.
+   payments, unresolved `refundRequired` duplicate charges — including a
+   refund still pending — duplicate settlements, disputed states). `ANOMALY`
+   always blocks; a provider-processed duplicate refund clears its flag, but
+   the original completed payment remains the paid record.
 
 ### Rejected conditions → reason codes
 

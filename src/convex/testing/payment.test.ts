@@ -245,7 +245,8 @@ test("completion requires provider evidence and guards state", () => {
   assertContains(completeBlock, "Provider transaction ID mismatch", "evidence integrity");
   assertContains(completeBlock, "evaluateCompletionGate", "cross-method completion guard");
   assertContains(completeBlock, 'completionGate.kind === "refunded"', "post-refund charge quarantined");
-  assertContains(completeBlock, "refundRequired: true", "duplicate charge quarantined for refund review");
+  assertContains(completeBlock, "refundRequired: priorRefundStatus !== \"processed\"", "duplicate charge stays flagged until a refund completes");
+  assertContains(completeBlock, "insert(\"payment_refunds\"", "duplicate charge gets an automatic refund record");
 });
 
 test("failure transition is evidence-driven and idempotent", () => {

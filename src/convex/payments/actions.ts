@@ -35,6 +35,7 @@ import {
   classifyProviderStatus,
 } from "./_paymentAttempts";
 import {
+  normalizePaystackRefundStatus,
   requireProviderAmount,
   verifyPaystackTransaction,
 } from "./_provider";
@@ -57,7 +58,10 @@ type InitiatePaymentResult = {
 
 type WebhookEventResult =
   | { handled: false }
-  | { handled: true; result: "completed" | "failed" | "duplicate" };
+  | {
+      handled: true;
+      result: "completed" | "failed" | "duplicate" | "refunded" | "refund_pending";
+    };
 
 type AuthorizedOrderPaymentCtx = {
   orderId: Id<"orders">;
@@ -476,8 +480,56 @@ export const processWebhookEvent = internalAction({
     event: v.string(),
     providerTransactionId: v.optional(v.string()),
     amountFromProvider: v.optional(v.number()),
+    refundReference: v.optional(v.string()),
+    refundStatus: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<WebhookEventResult> => {
+    // Refund events carry the original transaction reference in the flat
+    // `data.transaction_reference` field. Only automatic duplicate-charge
+    // refunds are tracked here; general refunds remain manual.
+    if (args.event.startsWith("refund.")) {
+      const refund = await ctx.runQuery(
+        internal.payments.refunds.getAutomaticRefundByReference,
+        { reference: args.reference },
+      );
+      if (!refund) return { handled: false as const };
+
+      const eventStatus =
+        args.event === "refund.processed"
+          ? "processed"
+          : args.event === "refund.failed"
+            ? "failed"
+            : args.event === "refund.processing"
+              ? "processing"
+              : args.event === "refund.pending"
+                ? "pending"
+                : null;
+      const status =
+        normalizePaystackRefundStatus(args.refundStatus) ??
+        normalizePaystackRefundStatus(eventStatus);
+      if (!status) return { handled: false as const };
+
+      await ctx.runMutation(
+        internal.payments.refunds.recordProviderRefund,
+        {
+          refundId: refund._id,
+          status,
+          providerRefundReference: args.refundReference,
+          amountFromProvider: args.amountFromProvider,
+        },
+      );
+
+      return {
+        handled: true as const,
+        result:
+          status === "processed"
+            ? ("refunded" as const)
+            : status === "failed"
+              ? ("failed" as const)
+              : ("refund_pending" as const),
+      };
+    }
+
     const tx = await ctx.runQuery(internal.payments.queries.getPaymentByReference, {
       reference: args.reference,
     });

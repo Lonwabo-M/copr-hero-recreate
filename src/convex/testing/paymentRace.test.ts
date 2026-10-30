@@ -16,6 +16,8 @@ import {
   evaluateWalletPaymentGate,
   findActiveCardAttempts,
   findRefundRequiredAttempts,
+  isAutomaticRefundInProgress,
+  requiresRefund,
   type PaymentAttempt,
   type PaymentAttemptStatus,
 } from "../payments/_paymentAttempts";
@@ -254,6 +256,59 @@ test("refund-required is read only from failed duplicates", () => {
     findRefundRequiredAttempts([duplicate, ordinaryFailure, completed]).length,
     1,
     "only the failed duplicate is flagged",
+  );
+});
+
+test("a pending automatic refund stays refund-required", () => {
+  const duplicate = attempt({
+    status: "failed",
+    metadata: JSON.stringify({
+      duplicatePayment: true,
+      refundRequired: true,
+      refundStatus: "pending",
+    }),
+  });
+  assert(requiresRefund(duplicate.metadata), "pending refund still flagged");
+  assert(
+    isAutomaticRefundInProgress(duplicate.metadata),
+    "pending refund is in progress, not manual",
+  );
+});
+
+test("a processed automatic refund clears refund-required", () => {
+  const duplicate = attempt({
+    status: "failed",
+    metadata: JSON.stringify({
+      duplicatePayment: true,
+      refundRequired: true,
+      refundStatus: "processed",
+    }),
+  });
+  assert(!requiresRefund(duplicate.metadata), "processed refund no longer flagged");
+  assert(
+    !isAutomaticRefundInProgress(duplicate.metadata),
+    "processed refund is not in progress",
+  );
+  assertEqual(
+    findRefundRequiredAttempts([duplicate]).length,
+    0,
+    "reconciliation no longer treats it as unresolved",
+  );
+});
+
+test("a failed automatic refund remains manual review", () => {
+  const duplicate = attempt({
+    status: "failed",
+    metadata: JSON.stringify({
+      duplicatePayment: true,
+      refundRequired: true,
+      refundStatus: "failed",
+    }),
+  });
+  assert(requiresRefund(duplicate.metadata), "failed refund still flagged");
+  assert(
+    !isAutomaticRefundInProgress(duplicate.metadata),
+    "failed refund is not in progress",
   );
 });
 
