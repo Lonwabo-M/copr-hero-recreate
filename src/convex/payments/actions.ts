@@ -22,7 +22,7 @@
  *    the same pending transaction/reference.
  */
 
-import { action, internalAction } from "../_generated/server";
+import { action, internalAction, type ActionCtx } from "../_generated/server";
 import { v } from "convex/values";
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { internal } from "../_generated/api";
@@ -30,6 +30,13 @@ import type { Id } from "../_generated/dataModel";
 import { ROLES } from "../schema";
 
 const PAYSTACK_BASE = "https://api.paystack.co";
+
+type WalletPaymentResult = {
+  alreadyPaid: boolean;
+  paymentId?: string;
+  reference?: string;
+  balance?: number;
+};
 
 // ─── Initiation ───────────────────────────────────────────────────────────────
 
@@ -200,6 +207,53 @@ export const initiateOrderPayment = action({
   },
 });
 
+// ─── Wallet payment ──────────────────────────────────────────────────────────
+
+/**
+ * Pay an order from the authenticated customer's wallet. No amount, wallet ID,
+ * or provider status is accepted from the client — the order charge is resolved
+ * server-side and the debit + payment completion happen in one mutation.
+ */
+export const payOrderWithWallet = action({
+  args: { orderId: v.id("orders") },
+  handler: async (ctx, args): Promise<WalletPaymentResult> => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Authentication required");
+
+    const roleCtx = await ctx.runQuery(
+      internal.payments.queries.getUserRoleForPayment,
+      { userId },
+    );
+    if (!roleCtx) throw new Error("User not found");
+    if (
+      roleCtx.role === ROLES.DRIVER ||
+      roleCtx.role === ROLES.FLEET_MANAGER ||
+      roleCtx.role === ROLES.OPERATIONS
+    ) {
+      throw new Error("Access denied: this role cannot initiate customer payments");
+    }
+
+    const orderCtx: {
+      latestPayment: { status: string; idempotencyKey: string } | null;
+    } = await ctx.runQuery(
+      internal.payments.queries.getAuthorizedOrderForPayment,
+      { orderId: args.orderId },
+    );
+
+    if (orderCtx.latestPayment?.status === "completed") {
+      return {
+        alreadyPaid: true,
+        reference: orderCtx.latestPayment.idempotencyKey,
+      };
+    }
+
+    return await ctx.runMutation(
+      internal.payments.mutations.payOrderFromWallet,
+      { orderId: args.orderId, userId },
+    );
+  },
+});
+
 // ─── Direct card charge (inline checkout UI) ────────────────────────────────
 
 /**
@@ -295,7 +349,7 @@ type ChargeResult =
   | { status: "unsupported"; reference: string; message: string };
 
 async function chargeWithPaystack(
-  ctx: any,
+  ctx: ActionCtx,
   orderId: Id<"orders">,
   card: { number: string; cvv: string; month: string; year: string },
 ): Promise<ChargeResult> {
@@ -379,8 +433,8 @@ async function chargeWithPaystack(
 }
 
 async function settlePaystackChargeResponse(
-  ctx: any,
-  transactionId: string,
+  ctx: ActionCtx,
+  transactionId: Id<"payment_transactions">,
   response: Response,
   label: string,
 ): Promise<ChargeResult> {
@@ -567,9 +621,43 @@ export const processWebhookEvent = internalAction({
     const tx = await ctx.runQuery(internal.payments.queries.getPaymentByReference, {
       reference: args.reference,
     });
-    // Unknown reference: acknowledge to stop retries but do nothing — we only
-    // ever act on transactions we created.
+
+    // Wallet top-ups use their own table but the same signed webhook. Resolve
+    // them by our reference first; unknown references are acknowledged without
+    // touching state.
     if (!tx) {
+      const topUp = await ctx.runQuery(
+        internal.payments.walletTopUps.getWalletTopUpByReference,
+        { reference: args.reference },
+      );
+      if (!topUp) {
+        return { handled: false as const };
+      }
+
+      if (args.event === "charge.success") {
+        await ctx.runMutation(
+          internal.payments.walletTopUps.completeWalletTopUp,
+          {
+            topUpId: topUp._id,
+            providerTransactionId: args.providerTransactionId ?? args.reference,
+            providerStatus: "success",
+            amountFromProvider: args.amountFromProvider,
+          },
+        );
+        return { handled: true as const, result: "completed" as const };
+      }
+
+      if (args.event === "charge.failed") {
+        await ctx.runMutation(
+          internal.payments.walletTopUps.failWalletTopUp,
+          {
+            topUpId: topUp._id,
+            reason: "provider webhook reported charge.failed",
+          },
+        );
+        return { handled: true as const, result: "failed" as const };
+      }
+
       return { handled: false as const };
     }
 

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useSearchParams } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import { useQuery, useAction } from "convex/react";
 import { api } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
@@ -92,42 +92,42 @@ export default function MakePayment() {
   const [method, setMethod] = useState("card");
   const [selectedOrderId, setSelectedOrderId] = useState<Id<"orders"> | null>(null);
   const [initiating, setInitiating] = useState(false);
-  const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
   const overview = useQuery(api.payments.queries.getMyPaymentOverview, {});
   const initiatePayment = useAction(api.payments.actions.initiateOrderPayment);
+  const payWithWallet = useAction(api.payments.actions.payOrderWithWallet);
   const verifyPayment = useAction(api.payments.actions.verifyOrderPayment);
 
   // Server-side verification after returning from Paystack checkout.
   // Runs once per reference; the backend is idempotent for repeats.
   const reference = searchParams.get("reference");
+  const verifying = Boolean(reference);
   useEffect(() => {
-    if (!reference || verifying) return;
+    if (!reference) return;
     let cancelled = false;
-    setVerifying(true);
-    setError(null);
     verifyPayment({ reference })
       .then((result) => {
         if (cancelled) return;
         if (result.status === "completed") {
           setNotice("Payment successful — thank you.");
+          setError(null);
         } else if (result.status === "failed") {
           setError("The payment was not completed. You can try again.");
         } else {
           setNotice("Payment is still pending with the provider. This page updates when it completes.");
         }
-        // Clean the URL so refresh/re-verify doesn't loop on a stale reference.
-        searchParams.delete("reference");
-        setSearchParams(searchParams, { replace: true });
       })
       .catch((e: unknown) => {
         if (cancelled) return;
         setError(e instanceof Error ? e.message : "Payment verification failed");
       })
       .finally(() => {
-        if (!cancelled) setVerifying(false);
+        if (cancelled) return;
+        // Clean the URL so refresh/re-verify doesn't loop on a stale reference.
+        searchParams.delete("reference");
+        setSearchParams(searchParams, { replace: true });
       });
     return () => {
       cancelled = true;
@@ -141,12 +141,24 @@ export default function MakePayment() {
     setError(null);
     setNotice(null);
     try {
+      if (method === "wallet") {
+        const result = await payWithWallet({ orderId: selectedOrderId });
+        if (result.alreadyPaid) {
+          setNotice("This order has already been paid.");
+        } else {
+          setNotice(
+            `Paid ${formatCurrency(selected?.amount ?? 0)} from your Lasha wallet.`,
+          );
+        }
+        return;
+      }
+
       const result = await initiatePayment({ orderId: selectedOrderId, method });
       if (result.alreadyPaid) {
         setNotice("This order has already been paid.");
       } else if (result.authorizationUrl) {
         // Redirect to the provider's secure checkout page.
-        window.location.href = result.authorizationUrl;
+        window.location.assign(result.authorizationUrl);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not start the payment");
@@ -187,6 +199,14 @@ export default function MakePayment() {
             <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 18px", borderRadius: 10, background: "#fdeeee", border: "1px solid #f2c6c6", marginBottom: 20, maxWidth: 700 }}>
               <XCircle size={18} style={{ color: "#a02020" }} />
               <span style={{ fontSize: 14, color: "#a02020" }}>{error}</span>
+              {error.toLowerCase().includes("insufficient wallet") && (
+                <Link
+                  to="/wallet"
+                  style={{ fontSize: 13, fontWeight: 600, color: "#0794b5", whiteSpace: "nowrap" }}
+                >
+                  Top up wallet
+                </Link>
+              )}
             </div>
           )}
 
@@ -315,12 +335,17 @@ export default function MakePayment() {
               {initiating ? (
                 <>
                   <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} />
-                  Starting secure checkout…
+                  {method === "wallet" ? "Paying from wallet…" : "Starting secure checkout…"}
                 </>
               ) : verifying ? (
                 <>
                   <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} />
                   Verifying payment…
+                </>
+              ) : method === "wallet" ? (
+                <>
+                  <Wallet size={16} />
+                  Pay from Lasha Wallet
                 </>
               ) : (
                 <>
@@ -330,8 +355,9 @@ export default function MakePayment() {
               )}
             </button>
             <p style={{ fontSize: 12, color: "#999", marginTop: 10 }}>
-              You will be redirected to our payment provider's secure checkout. Payment status is confirmed
-              server-side — this page never assumes success on its own.
+              {method === "wallet"
+                ? "Your Lasha wallet is debited immediately and the payment is recorded server-side. Top up first if your balance is too low."
+                : "You will be redirected to our payment provider's secure checkout. Payment status is confirmed server-side — this page never assumes success on its own."}
             </p>
           </div>
         </div>

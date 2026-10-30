@@ -47,7 +47,7 @@ Also wired up `markAsRead` and `markAllAsRead` mutations. Includes loading and e
 | **Replaced by** | `useQuery(api.users.getWallet)` and `useQuery(api.users.getTransactions, {})` |
 | **Status** | ✅ Connected to Convex |
 
-Currency formatting uses `Intl.NumberFormat` with ZAR. Balance displayed in rand (amounts stored in cents). Top-up modal preserved for future payment integration.
+Currency formatting uses `Intl.NumberFormat` with ZAR. Balance displayed in rand (amounts stored in cents). The top-up modal now starts a Paystack hosted checkout and the returned reference is verified server-side before the wallet is credited.
 
 ### 5. `src/pages/PastDeliveries.tsx` — Mock deliveries removed
 

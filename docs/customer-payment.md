@@ -175,8 +175,12 @@ settlement/delivery separation, credential hygiene, and UI integrity. Run:
 ## Remaining Limitations
 
 - `processing` status is reserved but unused by the current flow.
-- Wallet payment method is a provider metadata label; paying from the Lasha
-  wallet balance is not implemented.
+- Wallet payments are implemented for delivery checkout: the stored order
+  amount is debited from the Lasha wallet in the same mutation that records the
+  completed payment.
+- Wallet top-ups use Paystack hosted checkout. Provider verification or a
+  signature-verified webhook credits the wallet exactly once.
+- Wallet-to-wallet transfers and external withdrawals are not implemented.
 - No customer-facing payment history page beyond the MakePayment overview.
 - Reconciliation between customer payments and driver settlements is a
   deliberately separate future task.

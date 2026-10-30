@@ -264,3 +264,147 @@ export const failPaymentTransaction = internalMutation({
     return { success: true, alreadyFailed: false };
   },
 });
+
+// ─── Wallet Payment ──────────────────────────────────────────────────────────
+
+/**
+ * Pay an order from the authenticated user's Lasha wallet.
+ *
+ * This is the wallet equivalent of a verified card payment: the amount comes
+ * from the stored order, the wallet is debited in the same transaction as the
+ * completed payment record, and a debit ledger row is written. A deterministic
+ * reference (`wallet-<orderId>`) plus the already-paid check make retries
+ * idempotent. There is no provider involved — the wallet is the evidence.
+ */
+export const payOrderFromWallet = internalMutation({
+  args: {
+    orderId: v.id("orders"),
+    userId: v.id("users"),
+  },
+  handler: async (ctx, args) => {
+    const order = await ctx.db.get(args.orderId);
+    if (!order) throw new Error("Order not found");
+    if (order.senderId !== args.userId) {
+      throw new Error("Access denied: you can only pay for your own orders");
+    }
+
+    const existingPayments = await ctx.db
+      .query("payment_transactions")
+      .withIndex("by_order", (q) => q.eq("orderId", order._id))
+      .collect();
+
+    const completed = existingPayments.find((p) => p.status === "completed");
+    if (completed) {
+      return {
+        alreadyPaid: true,
+        paymentId: completed._id,
+        reference: completed.idempotencyKey,
+      };
+    }
+
+    const amount = order.price;
+    if (!Number.isInteger(amount) || amount <= 0) {
+      throw new Error("This delivery does not have a payable amount");
+    }
+
+    const wallet = await ctx.db
+      .query("wallets")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .first();
+
+    if (!wallet) {
+      throw new Error(
+        "Your wallet has no funds yet. Top up your wallet before paying for this delivery.",
+      );
+    }
+    if (!wallet.isActive) {
+      throw new Error("Your wallet is inactive; payment cannot be taken from it");
+    }
+    if (wallet.balance < amount) {
+      throw new Error(
+        "Insufficient wallet balance. Top up your wallet or choose another payment method.",
+      );
+    }
+
+    const reference = `wallet-${args.orderId}`;
+    const existingByReference = await ctx.db
+      .query("payment_transactions")
+      .withIndex("by_idempotency", (q) => q.eq("idempotencyKey", reference))
+      .first();
+    if (existingByReference?.status === "completed") {
+      return {
+        alreadyPaid: true,
+        paymentId: existingByReference._id,
+        reference,
+      };
+    }
+    if (existingByReference) {
+      throw new Error(
+        "A wallet payment for this delivery is already being processed",
+      );
+    }
+
+    const now = Date.now();
+
+    await ctx.db.patch(wallet._id, {
+      balance: wallet.balance - amount,
+      updatedAt: now,
+    });
+
+    const ledgerTransactionId = await ctx.db.insert("transactions", {
+      walletId: wallet._id,
+      type: "debit",
+      amount,
+      description: `Payment for delivery ${order.trackingNumber ?? ""}`.trim(),
+      reference,
+      status: "completed",
+      orderId: order._id,
+      createdAt: now,
+    });
+
+    const paymentId = await ctx.db.insert("payment_transactions", {
+      orderId: order._id,
+      userId: args.userId,
+      amount,
+      currency: "ZAR",
+      method: "wallet",
+      provider: "lasha_wallet",
+      providerTransactionId: reference,
+      status: "completed",
+      idempotencyKey: reference,
+      metadata: JSON.stringify({
+        channel: "wallet",
+        ledgerTransactionId,
+      }),
+      createdAt: now,
+      completedAt: now,
+    });
+
+    await ctx.runMutation(internal.audit.service.recordPaymentEvent, {
+      actorId: args.userId,
+      actorRole: "customer",
+      action: AUDIT_ACTIONS.PAYMENT_CONFIRMED,
+      entityType: "payment_transaction",
+      entityId: paymentId,
+      metadata: JSON.stringify({
+        reference,
+        amount,
+        method: "wallet",
+      }),
+      orderId: order._id,
+    });
+
+    await ctx.runMutation(internal.notifications.service.sendPaymentNotification, {
+      userId: args.userId,
+      eventType: "payment_confirmed",
+      templateData: { orderId: paymentId.slice(-6).toUpperCase() },
+    });
+
+    return {
+      alreadyPaid: false,
+      paymentId,
+      reference,
+      balance: wallet.balance - amount,
+    };
+  },
+});

@@ -639,6 +639,29 @@ const schema = defineSchema(
       .index("by_order", ["orderId"])
       .index("by_created", ["createdAt"]),
 
+    // ─── Wallet Top-ups ────────────────────────────────────────────────────
+    // External funding intents for a user's wallet. The reference is the
+    // provider idempotency key; completion credits the wallet exactly once.
+    wallet_topups: defineTable({
+      userId: v.id("users"),
+      amount: v.number(),                 // cents (ZAR)
+      currency: v.literal("ZAR"),
+      provider: v.string(),               // "paystack"
+      providerTransactionId: v.optional(v.string()),
+      status: v.union(
+        v.literal("pending"),
+        v.literal("completed"),
+        v.literal("failed"),
+      ),
+      reference: v.string(),
+      failureReason: v.optional(v.string()),
+      createdAt: v.number(),
+      completedAt: v.optional(v.number()),
+    })
+      .index("by_user", ["userId"])
+      .index("by_reference", ["reference"])
+      .index("by_status", ["status"]),
+
     // ─── Invoices ──────────────────────────────────────────────────────────
     // Invoice management.
     invoices: defineTable({
