@@ -6,7 +6,7 @@ import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import { convexClient } from "./lib/convex";
 import React, { StrictMode, useEffect } from "react";
 import { createRoot } from "react-dom/client";
-import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router";
+import { BrowserRouter, Route, Routes, useLocation } from "react-router";
 import "./index.css";
 
 import Landing from "./pages/Landing.tsx";
@@ -21,6 +21,7 @@ import Wallet from "./pages/Wallet.tsx";
 import Settings from "./pages/Settings.tsx";
 import PastDeliveries from "./pages/PastDeliveries.tsx";
 import Invoices from "./pages/Invoices.tsx";
+import LegacyPaymentRedirect from "./pages/LegacyPaymentRedirect.tsx";
 import Notifications from "./pages/Notifications.tsx";
 import Help from "./pages/Help.tsx";
 import Legal from "./pages/Legal.tsx";
@@ -245,8 +246,9 @@ createRoot(document.getElementById("root")!).render(
                 }
               />
               {/* Legacy alias: payment is order-scoped at /checkout/:orderId.
-                  Kept as a redirect so old bookmarks do not 404. */}
-              <Route path="/make-payment" element={<Navigate to="/dashboard" replace />} />
+                  Also forwards old Paystack return references to that checkout
+                  until the backend callback URL is deployed. */}
+              <Route path="/make-payment" element={<LegacyPaymentRedirect />} />
               <Route
                 path="/past-deliveries"
                 element={

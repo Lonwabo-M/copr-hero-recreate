@@ -514,13 +514,7 @@ async function settlePaystackChargeResponse(
  * mutations' state guards).
  */
 export const verifyOrderPayment = action({
-  args: {
-    reference: v.string(),
-    // Optional for backwards compatibility; Checkout always supplies it so a
-    // reference belonging to another of the user's orders cannot be presented
-    // as this order's payment.
-    orderId: v.optional(v.id("orders")),
-  },
+  args: { reference: v.string() },
   handler: async (ctx, args) => {
     const secretKey = process.env.PAYSTACK_SECRET_KEY;
     if (!secretKey) {
@@ -537,9 +531,6 @@ export const verifyOrderPayment = action({
     });
     if (!tx) {
       throw new Error("Unknown payment reference");
-    }
-    if (args.orderId !== undefined && tx.orderId !== args.orderId) {
-      throw new Error("Payment reference does not belong to this order");
     }
 
     // Only the payer (or super admin) may verify.

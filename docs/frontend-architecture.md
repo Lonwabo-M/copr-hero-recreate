@@ -116,9 +116,10 @@ visibility to `SUPER_ADMIN || OPERATIONS`); no new permissions were invented.
 | Operations Centre | `/operations` |
 | Admin | *(none yet — `/admin` reserved)* |
 
-Backwards compatibility: `/make-payment` redirects to `/dashboard` (the
-standalone page was removed in favour of `/checkout/:orderId`), and
-`/driver/active-delivery` keeps its original path.
+Backwards compatibility: `/make-payment` forwards old Paystack references to
+`/checkout/:orderId` (and otherwise redirects to `/dashboard`); the standalone
+page was removed in favour of order-scoped checkout. `/driver/active-delivery`
+keeps its original path.
 
 ## Role-aware routing after sign-in
 
@@ -162,7 +163,7 @@ architecture + area-scoped shells, not by CSS hiding.
 
 ## Tests
 
-`src/components/shells/roleAccess.test.ts` (55 assertions) covers:
+`src/components/shells/roleAccess.test.ts` (56 assertions) covers:
 
 - role → area mapping for all six roles + unknown/missing fallback
 - the full area-access matrix (allow + deny cases per area)

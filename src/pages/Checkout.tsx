@@ -14,10 +14,11 @@
  *     delivery belonging to :orderId in that list.
  *   - pricing.service.getQuoteForOrder → the authoritative fee breakdown
  *     (delivery fee, platform fee, total) for the order.
- *   - payments.queries.getMyOrderPayment → authoritative payment state from
- *     payment_transactions (never inferred from delivery status).
+ *   - payments.queries.getMyPaymentOverview → customer-scoped authoritative
+ *     payment state from payment_transactions (never inferred from delivery
+ *     status); Checkout selects this order's row.
  *   - payments.actions.verifyOrderPayment → server-side Paystack verification
- *     when the provider returns to ?reference=…, scoped to this order.
+ *     when the provider returns to ?reference=….
  *   - payments.actions.payOrderWithWallet → atomic wallet debit + completed
  *     payment record.
  *   - payments.actions.chargeOrderPaymentWithCard → inline card charge; card
@@ -134,15 +135,17 @@ export default function Checkout() {
 
   // Authoritative payment state for this order. Delivery status is NOT payment
   // status: a delivered parcel can be unpaid, and a paid parcel remains paid
-  // while it is in transit.
-  const payment = useQuery(
-    api.payments.queries.getMyOrderPayment,
-    orderId ? { orderId: orderId as never } : "skip",
-  );
+  // while it is in transit. The query is customer-scoped server-side; we select
+  // only the row for the order being paid.
+  const paymentOverview = useQuery(api.payments.queries.getMyPaymentOverview, {});
+  const orderPayment = paymentOverview?.find((row) => row.orderId === orderId) ?? null;
+  const payment = orderPayment?.payment ?? null;
   const wallet = useQuery(api.users.getWallet, {});
 
   const loading =
-    myDeliveries === undefined || quote === undefined || payment === undefined;
+    myDeliveries === undefined ||
+    quote === undefined ||
+    paymentOverview === undefined;
 
   // Paystack returns here after hosted checkout. The provider status is
   // verified server-side; the browser cannot mark an order as paid.
@@ -152,7 +155,7 @@ export default function Checkout() {
     if (!reference) return;
     let cancelled = false;
 
-    verifyPayment({ reference, orderId: orderId as never })
+    verifyPayment({ reference })
       .then((result) => {
         if (cancelled) return;
         if (result.status === "completed") {
@@ -392,7 +395,7 @@ export default function Checkout() {
     deliveryRow.status === DELIVERY_STATUS.FAILED ||
     deliveryRow.status === DELIVERY_STATUS.CANCELLED;
 
-  const total = details?.price ?? quote?.totalCharge ?? payment?.amount ?? 0;
+  const total = details?.price ?? quote?.totalCharge ?? orderPayment?.amount ?? 0;
   const paymentLabel = alreadyPaid
     ? "Paid"
     : refunded

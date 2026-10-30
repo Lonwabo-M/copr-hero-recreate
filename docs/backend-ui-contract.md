@@ -58,7 +58,7 @@ authorization boundary.
 | `/settings` | Customer | `Settings.tsx` | Yes | Profile, business, notifications, security |
 | `/past-deliveries` | Customer | `PastDeliveries.tsx` | Yes | Order history table |
 | `/invoices` | Customer | `Invoices.tsx` | Yes | Invoice management |
-| `/make-payment` | — | redirect → `/dashboard` | — | Legacy alias; standalone page removed |
+| `/make-payment` | — | `LegacyPaymentRedirect.tsx` | — | Forwards old Paystack references to `/checkout/:orderId`; otherwise redirects to dashboard |
 | `/notifications` | Customer | `Notifications.tsx` | Yes | Notification center |
 | `/help` | Customer | `Help.tsx` | Yes | Help center (static) |
 | `/legal` | Customer | `Legal.tsx` | Yes | Legal documents (static) |
@@ -563,11 +563,11 @@ payment debits the authenticated customer's Lasha wallet atomically.
 
 | Endpoint | Type | Purpose |
 |----------|------|---------|
-| `payments.queries.getMyOrderPayment` | Query | Authoritative payment state for one owned order |
+| `payments.queries.getMyPaymentOverview` | Query | Customer-scoped payment state per order |
 | `payments.actions.chargeOrderPaymentWithCard` | Action | Inline card charge (server-side only) |
 | `payments.actions.submitPaymentOtp` | Action | Complete a bank OTP challenge |
 | `payments.actions.initiateOrderPayment` | Action | Start Paystack hosted checkout |
-| `payments.actions.verifyOrderPayment` | Action | Verify the return reference, scoped to the order |
+| `payments.actions.verifyOrderPayment` | Action | Verify the provider return reference |
 | `payments.actions.payOrderWithWallet` | Action | Pay the stored order amount from the wallet |
 
 **Payment Methods:**

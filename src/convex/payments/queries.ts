@@ -59,9 +59,9 @@ async function latestPaymentForOrder(
 
 /**
  * Payment overview for the authenticated customer: their orders with the
- * authoritative charge and the latest payment transaction state. This is a
- * customer-wide read model; Checkout and delivery tracking use the
- * order-scoped getMyOrderPayment query instead.
+ * authoritative charge and the latest payment transaction state. Checkout and
+ * delivery tracking filter this customer-scoped read model to the order they
+ * are displaying; the client never receives another customer's rows.
  *
  * Excludes settlement and wallet data — customers do not see driver financials.
  */
@@ -114,41 +114,6 @@ export const getMyPaymentOverview = query({
     }
 
     return overview.sort((a, b) => b.createdAt - a.createdAt);
-  },
-});
-
-// ─── Order-scoped payment status ─────────────────────────────────────────────
-
-/**
- * Authoritative payment state for one order. Checkout and delivery tracking use
- * this instead of inferring "paid" from delivery status — a delivered parcel
- * can still be unpaid, and a paid parcel is paid while it is in transit.
- *
- * The order lookup and ownership check happen server-side; the client only
- * supplies the order id it is already allowed to view.
- */
-export const getMyOrderPayment = query({
-  args: { orderId: v.id("orders") },
-  handler: async (ctx, args) => {
-    const user = await getCurrentAuthUser(ctx);
-    if (!user) throw new Error("Authentication required");
-
-    const order = await ctx.db.get(args.orderId);
-    // Missing and unauthorized orders return the same empty result. The page
-    // already has a single "Order not found" state and must not reveal whether
-    // another customer's order exists.
-    if (!order || !canInspectOrder(user, order)) return null;
-
-    const payment = await latestPaymentForOrder(ctx, order._id);
-
-    return {
-      orderId: order._id,
-      amount: order.price,
-      // "unpaid" is a read-model label, not a payment_transactions status.
-      status: payment?.status ?? ("unpaid" as const),
-      provider: payment?.provider ?? null,
-      completedAt: payment?.completedAt ?? null,
-    };
   },
 });
 

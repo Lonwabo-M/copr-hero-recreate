@@ -83,11 +83,13 @@ export default function DeliveryTracking() {
   );
   // Payment is an order fact, not a delivery status. This is the resumable
   // "pay later" entry point after Checkout — it links back to the same
-  // order-scoped payment surface instead of a separate payment page.
-  const payment = useQuery(
-    api.payments.queries.getMyOrderPayment,
-    delivery?.orderId ? { orderId: delivery.orderId } : "skip",
-  );
+  // order-scoped payment surface instead of a separate payment page. The
+  // overview query is customer-scoped server-side; we select only this order.
+  const paymentOverview = useQuery(api.payments.queries.getMyPaymentOverview, {});
+  const orderPayment = paymentOverview?.find(
+    (row) => row.orderId === delivery?.orderId,
+  ) ?? null;
+  const payment = orderPayment?.payment ?? null;
 
   // Sender identity for the shipment-details card: getDelivery's customer
   // branch already proves the session user IS the order's sender, so the
@@ -156,12 +158,11 @@ export default function DeliveryTracking() {
     status === DELIVERY_STATUS.CANCELLED;
   const isFailed = status === DELIVERY_STATUS.FAILED || status === DELIVERY_STATUS.CANCELLED;
   const paymentOutstanding =
-    payment !== undefined &&
     payment !== null &&
     payment.status !== "completed" &&
     payment.status !== "refunded" &&
     !isFailed;
-  const outstandingAmount = payment?.amount ?? 0;
+  const outstandingAmount = orderPayment?.amount ?? payment?.amount ?? 0;
 
   // Tracking freshness — from the backend's isStale plus its timestamps.
   const dl = tracking.driverLocation;

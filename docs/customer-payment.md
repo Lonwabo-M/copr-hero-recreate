@@ -18,8 +18,7 @@ Order created (createOrderAndDelivery)
       → Paystack transaction/initialize → checkout URL
   → Customer pays on Paystack's hosted page, or pays from their Lasha wallet
   → Return to /checkout/:orderId?reference=…
-      → payments.actions.verifyOrderPayment (server-side Paystack verify,
-        scoped to that order)
+      → payments.actions.verifyOrderPayment (server-side Paystack verify)
   → AND/OR Paystack webhook → /payments/paystack/webhook
       → signature verified → processWebhookEvent (internalAction)
   → payment_transactions = completed | failed | pending
@@ -101,15 +100,15 @@ The client receives only `{ alreadyPaid, reference, authorizationUrl }`.
 There is no client amount parameter anywhere; the order Checkout has no
 amount input. If Paystack's verification reports an amount differing from the
 stored charge, completion is refused. Checkout reads payment state from
-`payments.queries.getMyOrderPayment`, which returns the latest
-`payment_transactions` row for that order — never a delivery-status inference.
+`payments.queries.getMyPaymentOverview`, which returns the latest
+`payment_transactions` row for each of the customer's orders; Checkout selects
+the row for the order being paid. Payment state is never inferred from delivery
+status.
 
 **Authorization.** Identity always resolves from the authenticated session:
 - Initiation: the order's sender (or super admin); drivers, fleet managers and
   operations are explicitly rejected.
-- Verification: the payer of the transaction (or super admin); Checkout also
-  passes the order id and the backend refuses a reference belonging to a
-  different order.
+- Verification: the payer of the transaction (or super admin).
 - Payment-status queries: customers see their own orders, company admins their
   business's; drivers/operations get no customer payment data.
 - All payment record mutations are `internalMutation`s — there is no public
@@ -178,7 +177,7 @@ Layer 2 (settlement) documentation: see `docs/driver-earnings-settlement.md`.
 
 ## Testing
 
-`src/convex/testing/payment.test.ts` — 32 assertions covering the model,
+`src/convex/testing/payment.test.ts` — 31 assertions covering the model,
 authorization, amount integrity, state machine, idempotency, webhook security,
 settlement/delivery separation, credential hygiene, and UI integrity. Run:
 `bunx tsx src/convex/testing/payment.test.ts`.

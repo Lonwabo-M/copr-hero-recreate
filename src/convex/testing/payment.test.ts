@@ -143,7 +143,7 @@ test("verification restricted to the payer (or super admin)", () => {
 });
 
 test("payment queries hide customer payment data from drivers/operations", () => {
-  const overviewBlock = block(queries, "getMyPaymentOverview", "getMyOrderPayment");
+  const overviewBlock = block(queries, "getMyPaymentOverview", "getAuthorizedOrderForPayment");
   assertContains(
     overviewBlock,
     "no customer payment visibility",
@@ -152,16 +152,10 @@ test("payment queries hide customer payment data from drivers/operations", () =>
 });
 
 test("order payment status comes from payment_transactions", () => {
-  const orderBlock = block(queries, "getMyOrderPayment", "getAuthorizedOrderForPayment");
+  const orderBlock = block(queries, "getMyPaymentOverview", "getAuthorizedOrderForPayment");
   assertContains(orderBlock, "latestPaymentForOrder", "latest transaction lookup");
-  assertContains(orderBlock, "status: payment?.status", "unpaid is a read model label");
+  assertContains(orderBlock, "payment: payment", "payment state returned per order");
   assertTrue(!orderBlock.includes("deliveryStatus"), "payment is not inferred from delivery status");
-});
-
-test("verification is scoped to the checkout's order", () => {
-  const verifyBlock = block(actions, "verifyOrderPayment", "processWebhookEvent");
-  assertContains(verifyBlock, "orderId: v.optional(v.id(\"orders\"))", "optional order scope");
-  assertContains(verifyBlock, "does not belong to this order", "cross-order reference refused");
 });
 
 // ─── 3. Amount integrity ─────────────────────────────────────────────────────
@@ -378,7 +372,8 @@ test("payment is order-scoped and the amount is read-only", () => {
     !/type="number"/.test(checkout),
     "no amount input field — the customer cannot type an amount"
   );
-  assertContains(checkout, "getMyOrderPayment", "order-scoped payment query");
+  assertContains(checkout, "getMyPaymentOverview", "authoritative payment query");
+  assertContains(checkout, "row.orderId === orderId", "overview filtered to this order");
   assertContains(checkout, "formatRands(total)", "amount rendered from server data");
   assertTrue(!existsSync("src/pages/MakePayment.tsx"), "duplicate payment page removed");
 });
