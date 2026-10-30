@@ -138,7 +138,9 @@ Indexes: `by_order`, `by_user`, `by_status`, `by_idempotency`, `by_provider`.
 **Credential handling.** `PAYSTACK_SECRET_KEY` is read only inside
 `payments/actions.ts` (a Convex action) and the webhook route. It is never
 returned to the client, never logged, never stored in records or audit events.
-The client receives only `{ alreadyPaid, reference, authorizationUrl }`.
+The client receives only payment-safe fields (`alreadyPaid`, `reference`,
+`authorizationUrl`, or the wallet result) — never the secret key or provider
+internals.
 
 **Card-data boundary.** Card details are collected only by Paystack's hosted
 checkout. The public payment surface has no card/OTP fields, no direct
@@ -160,12 +162,21 @@ from any attempt), the latest attempt for labelling, and
 make an already-paid order look unpaid. Payment state is never inferred from
 delivery status.
 
+The customer-facing quote projection also withholds the internal 30/70 split:
+`getQuoteForOrder` returns the delivery charge and breakdown to the sender, but
+`platformFee` and `driverEarnings` are only returned to operations/admin
+roles. Checkout does not display a platform-fee line; the split is deducted
+from the delivery fee internally and is never added on top.
+
 **Authorization.** Identity always resolves from the authenticated session:
-- Initiation: the order's sender (or super admin); drivers, fleet managers and
-  operations are explicitly rejected.
+- Initiation: the order's sender (or a super admin resolving the order). The
+  Customer Portal is open to every authenticated role and order creation only
+  requires a session, so a sender's role is not a payment restriction. A
+  non-owner is rejected by the same server-side ownership check.
 - Verification: the payer of the transaction (or super admin).
-- Payment-status queries: customers see their own orders, company admins their
-  business's; drivers/operations get no customer payment data.
+- Payment-status queries: every role sees payment state for orders they sent;
+  company admins additionally see their business's orders. No cross-customer
+  payment data is returned, regardless of role.
 - All payment record mutations are `internalMutation`s — there is no public
   mutation accepting `{ paymentSuccessful: true }`.
 

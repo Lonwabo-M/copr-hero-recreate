@@ -92,24 +92,29 @@ export const getMyPaymentOverview = query({
     const user = await getCurrentAuthUser(ctx);
     if (!user) throw new Error("Authentication required");
 
-    // Customers see their own orders; company admins see their business's.
-    let orders: Doc<"orders">[];
-    if (user.role === ROLES.CUSTOMER || user.role === ROLES.SUPER_ADMIN) {
-      orders = await ctx.db
-        .query("orders")
-        .withIndex("by_sender", (q) => q.eq("senderId", user.userId))
-        .collect();
-    } else if (user.role === ROLES.COMPANY_ADMIN) {
-      if (user.businessId === undefined) return [];
-      orders = await ctx.db
+    // Every role can be an order sender in the Customer Portal, so always
+    // include the user's own orders. A company admin additionally sees the
+    // business's orders; canInspectOrder below remains the final scope check.
+    const ordersById = new Map(
+      (
+        await ctx.db
+          .query("orders")
+          .withIndex("by_sender", (q) => q.eq("senderId", user.userId))
+          .collect()
+      ).map((order) => [order._id, order])
+    );
+
+    if (user.role === ROLES.COMPANY_ADMIN && user.businessId !== undefined) {
+      const businessOrders = await ctx.db
         .query("orders")
         .withIndex("by_business", (q) => q.eq("businessId", user.businessId!))
         .collect();
-    } else {
-      // Drivers, fleet managers, operations: no customer payment visibility.
-      return [];
+      for (const order of businessOrders) {
+        ordersById.set(order._id, order);
+      }
     }
 
+    const orders = [...ordersById.values()];
     const overview = [];
     for (const order of orders) {
       if (!canInspectOrder(user, order)) continue;

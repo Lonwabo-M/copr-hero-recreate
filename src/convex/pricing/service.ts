@@ -6,11 +6,10 @@
  * All pricing logic lives in Convex.
  */
 
-import { mutation, query, internalMutation, internalQuery } from "../_generated/server";
+import { mutation, query, internalMutation } from "../_generated/server";
 import { v } from "convex/values";
 import { Id, Doc } from "../_generated/dataModel";
 import {
-  DELIVERY_STATUS,
   ROLES,
   packageSizeValidator,
   parcelTypeValidator,
@@ -143,8 +142,12 @@ export const getActivePricingRules = query({
     if (!user) throw new Error("Authentication required");
     
     // Only operations and admin can view all rules
-    const allowedRoles = [ROLES.OPERATIONS, ROLES.COMPANY_ADMIN, ROLES.SUPER_ADMIN];
-    if (!allowedRoles.includes(user.role as any)) {
+    const allowedRoles: readonly string[] = [
+      ROLES.OPERATIONS,
+      ROLES.COMPANY_ADMIN,
+      ROLES.SUPER_ADMIN,
+    ];
+    if (!user.role || !allowedRoles.includes(user.role)) {
       throw new Error("Access denied");
     }
     
@@ -167,42 +170,66 @@ export const getPricingRule = query({
 });
 
 /**
- * Get quote for an order.
+ * Get the customer-facing quote for an order.
+ *
+ * Access:
+ * - the order's sender (any role — the Customer Portal is open to all)
+ * - a driver/fleet manager assigned to the delivery
+ * - operations / company_admin / super_admin
+ *
+ * Customers and drivers never receive the internal 30/70 split
+ * (`platformFee` / `driverEarnings`); privileged financial roles still get the
+ * full stored quote.
  */
 export const getQuoteForOrder = query({
   args: { orderId: v.id("orders") },
   handler: async (ctx, args) => {
     const user = await getCurrentAuthUser(ctx);
     if (!user) throw new Error("Authentication required");
-    
-    // Get the quote
+
     const quote = await ctx.db
       .query("delivery_quotes")
       .withIndex("by_order", (q) => q.eq("orderId", args.orderId))
       .order("desc")
       .first();
-    
+
     if (!quote) return null;
-    
-    // Check access.
-    // - Customers: only quotes on their own orders.
-    // - Drivers: only quotes for deliveries assigned to them (prevents a
-    //   driver from reading other orders' earnings/platform-fee breakdowns).
-    // - Operations/company_admin/super_admin: privileged financial roles.
-    if (user.role === ROLES.CUSTOMER && quote.userId !== user.userId) {
-      throw new Error("Access denied");
-    }
-    if (user.role === ROLES.DRIVER || user.role === ROLES.FLEET_MANAGER) {
-      const delivery = await ctx.db
-        .query("deliveries")
-        .withIndex("by_order", (q) => q.eq("orderId", args.orderId))
-        .unique();
-      if (!delivery || delivery.courierId !== user.userId) {
+
+    const isOwner = quote.userId === user.userId;
+    const isFinancialRole =
+      user.role === ROLES.OPERATIONS ||
+      user.role === ROLES.COMPANY_ADMIN ||
+      user.role === ROLES.SUPER_ADMIN;
+
+    if (!isOwner && !isFinancialRole) {
+      if (user.role === ROLES.DRIVER || user.role === ROLES.FLEET_MANAGER) {
+        const delivery = await ctx.db
+          .query("deliveries")
+          .withIndex("by_order", (q) => q.eq("orderId", args.orderId))
+          .unique();
+        if (!delivery || delivery.courierId !== user.userId) {
+          throw new Error("Access denied");
+        }
+      } else {
         throw new Error("Access denied");
       }
     }
-    
-    return quote;
+
+    if (isFinancialRole) return quote;
+
+    // Customer-safe projection: the platform split is internal.
+    return {
+      orderId: quote.orderId,
+      totalCharge: quote.totalCharge,
+      deliveryFee: quote.deliveryFee,
+      basePrice: quote.basePrice,
+      distanceFee: quote.distanceFee,
+      weightFee: quote.weightFee,
+      subtotal: quote.subtotal,
+      expressSurcharge: quote.expressSurcharge,
+      sameDaySurcharge: quote.sameDaySurcharge,
+      additionalFees: quote.additionalFees,
+    };
   },
 });
 
@@ -226,11 +253,11 @@ export const getDriverEarnings = query({
     }
     
     // Get completed settlements
-    let query = ctx.db
+    const settlementsQuery = ctx.db
       .query("settlements")
       .withIndex("by_driver", (q) => q.eq("driverId", driverId));
     
-    const settlements = await query.collect();
+    const settlements = await settlementsQuery.collect();
     
     // Filter by date range if provided
     const filtered = settlements.filter((s) => {

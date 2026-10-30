@@ -90,7 +90,9 @@ function DetailCell({
         {icon}
         {label}
       </span>
-      <span className="co-cell-value">{value}</span>
+      <span className={icon ? "co-cell-value with-icon" : "co-cell-value"}>
+        {value}
+      </span>
     </div>
   );
 }
@@ -490,9 +492,6 @@ export default function Checkout() {
                   <span>Delivery fee</span>
                   <strong>{formatRands(total)}</strong>
                 </div>
-                <p style={{ fontSize: 12, lineHeight: 1.5, color: "#8a8a8a", margin: "2px 0 12px" }}>
-                  Includes the 30% Lasha platform service fee.
-                </p>
                 <div className="co-fee-row total">
                   <span>Total</span>
                   <strong>{formatRands(total)}</strong>

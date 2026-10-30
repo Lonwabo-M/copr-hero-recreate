@@ -136,22 +136,12 @@ export const initiateOrderPayment = action({
       );
     }
 
-    // Authentication (session-derived) + role check via internal query —
-    // actions have no db access, so identity resolution happens in Convex
-    // queries/mutations only.
+    // Authentication (session-derived). The Customer Portal is available to
+    // every authenticated role, and order creation only requires a session, so
+    // a sender's role must not block paying for their own order. Ownership is
+    // enforced by the internal query below (and again by the write mutation).
     const userId = await getAuthUserId(ctx);
     if (!userId) throw new Error("Authentication required");
-    const roleCtx = await ctx.runQuery(internal.payments.queries.getUserRoleForPayment, {
-      userId,
-    });
-    if (!roleCtx) throw new Error("User not found");
-    if (
-      roleCtx.role === ROLES.DRIVER ||
-      roleCtx.role === ROLES.FLEET_MANAGER ||
-      roleCtx.role === ROLES.OPERATIONS
-    ) {
-      throw new Error("Access denied: this role cannot initiate customer payments");
-    }
 
     // Server-side order + amount resolution (auth + ownership enforced inside).
     const orderCtx: AuthorizedOrderPaymentCtx = await ctx.runQuery(
@@ -282,19 +272,9 @@ export const payOrderWithWallet = action({
     const userId = await getAuthUserId(ctx);
     if (!userId) throw new Error("Authentication required");
 
-    const roleCtx = await ctx.runQuery(
-      internal.payments.queries.getUserRoleForPayment,
-      { userId },
-    );
-    if (!roleCtx) throw new Error("User not found");
-    if (
-      roleCtx.role === ROLES.DRIVER ||
-      roleCtx.role === ROLES.FLEET_MANAGER ||
-      roleCtx.role === ROLES.OPERATIONS
-    ) {
-      throw new Error("Access denied: this role cannot initiate customer payments");
-    }
-
+    // No role gate here: the Customer Portal and order creation are open to
+    // every authenticated role. The query and wallet mutation enforce that the
+    // payer is the order's sender.
     const orderCtx: AuthorizedOrderPaymentCtx = await ctx.runQuery(
       internal.payments.queries.getAuthorizedOrderForPayment,
       { orderId: args.orderId },

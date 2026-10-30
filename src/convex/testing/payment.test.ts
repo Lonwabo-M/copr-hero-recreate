@@ -130,11 +130,21 @@ test("initiation resolves identity server-side (no client-supplied payer)", () =
   assertContains(orderBlock, "amount: order.price", "amount read from stored order");
 });
 
-test("drivers, fleet managers and operations cannot initiate customer payments", () => {
+test("payment role is not gated, but order ownership is enforced", () => {
   const initBlock = block(actions, "initiateOrderPayment", "verifyOrderPayment");
-  for (const role of ["ROLES.DRIVER", "ROLES.FLEET_MANAGER", "ROLES.OPERATIONS"]) {
-    assertContains(initBlock, role, `${role} excluded from initiation`);
-  }
+  const walletBlock = block(actions, "payOrderWithWallet", "// ─── Verification");
+  assertTrue(
+    !initBlock.includes("this role cannot initiate customer payments"),
+    "card initiation does not reject a portal role"
+  );
+  assertTrue(
+    !walletBlock.includes("this role cannot initiate customer payments"),
+    "wallet initiation does not reject a portal role"
+  );
+  assertContains(initBlock, "getAuthorizedOrderForPayment", "card ownership resolved server-side");
+  assertContains(walletBlock, "getAuthorizedOrderForPayment", "wallet ownership resolved server-side");
+  const orderBlock = block(queries, "getAuthorizedOrderForPayment", "getPaymentByReference");
+  assertContains(orderBlock, "only pay for your own orders", "non-owner payment rejected");
 });
 
 test("verification restricted to the payer (or super admin)", () => {
@@ -142,13 +152,11 @@ test("verification restricted to the payer (or super admin)", () => {
   assertContains(verifyBlock, "not your payment", "ownership check on verify");
 });
 
-test("payment queries hide customer payment data from drivers/operations", () => {
+test("payment queries scope visibility to the user's own orders", () => {
   const overviewBlock = block(queries, "getMyPaymentOverview", "getAuthorizedOrderForPayment");
-  assertContains(
-    overviewBlock,
-    "no customer payment visibility",
-    "driver/operations role branch returns no payment data"
-  );
+  assertContains(overviewBlock, "by_sender", "own sender orders included for every role");
+  assertContains(overviewBlock, "by_business", "company admin business scope retained");
+  assertContains(overviewBlock, "canInspectOrder", "final per-order scope check retained");
   assertTrue(
     !overviewBlock.includes("providerTransactionId"),
     "public payment overview does not expose provider transaction IDs"
@@ -418,6 +426,10 @@ test("payment is order-scoped and the amount is read-only", () => {
   assertContains(checkout, "getMyPaymentOverview", "authoritative payment query");
   assertContains(checkout, "row.orderId === orderId", "overview filtered to this order");
   assertContains(checkout, "formatRands(total)", "amount rendered from server data");
+  assertTrue(
+    !checkout.includes("platform service fee"),
+    "the 30/70 platform split is not customer-facing"
+  );
   assertTrue(!existsSync("src/pages/MakePayment.tsx"), "duplicate payment page removed");
 });
 

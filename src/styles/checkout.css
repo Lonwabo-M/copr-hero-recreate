@@ -228,6 +228,12 @@
   overflow-wrap: anywhere;
 }
 
+/* Align a value with its label text (past the 12px icon + 5px gap),
+   not with the icon itself. */
+.co-cell-value.with-icon {
+  padding-left: 17px;
+}
+
 /* ─── ETA card (deep teal) ──────────────────────────────────────────────── */
 
 .co-eta-card {
