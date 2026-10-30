@@ -21,6 +21,41 @@ import {
 import "@/styles/dashboard.css";
 import "@/styles/request-delivery.css";
 
+/**
+ * Explicit paste handling for the delivery form.
+ *
+ * Native paste has been unreliable in this form across browsers, so insert the
+ * clipboard text into the controlled value ourselves. Number fields keep only
+ * digits and a decimal separator; text fields collapse line breaks so a
+ * multi-line address still fits the single-line input.
+ */
+function pasteIntoInput(
+  event: React.ClipboardEvent<HTMLInputElement>,
+  value: string,
+  onChange: (next: string) => void,
+  numeric = false,
+) {
+  const pasted = event.clipboardData?.getData("text") ?? "";
+  if (!pasted) return;
+
+  event.preventDefault();
+  const normalized = numeric
+    ? pasted.replace(/,/g, ".").replace(/[^\d.]/g, "")
+    : pasted.replace(/\s*\n+\s*/g, " ");
+  if (!normalized) return;
+
+  const input = event.currentTarget;
+  let start = value.length;
+  let end = value.length;
+  try {
+    start = input.selectionStart ?? start;
+    end = input.selectionEnd ?? end;
+  } catch {
+    // Number inputs do not expose a text selection in every browser.
+  }
+  onChange(value.slice(0, start) + normalized + value.slice(end));
+}
+
 export default function RequestDelivery() {
   const navigate = useNavigate();
   const [submitting, setSubmitting] = useState(false);
@@ -188,6 +223,7 @@ export default function RequestDelivery() {
                         placeholder="Enter order name"
                         value={orderName}
                         onChange={(e) => setOrderName(e.target.value)}
+                        onPaste={(e) => pasteIntoInput(e, orderName, setOrderName)}
                       />
                     </div>
                   </div>
@@ -206,8 +242,8 @@ export default function RequestDelivery() {
                       >
                         <option value="" disabled>Select parcel type</option>
                         <option value="document">Document</option>
-                        <option value="small-parcel">Small Parcel</option>
-                        <option value="large-parcel">Large Parcel</option>
+                        <option value="small_parcel">Small Parcel</option>
+                        <option value="large_parcel">Large Parcel</option>
                         <option value="pallet">Pallet</option>
                       </select>
                       <ChevronDown className="form-select-arrow" size={18} />
@@ -229,7 +265,7 @@ export default function RequestDelivery() {
                         <option value="" disabled>Select expedition</option>
                         <option value="standard">Standard</option>
                         <option value="express">Express</option>
-                        <option value="same-day">Same Day</option>
+                        <option value="same_day">Same Day</option>
                       </select>
                       <ChevronDown className="form-select-arrow" size={18} />
                     </div>
@@ -248,6 +284,7 @@ export default function RequestDelivery() {
                           placeholder="Width"
                           value={width}
                           onChange={(e) => setWidth(e.target.value)}
+                          onPaste={(e) => pasteIntoInput(e, width, setWidth, true)}
                         />
                         <span className="form-dimension-unit">cm</span>
                       </div>
@@ -258,6 +295,7 @@ export default function RequestDelivery() {
                           placeholder="Height"
                           value={height}
                           onChange={(e) => setHeight(e.target.value)}
+                          onPaste={(e) => pasteIntoInput(e, height, setHeight, true)}
                         />
                         <span className="form-dimension-unit">cm</span>
                       </div>
@@ -277,6 +315,7 @@ export default function RequestDelivery() {
                         placeholder="Weight"
                         value={weight}
                         onChange={(e) => setWeight(e.target.value)}
+                        onPaste={(e) => pasteIntoInput(e, weight, setWeight, true)}
                       />
                       <span className="form-input-unit">kg</span>
                     </div>
@@ -325,6 +364,7 @@ export default function RequestDelivery() {
                         placeholder="Who is receiving this delivery?"
                         value={recipientName}
                         onChange={(e) => setRecipientName(e.target.value)}
+                        onPaste={(e) => pasteIntoInput(e, recipientName, setRecipientName)}
                       />
                     </div>
                   </div>
@@ -340,6 +380,7 @@ export default function RequestDelivery() {
                         placeholder="Contact number at drop-off"
                         value={recipientPhone}
                         onChange={(e) => setRecipientPhone(e.target.value)}
+                        onPaste={(e) => pasteIntoInput(e, recipientPhone, setRecipientPhone)}
                       />
                     </div>
                   </div>
@@ -419,7 +460,7 @@ export default function RequestDelivery() {
                     "Request Delivery"
                   )}
                 </button>
-                <p style={{ fontSize: 12, color: "var(--lasha-muted)", lineHeight: 1.6, marginTop: 10 }}>
+                <p style={{ fontSize: 12, color: "var(--lasha-muted)", lineHeight: 1.6, margin: 0 }}>
                   We give the assigned driver the recipient’s name, phone number and
                   addresses so the parcel can be collected and handed over. See our{" "}
                   <a href="/privacy" style={{ color: "var(--lasha-cyan)", fontWeight: 600 }}>Privacy Notice</a>.

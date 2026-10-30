@@ -149,6 +149,25 @@ export default function AddressField({
             setSaveError(null);
           }}
           onFocus={() => setOpen(true)}
+          onPaste={(event) => {
+            const pasted = event.clipboardData?.getData("text") ?? "";
+            if (!pasted) return;
+
+            // Native paste has been unreliable in this form; update the
+            // controlled value explicitly and keep the saved-address menu in
+            // sync with the pasted text.
+            event.preventDefault();
+            const input = event.currentTarget;
+            const start = input.selectionStart ?? value.length;
+            const end = input.selectionEnd ?? value.length;
+            const normalized = pasted.replace(/\s*\n+\s*/g, " ");
+            onChange(
+              value.slice(0, start) + normalized + value.slice(end),
+            );
+            setOpen(true);
+            setShowSave(false);
+            setSaveError(null);
+          }}
           onKeyDown={(event) => {
             if (event.key === "Escape") {
               setOpen(false);

@@ -111,10 +111,15 @@
 
 .form-input-unit {
   position: absolute;
-  right: 16px;
+  right: 36px;
   font-size: 14px;
   color: var(--text-muted);
   pointer-events: none;
+}
+
+/* Leave room for the native number spinner so it never sits under "kg". */
+.form-input[type="number"] {
+  padding-right: 72px;
 }
 
 /* Select Wrapper */
@@ -173,12 +178,12 @@
 }
 
 .form-dimension-input .form-input {
-  padding-right: 40px;
+  padding-right: 72px;
 }
 
 .form-dimension-unit {
   position: absolute;
-  right: 16px;
+  right: 36px;
   font-size: 14px;
   color: var(--text-muted);
   pointer-events: none;
@@ -255,7 +260,16 @@
 .form-actions {
   margin-top: 48px;
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.form-actions > p {
+  max-width: 620px;
+  margin: 0;
+  padding: 0 16px;
+  text-align: center;
 }
 
 .form-submit-btn {

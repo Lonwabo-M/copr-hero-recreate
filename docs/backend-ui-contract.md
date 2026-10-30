@@ -429,8 +429,8 @@ pricing_rules: {
 **Request Delivery Form Fields:**
 ```
 - orderName: string (required)
-- parcelType: document | small-parcel | large-parcel | pallet (required)
-- expeditionType: standard | express | same-day (required)
+- parcelType: document | small_parcel | large_parcel | pallet (required)
+- expeditionType: standard | express | same_day (required)
 - width: number (cm) (required)
 - height: number (cm) (required)
 - weight: number (kg) (required)
