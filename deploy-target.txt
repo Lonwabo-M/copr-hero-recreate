@@ -1,1 +1,1 @@
-CONVEX_DEPLOY_KEY=dummy-test-value
+CONVEX_DEPLOY_KEY=dev:incredible-warbler-335eyJ2MiI6Ijg2NGEyOTAwZjhlNzRmNDE4MzMzMzQ3Y2Q3YjhmOWRkIn0=@
