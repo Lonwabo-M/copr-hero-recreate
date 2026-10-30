@@ -14,6 +14,11 @@ import { v } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import { getCurrentAuthUser } from "../auth/authorization";
 import { ROLES } from "../schema";
+import {
+  findActiveCardAttempts,
+  findCompletedPayment,
+  findRefundedPayment,
+} from "./_paymentAttempts";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -42,17 +47,33 @@ function canInspectOrder(
   return false;
 }
 
-/** Latest payment transaction for an order (by creation, newest first). */
-async function latestPaymentForOrder(
+/**
+ * Authoritative payment facts for an order.
+ *
+ * The latest attempt drives the visible pending/failed label, but "paid" and
+ * "refunded" are derived from ANY attempt. A later failed duplicate-charge
+ * quarantine must never make an already-paid order look unpaid.
+ */
+async function paymentStateForOrder(
   ctx: Pick<QueryCtx, "db">,
   orderId: Id<"orders">
-): Promise<Doc<"payment_transactions"> | null> {
+): Promise<{
+  latest: Doc<"payment_transactions"> | null;
+  completed: Doc<"payment_transactions"> | null;
+  refunded: Doc<"payment_transactions"> | null;
+  activeCards: Doc<"payment_transactions">[];
+}> {
   const txs = await ctx.db
     .query("payment_transactions")
     .withIndex("by_order", (q) => q.eq("orderId", orderId))
     .collect();
-  if (txs.length === 0) return null;
-  return txs.sort((a, b) => b.createdAt - a.createdAt)[0];
+  const sorted = txs.sort((a, b) => b.createdAt - a.createdAt);
+  return {
+    latest: sorted[0] ?? null,
+    completed: findCompletedPayment(sorted),
+    refunded: findRefundedPayment(sorted),
+    activeCards: findActiveCardAttempts(sorted),
+  };
 }
 
 // ─── Public Queries ───────────────────────────────────────────────────────────
@@ -92,7 +113,8 @@ export const getMyPaymentOverview = query({
     const overview = [];
     for (const order of orders) {
       if (!canInspectOrder(user, order)) continue;
-      const payment = await latestPaymentForOrder(ctx, order._id);
+      const state = await paymentStateForOrder(ctx, order._id);
+      const payment = state.latest;
       overview.push({
         orderId: order._id,
         trackingNumber: order.trackingNumber ?? null,
@@ -100,6 +122,10 @@ export const getMyPaymentOverview = query({
         createdAt: order.createdAt,
         // Authoritative customer charge — stored at order creation.
         amount: order.price,
+        // Paid/refunded are order-level facts, not the latest attempt's state.
+        paid: state.completed !== null,
+        refunded: state.refunded !== null,
+        hasOpenCardCheckout: state.activeCards.length > 0,
         payment: payment
           ? {
               status: payment.status,
@@ -149,6 +175,9 @@ export const getAuthorizedOrderForPayment = internalQuery({
       .collect();
 
     const sorted = existing.sort((a, b) => b.createdAt - a.createdAt);
+    const completedPayment = findCompletedPayment(sorted);
+    const refundedPayment = findRefundedPayment(sorted);
+    const pendingCards = findActiveCardAttempts(sorted);
     const delivery = await ctx.db
       .query("deliveries")
       .withIndex("by_order", (q) => q.eq("orderId", order._id))
@@ -164,6 +193,26 @@ export const getAuthorizedOrderForPayment = internalQuery({
       userId: user.userId,
       userRole: user.role,
       latestPayment: sorted[0] ?? null,
+      // Order-level facts used by both payment actions. `latestPayment` alone
+      // is insufficient: a failed duplicate quarantine can be newer than the
+      // completed payment it duplicates.
+      completedPayment: completedPayment
+        ? {
+            transactionId: completedPayment._id,
+            reference: completedPayment.idempotencyKey,
+          }
+        : null,
+      refundedPayment: refundedPayment
+        ? {
+            transactionId: refundedPayment._id,
+            reference: refundedPayment.idempotencyKey,
+          }
+        : null,
+      pendingCards: pendingCards.map((attempt) => ({
+        transactionId: attempt._id,
+        reference: attempt.idempotencyKey,
+        createdAt: attempt.createdAt,
+      })),
       failedAttempts: sorted.filter((t) => t.status === "failed").length,
     };
   },

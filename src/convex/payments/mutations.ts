@@ -25,6 +25,12 @@ import { internalMutation } from "../_generated/server";
 import { v } from "convex/values";
 import { AUDIT_ACTIONS } from "../audit/service";
 import { internal } from "../_generated/api";
+import {
+  CARD_CHECKOUT_OPEN_MESSAGE,
+  evaluateCardCreationGate,
+  evaluateCompletionGate,
+  evaluateWalletPaymentGate,
+} from "./_paymentAttempts";
 
 // ─── Transaction Creation ─────────────────────────────────────────────────────
 
@@ -49,13 +55,69 @@ export const createPaymentTransaction = internalMutation({
     metadata: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    // Idempotency guard — resolve by the deterministic reference first.
+    // Re-read the authoritative order inside the write transaction. The action
+    // checked it before starting, but cancellation, a price change, or a
+    // competing wallet payment may have happened in between.
+    const order = await ctx.db.get(args.orderId);
+    if (!order) throw new Error("Order not found");
+    if (order.senderId !== args.userId) {
+      throw new Error("Access denied: you can only pay for your own orders");
+    }
+    if (order.price !== args.amount) {
+      throw new Error(
+        "The order amount changed while starting checkout — refresh and try again",
+      );
+    }
+    if (!Number.isInteger(args.amount) || args.amount <= 0) {
+      throw new Error("This delivery does not have a payable amount");
+    }
+
+    const delivery = await ctx.db
+      .query("deliveries")
+      .withIndex("by_order", (q) => q.eq("orderId", order._id))
+      .first();
+    if (
+      order.status === "cancelled" ||
+      delivery?.status === "cancelled" ||
+      delivery?.status === "failed"
+    ) {
+      throw new Error("This delivery was cancelled or failed — payment is no longer required");
+    }
+
+    const existing = await ctx.db
+      .query("payment_transactions")
+      .withIndex("by_order", (q) => q.eq("orderId", order._id))
+      .collect();
+
+    // A completed payment — card or wallet — makes this order terminal for
+    // payment purposes. This is the authoritative gate that closes the race
+    // where a card checkout is initiated after a wallet debit has committed.
+    const creationGate = evaluateCardCreationGate(existing);
+    if (creationGate.kind === "already_paid") {
+      return {
+        transactionId: creationGate.payment._id,
+        alreadyExists: true,
+        alreadyPaid: true as const,
+        reference: creationGate.payment.idempotencyKey,
+      };
+    }
+    if (creationGate.kind === "refunded") {
+      throw new Error("This payment was refunded — no further payment is due");
+    }
+
+    // Idempotency guard — resolve by the deterministic reference after the
+    // order-level paid/refunded checks above.
     const byRef = await ctx.db
       .query("payment_transactions")
       .withIndex("by_idempotency", (q) => q.eq("idempotencyKey", args.reference))
       .first();
     if (byRef) {
-      return { transactionId: byRef._id, alreadyExists: true };
+      return {
+        transactionId: byRef._id,
+        alreadyExists: true,
+        alreadyPaid: false as const,
+        reference: byRef.idempotencyKey,
+      };
     }
 
     const now = Date.now();
@@ -90,7 +152,12 @@ export const createPaymentTransaction = internalMutation({
       orderId: args.orderId,
     });
 
-    return { transactionId, alreadyExists: false };
+    return {
+      transactionId,
+      alreadyExists: false,
+      alreadyPaid: false as const,
+      reference: args.reference,
+    };
   },
 });
 
@@ -124,18 +191,26 @@ export const attachProviderTransaction = internalMutation({
 /**
  * Mark a payment completed — ONLY from verified provider evidence.
  *
- * Idempotent and concurrency-safe: completion only transitions from
- * `pending`/`processing`. A `completed` transaction short-circuits with
- * `alreadyCompleted: true`; a `failed` transaction refuses completion
- * (a failed payment cannot be resurrected by a stray late webhook — a new
- * attempt creates a new reference).
+ * Idempotent and concurrency-safe:
+ *  - `completed` short-circuits with `alreadyCompleted: true`.
+ *  - `pending`/`processing` complete normally.
+ *  - A `failed` transaction MAY still be completed by a later verified
+ *    provider success. This is deliberate: a failure can be recorded before a
+ *    provider charge settles (or from an earlier lifecycle event), and letting
+ *    that record permanently reject the authoritative success would leave the
+ *    customer charged but the order unpaid. A new attempt is not required.
+ *  - Before any completion, the whole order is checked. If a DIFFERENT
+ *    payment is already completed, the incoming charge is not allowed to
+ *    become a second successful payment. It is quarantined as `failed` with
+ *    `refundRequired` metadata so reconciliation flags it for refund review.
  */
 export const completePaymentTransaction = internalMutation({
   args: {
     transactionId: v.id("payment_transactions"),
     providerTransactionId: v.string(),
     providerStatus: v.string(),
-    amountFromProvider: v.optional(v.number()),
+    // Required: a provider success without an amount cannot prove the charge.
+    amountFromProvider: v.number(),
   },
   handler: async (ctx, args) => {
     const tx = await ctx.db.get(args.transactionId);
@@ -143,42 +218,102 @@ export const completePaymentTransaction = internalMutation({
 
     // Idempotency: already done — return unchanged.
     if (tx.status === "completed") {
-      return { success: true, alreadyCompleted: true };
-    }
-
-    if (tx.status === "failed") {
-      throw new Error(
-        "Payment transaction is failed; provider success cannot be applied to it"
-      );
+      return {
+        success: true,
+        alreadyCompleted: true,
+        duplicate: false as const,
+      };
     }
 
     if (tx.status === "refunded") {
-      throw new Error("Payment transaction is refunded; cannot be completed");
+      return {
+        success: false,
+        alreadyCompleted: false,
+        alreadyRefunded: true as const,
+        duplicate: false as const,
+      };
     }
 
-    // Amount integrity: if the provider reports an amount, it must match the
-    // authoritative stored charge (cents).
-    if (
-      args.amountFromProvider !== undefined &&
-      args.amountFromProvider !== tx.amount
-    ) {
+    if (args.providerStatus !== "success") {
+      throw new Error("Only a verified provider success can complete a payment");
+    }
+    if (!Number.isInteger(args.amountFromProvider)) {
+      throw new Error("Provider amount must be a whole number of cents");
+    }
+
+    // Amount integrity: the provider amount must match the authoritative
+    // stored charge (cents). This is checked even for late successes.
+    if (args.amountFromProvider !== tx.amount) {
       throw new Error(
         `Payment amount mismatch: provider reported ${args.amountFromProvider}, order charge is ${tx.amount} — refusing to complete`
       );
     }
 
-    // Attach provider evidence, then complete.
-    if (!tx.providerTransactionId) {
-      await ctx.db.patch(args.transactionId, {
-        providerTransactionId: args.providerTransactionId,
-      });
-    } else if (tx.providerTransactionId !== args.providerTransactionId) {
+    // Provider evidence integrity, before any state transition.
+    if (
+      tx.providerTransactionId &&
+      tx.providerTransactionId !== args.providerTransactionId
+    ) {
       throw new Error("Provider transaction ID mismatch — refusing to complete");
     }
 
+    // Cross-method duplicate guard: only one completed payment may exist for
+    // an order, regardless of provider, reference, or attempt order.
+    const attempts = await ctx.db
+      .query("payment_transactions")
+      .withIndex("by_order", (q) => q.eq("orderId", tx.orderId))
+      .collect();
+    const completionGate = evaluateCompletionGate(attempts, args.transactionId);
+
     const now = Date.now();
+
+    if (completionGate.kind === "duplicate") {
+      const duplicateReason =
+        "A second payment completed after this order was already paid — duplicate charge requires refund review";
+      await ctx.db.patch(args.transactionId, {
+        status: "failed",
+        providerTransactionId: args.providerTransactionId,
+        completedAt: now,
+        metadata: JSON.stringify({
+          duplicatePayment: true,
+          refundRequired: true,
+          duplicateOf: completionGate.payment._id,
+          duplicateReference: completionGate.payment.idempotencyKey,
+          providerStatus: args.providerStatus,
+          providerAmount: args.amountFromProvider,
+          failureReason: duplicateReason,
+        }),
+      });
+
+      await ctx.runMutation(internal.audit.service.recordPaymentEvent, {
+        actorId: tx.userId,
+        actorRole: "system",
+        action: AUDIT_ACTIONS.PAYMENT_FAILED,
+        entityType: "payment_transaction",
+        entityId: args.transactionId,
+        metadata: JSON.stringify({
+          reference: tx.idempotencyKey,
+          amount: tx.amount,
+          reason: duplicateReason,
+          duplicateOf: completionGate.payment._id,
+          refundRequired: true,
+          providerTransactionId: args.providerTransactionId,
+        }),
+        orderId: tx.orderId,
+      });
+
+      return {
+        success: false,
+        alreadyCompleted: false,
+        duplicate: true as const,
+        completedPaymentId: completionGate.payment._id,
+      };
+    }
+
+    // Attach provider evidence, then complete.
     await ctx.db.patch(args.transactionId, {
       status: "completed",
+      providerTransactionId: args.providerTransactionId,
       completedAt: now,
     });
 
@@ -194,6 +329,7 @@ export const completePaymentTransaction = internalMutation({
         amount: tx.amount,
         providerStatus: args.providerStatus,
         providerTransactionId: args.providerTransactionId,
+        recoveredFromFailed: tx.status === "failed",
       }),
       orderId: tx.orderId,
     });
@@ -211,7 +347,11 @@ export const completePaymentTransaction = internalMutation({
     // NOTE: Deliberately NO calls to processSettlement/completeSettlement and
     // NO changes to deliveries/orders. Customer payment ≠ driver settlement
     // (docs/customer-payment.md §5).
-    return { success: true, alreadyCompleted: false };
+    return {
+      success: true,
+      alreadyCompleted: false,
+      duplicate: false as const,
+    };
   },
 });
 
@@ -237,6 +377,11 @@ export const failPaymentTransaction = internalMutation({
     if (tx.status === "completed") {
       // Verified success beats a late failure event; keep the completion.
       return { success: true, alreadyCompleted: true };
+    }
+    if (tx.status === "refunded") {
+      // A refund is a terminal financial reversal; a late failure event must
+      // not rewrite it as an ordinary failed attempt.
+      return { success: true, alreadyRefunded: true };
     }
 
     const now = Date.now();
@@ -304,15 +449,21 @@ export const payOrderFromWallet = internalMutation({
       .withIndex("by_order", (q) => q.eq("orderId", order._id))
       .collect();
 
-    const completed = existingPayments.find((p) => p.status === "completed");
-    if (completed) {
+    const walletGate = evaluateWalletPaymentGate(existingPayments);
+    if (walletGate.kind === "already_paid") {
       return {
         alreadyPaid: true,
-        paymentId: completed._id,
-        reference: completed.idempotencyKey,
+        paymentId: walletGate.payment._id,
+        reference: walletGate.payment.idempotencyKey,
       };
     }
-    if (existingPayments.some((p) => p.status === "refunded")) {
+    if (walletGate.kind === "card_pending") {
+      // A hosted card checkout can still succeed. Debiting the wallet here
+      // would create the exact cross-method double-charge race this guard
+      // exists to prevent.
+      throw new Error(CARD_CHECKOUT_OPEN_MESSAGE);
+    }
+    if (walletGate.kind === "refunded") {
       throw new Error("This payment was refunded — no further payment is due");
     }
 

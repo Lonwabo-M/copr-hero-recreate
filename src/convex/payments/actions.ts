@@ -30,6 +30,14 @@ import { getAuthUserId } from "@convex-dev/auth/server";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { ROLES } from "../schema";
+import {
+  CARD_CHECKOUT_OPEN_MESSAGE,
+  classifyProviderStatus,
+} from "./_paymentAttempts";
+import {
+  requireProviderAmount,
+  verifyPaystackTransaction,
+} from "./_provider";
 
 const PAYSTACK_BASE = "https://api.paystack.co";
 
@@ -38,7 +46,47 @@ type WalletPaymentResult = {
   paymentId?: string;
   reference?: string;
   balance?: number;
+  duplicateCharge?: boolean;
 };
+
+type AuthorizedOrderPaymentCtx = {
+  orderId: Id<"orders">;
+  orderStatus: string;
+  deliveryStatus: string | null;
+  amount: number;
+  senderEmail: string | null;
+  userId: Id<"users">;
+  userRole: string;
+  latestPayment: {
+    orderId: Id<"orders">;
+    userId: Id<"users">;
+    amount: number;
+    currency: "ZAR";
+    method: string;
+    provider: string;
+    providerTransactionId?: string;
+    status: "pending" | "processing" | "completed" | "failed" | "refunded";
+    idempotencyKey: string;
+    metadata?: string;
+    createdAt: number;
+    completedAt?: number;
+  } | null;
+  completedPayment: {
+    transactionId: Id<"payment_transactions">;
+    reference: string;
+  } | null;
+  refundedPayment: {
+    transactionId: Id<"payment_transactions">;
+    reference: string;
+  } | null;
+  pendingCards: Array<{
+    transactionId: Id<"payment_transactions">;
+    reference: string;
+    createdAt: number;
+  }>;
+  failedAttempts: number;
+};
+
 
 // ─── Initiation ───────────────────────────────────────────────────────────────
 
@@ -96,40 +144,18 @@ export const initiateOrderPayment = action({
     }
 
     // Server-side order + amount resolution (auth + ownership enforced inside).
-    type OrderPaymentCtx = {
-      orderId: Id<"orders">;
-      orderStatus: string;
-      deliveryStatus: string | null;
-      amount: number;
-      senderEmail: string | null;
-      userId: Id<"users">;
-      userRole: string;
-      latestPayment: {
-        orderId: Id<"orders">;
-        userId: Id<"users">;
-        amount: number;
-        currency: "ZAR";
-        method: string;
-        provider: string;
-        providerTransactionId?: string;
-        status: "pending" | "processing" | "completed" | "failed" | "refunded";
-        idempotencyKey: string;
-        metadata?: string;
-        createdAt: number;
-        completedAt?: number;
-      } | null;
-      failedAttempts: number;
-    };
-    const orderCtx: OrderPaymentCtx = await ctx.runQuery(
+    const orderCtx: AuthorizedOrderPaymentCtx = await ctx.runQuery(
       internal.payments.queries.getAuthorizedOrderForPayment,
       { orderId: args.orderId }
     );
 
     // Already paid → refuse re-payment (idempotent, no duplicate completion).
-    if (orderCtx.latestPayment?.status === "completed") {
+    // This checks ANY completed payment, not only the latest attempt: a failed
+    // duplicate-charge quarantine can be newer than the completed payment.
+    if (orderCtx.completedPayment) {
       return {
         alreadyPaid: true,
-        reference: orderCtx.latestPayment.idempotencyKey,
+        reference: orderCtx.completedPayment.reference,
         authorizationUrl: null,
       };
     }
@@ -142,7 +168,7 @@ export const initiateOrderPayment = action({
     ) {
       throw new Error("This delivery was cancelled or failed — payment is no longer required");
     }
-    if (orderCtx.latestPayment?.status === "refunded") {
+    if (orderCtx.refundedPayment) {
       throw new Error("This payment was refunded — no further payment is due");
     }
     if (!Number.isInteger(orderCtx.amount) || orderCtx.amount <= 0) {
@@ -162,15 +188,27 @@ export const initiateOrderPayment = action({
         ? `pay-${orderCtx.orderId}`
         : `pay-${orderCtx.orderId}-r${orderCtx.failedAttempts}`;
 
-    // Idempotent transaction creation (internal re-checks the reference).
-    await ctx.runMutation(internal.payments.mutations.createPaymentTransaction, {
-      orderId: orderCtx.orderId,
-      userId: orderCtx.userId,
-      amount: orderCtx.amount,
-      method: "card",
-      reference,
-      metadata: JSON.stringify({ attempt: orderCtx.failedAttempts + 1 }),
-    });
+    // Idempotent transaction creation (internal re-checks the reference). The
+    // mutation also re-checks the order and any completed payment atomically,
+    // which is what stops a card checkout being created after a wallet debit.
+    const creation = await ctx.runMutation(
+      internal.payments.mutations.createPaymentTransaction,
+      {
+        orderId: orderCtx.orderId,
+        userId: orderCtx.userId,
+        amount: orderCtx.amount,
+        method: "card",
+        reference,
+        metadata: JSON.stringify({ attempt: orderCtx.failedAttempts + 1 }),
+      },
+    );
+    if (creation.alreadyPaid) {
+      return {
+        alreadyPaid: true,
+        reference: creation.reference,
+        authorizationUrl: null,
+      };
+    }
 
     // Idempotent initiation: if Paystack was already initialized for this
     // reference we re-verify its status rather than re-initializing.
@@ -247,18 +285,83 @@ export const payOrderWithWallet = action({
       throw new Error("Access denied: this role cannot initiate customer payments");
     }
 
-    const orderCtx: {
-      latestPayment: { status: string; idempotencyKey: string } | null;
-    } = await ctx.runQuery(
+    const orderCtx: AuthorizedOrderPaymentCtx = await ctx.runQuery(
       internal.payments.queries.getAuthorizedOrderForPayment,
       { orderId: args.orderId },
     );
 
-    if (orderCtx.latestPayment?.status === "completed") {
+    if (orderCtx.completedPayment) {
       return {
         alreadyPaid: true,
-        reference: orderCtx.latestPayment.idempotencyKey,
+        reference: orderCtx.completedPayment.reference,
       };
+    }
+    if (orderCtx.refundedPayment) {
+      throw new Error("This payment was refunded — no further payment is due");
+    }
+
+    // A wallet debit must not race a card checkout that can still succeed.
+    // Re-verify every open card attempt first:
+    //   - provider success -> finalize the card, return "already paid"
+    //   - failed/abandoned/reversed -> close that attempt, then try the wallet
+    //   - ongoing/unknown -> block, because the card can still charge later
+    if (orderCtx.pendingCards.length > 0) {
+      const secretKey = process.env.PAYSTACK_SECRET_KEY;
+      if (!secretKey) {
+        throw new Error(CARD_CHECKOUT_OPEN_MESSAGE);
+      }
+
+      for (const pending of orderCtx.pendingCards) {
+        const verification = await verifyPaystackTransaction(
+          secretKey,
+          pending.reference,
+        );
+        const outcome = classifyProviderStatus(verification.status);
+
+        if (outcome === "success") {
+          const amount = requireProviderAmount(verification);
+          const completion = await ctx.runMutation(
+            internal.payments.mutations.completePaymentTransaction,
+            {
+              transactionId: pending.transactionId,
+              providerTransactionId: verification.id ?? pending.reference,
+              providerStatus: verification.status,
+              amountFromProvider: amount,
+            },
+          );
+
+          if (completion.duplicate) {
+            return {
+              alreadyPaid: true,
+              reference: pending.reference,
+              duplicateCharge: true,
+            };
+          }
+          if (!completion.success) {
+            throw new Error(
+              "The card payment could not be finalized. Please return to card checkout instead.",
+            );
+          }
+          return { alreadyPaid: true, reference: pending.reference };
+        }
+
+        if (outcome === "failed") {
+          const failed = await ctx.runMutation(
+            internal.payments.mutations.failPaymentTransaction,
+            {
+              transactionId: pending.transactionId,
+              reason: `provider reported ${verification.status}`,
+            },
+          );
+          if ("alreadyCompleted" in failed && failed.alreadyCompleted) {
+            return { alreadyPaid: true, reference: pending.reference };
+          }
+          continue;
+        }
+
+        // ongoing / pending / unknown: the hosted checkout is still open.
+        throw new Error(CARD_CHECKOUT_OPEN_MESSAGE);
+      }
     }
 
     return await ctx.runMutation(
@@ -311,56 +414,54 @@ export const verifyOrderPayment = action({
       }
     }
 
-    // Ask Paystack for the authoritative status.
-    const response = await fetch(
-      `${PAYSTACK_BASE}/transaction/verify/${encodeURIComponent(args.reference)}`,
-      {
-        headers: { Authorization: `Bearer ${secretKey}` },
+    // Already authoritative; no provider round-trip needed.
+    if (tx.status === "completed") {
+      return { status: "completed" as const, duplicate: false as const };
+    }
+    if (tx.status === "refunded") {
+      return { status: "refunded" as const, duplicate: false as const };
+    }
+
+    // Ask Paystack for the authoritative status. A previously failed record is
+    // still re-checked: a later verified success must be able to rescue a
+    // customer who was charged after the failure was recorded.
+    const verification = await verifyPaystackTransaction(secretKey, args.reference);
+    const outcome = classifyProviderStatus(verification.status);
+
+    if (outcome === "success") {
+      const amountFromProvider = requireProviderAmount(verification);
+      const completion = await ctx.runMutation(
+        internal.payments.mutations.completePaymentTransaction,
+        {
+          transactionId: tx._id,
+          providerTransactionId: verification.id ?? args.reference,
+          providerStatus: verification.status,
+          amountFromProvider,
+        },
+      );
+
+      if (completion.duplicate) {
+        // The order was already paid by another attempt. The duplicate is
+        // quarantined by the mutation; the UI should not claim a second
+        // successful payment.
+        return { status: "completed" as const, duplicate: true as const };
       }
-    );
-
-    if (!response.ok) {
-      throw new Error(`Payment verification failed (HTTP ${response.status})`);
+      if (!completion.success) {
+        return { status: "failed" as const, duplicate: false as const };
+      }
+      return { status: "completed" as const, duplicate: false as const };
     }
 
-    const data = (await response.json()) as {
-      status: boolean;
-      data?: {
-        status: string; // "success" | "failed" | "abandoned" | "ongoing"
-        id?: number;
-        amount?: number; // kobo
-        reference?: string;
-      };
-    };
-
-    if (!data.status || !data.data) {
-      throw new Error("Payment verification returned an invalid response");
-    }
-
-    const providerStatus = data.data.status;
-    const providerTxId = data.data.id ? String(data.data.id) : args.reference;
-    const amountFromProvider = data.data.amount;
-
-    if (providerStatus === "success") {
-      await ctx.runMutation(internal.payments.mutations.completePaymentTransaction, {
-        transactionId: tx._id,
-        providerTransactionId: providerTxId,
-        providerStatus,
-        amountFromProvider,
-      });
-      return { status: "completed" as const };
-    }
-
-    if (providerStatus === "failed") {
+    if (outcome === "failed") {
       await ctx.runMutation(internal.payments.mutations.failPaymentTransaction, {
         transactionId: tx._id,
-        reason: "provider reported failed",
+        reason: `provider reported ${verification.status}`,
       });
-      return { status: "failed" as const };
+      return { status: "failed" as const, duplicate: false as const };
     }
 
-    // abandoned / ongoing — still pending from our perspective.
-    return { status: "pending" as const };
+    // ongoing / pending / unknown — still active from our perspective.
+    return { status: "pending" as const, duplicate: false as const };
   },
 });
 
@@ -404,6 +505,11 @@ export const processWebhookEvent = internalAction({
       }
 
       if (args.event === "charge.success") {
+        if (args.amountFromProvider === undefined) {
+          // Paystack always includes the charged amount on charge.success.
+          // Refuse to credit wallet value from an amount-less event.
+          throw new Error("Webhook charge.success is missing the provider amount");
+        }
         await ctx.runMutation(
           internal.payments.walletTopUps.completeWalletTopUp,
           {
@@ -431,13 +537,22 @@ export const processWebhookEvent = internalAction({
     }
 
     if (args.event === "charge.success") {
-      await ctx.runMutation(internal.payments.mutations.completePaymentTransaction, {
-        transactionId: tx._id,
-        providerTransactionId: args.providerTransactionId ?? args.reference,
-        providerStatus: "success",
-        amountFromProvider: args.amountFromProvider,
-      });
-      return { handled: true as const, result: "completed" as const };
+      if (args.amountFromProvider === undefined) {
+        throw new Error("Webhook charge.success is missing the provider amount");
+      }
+      const completion = await ctx.runMutation(
+        internal.payments.mutations.completePaymentTransaction,
+        {
+          transactionId: tx._id,
+          providerTransactionId: args.providerTransactionId ?? args.reference,
+          providerStatus: "success",
+          amountFromProvider: args.amountFromProvider,
+        },
+      );
+      return {
+        handled: true as const,
+        result: completion.duplicate ? ("duplicate" as const) : ("completed" as const),
+      };
     }
 
     if (args.event === "charge.failed") {

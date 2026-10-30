@@ -16,6 +16,11 @@ import { getAuthUserId } from "@convex-dev/auth/server";
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import { AUDIT_ACTIONS } from "../audit/service";
+import { classifyProviderStatus } from "./_paymentAttempts";
+import {
+  requireProviderAmount,
+  verifyPaystackTransaction,
+} from "./_provider";
 
 const PAYSTACK_BASE = "https://api.paystack.co";
 const MIN_TOPUP_CENTS = 1_000; // R10
@@ -109,15 +114,20 @@ export const getWalletTopUpByReference = internalQuery({
 
 /**
  * Credit the wallet exactly once. Called only after verified provider success
- * (or a signature-verified webhook). The provider amount, when supplied, must
- * match the stored top-up amount.
+ * (or a signature-verified webhook). The provider amount is required and must
+ * match the stored top-up amount exactly.
+ *
+ * A top-up previously marked `failed` may still be completed by a later
+ * verified provider success. Provider success is authoritative: refusing it
+ * would leave the customer charged without the wallet credit. The completed
+ * guard makes the transition safe under duplicate verify/webhook delivery.
  */
 export const completeWalletTopUp = internalMutation({
   args: {
     topUpId: v.id("wallet_topups"),
     providerTransactionId: v.string(),
     providerStatus: v.string(),
-    amountFromProvider: v.optional(v.number()),
+    amountFromProvider: v.number(),
   },
   handler: async (ctx, args) => {
     const topUp = await ctx.db.get(args.topUpId);
@@ -126,14 +136,20 @@ export const completeWalletTopUp = internalMutation({
     if (topUp.status === "completed") {
       return { success: true, alreadyCompleted: true };
     }
-    if (topUp.status === "failed") {
-      throw new Error("Wallet top-up failed; provider success cannot be applied to it");
-    }
 
+    if (args.providerStatus !== "success") {
+      throw new Error("Only a verified provider success can credit a wallet top-up");
+    }
+    if (!Number.isInteger(args.amountFromProvider)) {
+      throw new Error("Provider amount must be a whole number of cents");
+    }
     if (
-      args.amountFromProvider !== undefined &&
-      args.amountFromProvider !== topUp.amount
+      topUp.providerTransactionId &&
+      topUp.providerTransactionId !== args.providerTransactionId
     ) {
+      throw new Error("Provider transaction ID mismatch — refusing to credit");
+    }
+    if (args.amountFromProvider !== topUp.amount) {
       throw new Error(
         `Wallet top-up amount mismatch: provider reported ${args.amountFromProvider}, stored amount is ${topUp.amount} — refusing to credit`,
       );
@@ -379,50 +395,30 @@ export const verifyWalletTopUp = action({
     if (topUp.status === "completed") {
       return { status: "completed" as const };
     }
-    if (topUp.status === "failed") {
-      return { status: "failed" as const };
-    }
 
-    const response = await fetch(
-      `${PAYSTACK_BASE}/transaction/verify/${encodeURIComponent(args.reference)}`,
-      { headers: { Authorization: `Bearer ${secretKey}` } },
-    );
-    if (!response.ok) {
-      throw new Error(`Payment verification failed (HTTP ${response.status})`);
-    }
+    // A failed top-up is re-checked too: if the provider later confirms a
+    // success, the customer must receive the wallet credit rather than being
+    // stranded behind our earlier failure record.
+    const verification = await verifyPaystackTransaction(secretKey, args.reference);
+    const outcome = classifyProviderStatus(verification.status);
 
-    const data = (await response.json()) as {
-      status: boolean;
-      data?: {
-        status: string;
-        id?: number;
-        amount?: number;
-      };
-    };
-
-    if (!data.status || !data.data) {
-      throw new Error("Payment verification returned an invalid response");
-    }
-
-    if (data.data.status === "success") {
+    if (outcome === "success") {
       await ctx.runMutation(
         internal.payments.walletTopUps.completeWalletTopUp,
         {
           topUpId: topUp._id,
-          providerTransactionId: data.data.id
-            ? String(data.data.id)
-            : args.reference,
-          providerStatus: data.data.status,
-          amountFromProvider: data.data.amount,
+          providerTransactionId: verification.id ?? args.reference,
+          providerStatus: verification.status,
+          amountFromProvider: requireProviderAmount(verification),
         },
       );
       return { status: "completed" as const };
     }
 
-    if (data.data.status === "failed") {
+    if (outcome === "failed") {
       await ctx.runMutation(internal.payments.walletTopUps.failWalletTopUp, {
         topUpId: topUp._id,
-        reason: "provider reported failed",
+        reason: `provider reported ${verification.status}`,
       });
       return { status: "failed" as const };
     }

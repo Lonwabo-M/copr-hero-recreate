@@ -20,6 +20,7 @@
 
 import type { Doc, Id } from "../_generated/dataModel";
 import { DELIVERY_STATUS } from "../schema";
+import { findRefundRequiredAttempts } from "./_paymentAttempts";
 
 // ─── Reconciliation States ────────────────────────────────────────────────────
 
@@ -114,6 +115,16 @@ export async function evaluateOrderFinancials(
     .query("payment_transactions")
     .withIndex("by_order", (q: any) => q.eq("orderId", orderId))
     .collect()) as Doc<"payment_transactions">[];
+
+  // A verified duplicate charge stays `failed` with refundRequired metadata.
+  // It does not count as a completed payment, but it must still surface: the
+  // customer has been charged twice even though only one completion exists.
+  const refundRequiredAttempts = findRefundRequiredAttempts(allPayments);
+  if (refundRequiredAttempts.length > 0) {
+    anomalies.push(
+      `${refundRequiredAttempts.length} duplicate provider charge(s) require refund review`
+    );
+  }
 
   const completedPayments = allPayments.filter((p) => p.status === "completed");
 
