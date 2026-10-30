@@ -141,8 +141,10 @@ http.route({
  *    signatures are rejected with 401 and no state changes occur.
  *  - The internal payment transaction is resolved by the reference inside the
  *    payload (our idempotency key) — payload order IDs are never trusted.
- *  - Processing is idempotent: duplicate charge.success events short-circuit
- *    inside completePaymentTransaction (already-completed guard).
+ *  - Processing is idempotent: replayed charge.success events short-circuit
+ *    inside completePaymentTransaction. A success for a second attempt is
+ *    quarantined as failed with refundRequired metadata instead of becoming
+ *    a second completed payment.
  */
 http.route({
   path: "/payments/paystack/webhook",

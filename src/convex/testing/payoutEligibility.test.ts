@@ -71,10 +71,6 @@ const gateCode = gate
   .join("\n");
 const helper = read("src/convex/payments/_reconcile.ts");
 const pricing = read("src/convex/pricing/service.ts");
-const pricingCode = pricing
-  .split("\n")
-  .filter((l) => !l.trim().startsWith("//") && !l.trim().startsWith("*") && !l.trim().startsWith("/*"))
-  .join("\n");
 const schema = read("src/convex/schema.ts");
 const reconTest = read("src/convex/testing/reconciliation.test.ts");
 const paymentTest = read("src/convex/testing/payment.test.ts");
@@ -158,11 +154,17 @@ test("reconciliation read model uses the same helper", () => {
   assertContains(recon, "evaluateOrderFinancials", "reconciliation delegates to shared evaluation");
 });
 
-test("no circular dependency: helper imports only schema types", () => {
+test("no circular dependency: helper imports only pure modules", () => {
   const helperImports = helper.match(/^import .*$/gm) ?? [];
   assertTrue(
-    helperImports.every((i) => i.includes("_generated/dataModel") || i.includes("../schema")),
-    "helper imports nothing from function modules"
+    helperImports.every(
+      (i) =>
+        i.includes("_generated/dataModel") ||
+        i.includes("_generated/server") ||
+        i.includes("../schema") ||
+        i.includes("./_paymentAttempts")
+    ),
+    "helper imports only schema types and the pure payment-attempt policy"
   );
 });
 

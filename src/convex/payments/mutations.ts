@@ -267,21 +267,31 @@ export const completePaymentTransaction = internalMutation({
 
     const now = Date.now();
 
-    if (completionGate.kind === "duplicate") {
-      const duplicateReason =
-        "A second payment completed after this order was already paid — duplicate charge requires refund review";
+    if (
+      completionGate.kind === "duplicate" ||
+      completionGate.kind === "refunded"
+    ) {
+      const isDuplicate = completionGate.kind === "duplicate";
+      const blockingPayment = completionGate.payment;
+      const quarantineReason = isDuplicate
+        ? "A second payment completed after this order was already paid — duplicate charge requires refund review"
+        : "A provider charge succeeded after this order's payment was refunded — refund review required";
+
       await ctx.db.patch(args.transactionId, {
         status: "failed",
         providerTransactionId: args.providerTransactionId,
         completedAt: now,
         metadata: JSON.stringify({
-          duplicatePayment: true,
+          duplicatePayment: isDuplicate || undefined,
+          paymentAfterRefund: !isDuplicate || undefined,
           refundRequired: true,
-          duplicateOf: completionGate.payment._id,
-          duplicateReference: completionGate.payment.idempotencyKey,
+          duplicateOf: isDuplicate ? blockingPayment._id : undefined,
+          duplicateReference: isDuplicate ? blockingPayment.idempotencyKey : undefined,
+          refundedPaymentId: !isDuplicate ? blockingPayment._id : undefined,
+          refundedReference: !isDuplicate ? blockingPayment.idempotencyKey : undefined,
           providerStatus: args.providerStatus,
           providerAmount: args.amountFromProvider,
-          failureReason: duplicateReason,
+          failureReason: quarantineReason,
         }),
       });
 
@@ -294,8 +304,9 @@ export const completePaymentTransaction = internalMutation({
         metadata: JSON.stringify({
           reference: tx.idempotencyKey,
           amount: tx.amount,
-          reason: duplicateReason,
-          duplicateOf: completionGate.payment._id,
+          reason: quarantineReason,
+          duplicateOf: isDuplicate ? blockingPayment._id : undefined,
+          refundedPaymentId: !isDuplicate ? blockingPayment._id : undefined,
           refundRequired: true,
           providerTransactionId: args.providerTransactionId,
         }),
@@ -306,7 +317,7 @@ export const completePaymentTransaction = internalMutation({
         success: false,
         alreadyCompleted: false,
         duplicate: true as const,
-        completedPaymentId: completionGate.payment._id,
+        completedPaymentId: blockingPayment._id,
       };
     }
 

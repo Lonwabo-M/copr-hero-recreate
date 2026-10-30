@@ -19,6 +19,7 @@
  */
 
 import type { Doc, Id } from "../_generated/dataModel";
+import type { QueryCtx } from "../_generated/server";
 import { DELIVERY_STATUS } from "../schema";
 import { findRefundRequiredAttempts } from "./_paymentAttempts";
 
@@ -83,7 +84,7 @@ export interface OrderFinancialEvaluation {
  * all via existing indexes — and derives the reconciliation state.
  */
 export async function evaluateOrderFinancials(
-  ctx: { db: any },
+  ctx: Pick<QueryCtx, "db">,
   orderId: Id<"orders">
 ): Promise<OrderFinancialEvaluation> {
   const anomalies: string[] = [];
@@ -97,7 +98,7 @@ export async function evaluateOrderFinancials(
   // ── Quote (authoritative pricing breakdown) ──
   const quotes = (await ctx.db
     .query("delivery_quotes")
-    .withIndex("by_order", (q: any) => q.eq("orderId", orderId))
+    .withIndex("by_order", (q) => q.eq("orderId", orderId))
     .collect()) as Doc<"delivery_quotes">[];
   // Newest quote is the authoritative one (same rule as settlement creation).
   const quote =
@@ -113,7 +114,7 @@ export async function evaluateOrderFinancials(
   // ── Customer payment (server-verified provider records) ──
   const allPayments = (await ctx.db
     .query("payment_transactions")
-    .withIndex("by_order", (q: any) => q.eq("orderId", orderId))
+    .withIndex("by_order", (q) => q.eq("orderId", orderId))
     .collect()) as Doc<"payment_transactions">[];
 
   // A verified duplicate charge stays `failed` with refundRequired metadata.
@@ -122,7 +123,7 @@ export async function evaluateOrderFinancials(
   const refundRequiredAttempts = findRefundRequiredAttempts(allPayments);
   if (refundRequiredAttempts.length > 0) {
     anomalies.push(
-      `${refundRequiredAttempts.length} duplicate provider charge(s) require refund review`
+      `${refundRequiredAttempts.length} provider charge(s) require refund review (duplicate or post-refund)`
     );
   }
 
@@ -164,7 +165,7 @@ export async function evaluateOrderFinancials(
   // ── Settlement (driver entitlement) ──
   const settlements = (await ctx.db
     .query("settlements")
-    .withIndex("by_order", (q: any) => q.eq("orderId", orderId))
+    .withIndex("by_order", (q) => q.eq("orderId", orderId))
     .collect()) as Doc<"settlements">[];
   const settlement = settlements.length > 0 ? settlements[0] : null;
   if (settlements.length > 1) {
@@ -186,7 +187,7 @@ export async function evaluateOrderFinancials(
   const delivery =
     (await ctx.db
       .query("deliveries")
-      .withIndex("by_order", (q: any) => q.eq("orderId", orderId))
+      .withIndex("by_order", (q) => q.eq("orderId", orderId))
       .unique()) ?? null;
 
   // ── Derived reconciliation state ──

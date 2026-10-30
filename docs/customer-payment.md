@@ -32,6 +32,30 @@ separate payment destination.
 Both verification paths converge on the same guarded internal mutations, so the
 webhook and the customer's return-verify are mutually idempotent.
 
+### Cross-method lock (card + wallet)
+
+Only **one completed payment per order** is authoritative, regardless of method
+or provider reference. The shared policy lives in
+`payments/_paymentAttempts.ts` and is enforced inside Convex mutations:
+
+- A wallet debit is refused while any `pending`/`processing` card attempt can
+  still succeed. Its oldest open attempt is verified with Paystack first:
+  - provider `success` → the card is completed; the wallet is not debited;
+  - provider `failed` / `abandoned` / `reversed` → that attempt is closed and
+    the wallet may proceed;
+  - `ongoing` / `pending` / unknown status → the wallet is blocked.
+- A card attempt cannot be created after any payment has completed (including
+  a wallet payment).
+- A provider success for a second attempt is quarantined as a duplicate: the
+  attempt is written as `failed` with `duplicatePayment`, `refundRequired`,
+  and `duplicateOf` metadata. It is **not** credited or counted as a second
+  completion. Reconciliation and payout eligibility surface it for refund
+  review; there is no automatic refund.
+- An already-open card attempt that succeeds after the order's payment was
+  refunded is quarantined the same way (`paymentAfterRefund`, `refundRequired`).
+  A refunded order must not become paid again through a checkout opened before
+  the refund.
+
 **Payment state machine** (`payment_transactions.status`, from the schema):
 
 | Status | Meaning | Entered by |
@@ -43,7 +67,10 @@ webhook and the customer's return-verify are mutually idempotent.
 | `refunded` | Minimal representation; no refund workflow yet | Not currently entered |
 
 A checkout URL is **not** success. Only provider evidence moves the record to
-`completed`.
+`completed`. A record previously marked `failed` may still become `completed`
+when a later verification or webhook proves the provider actually charged it.
+Provider success is authoritative; otherwise a customer could remain charged
+while the order stays unpaid. The completed guard keeps replayed events safe.
 
 ---
 
@@ -63,6 +90,18 @@ Endpoints used:
 - `GET /transaction/verify/{reference}` — authoritative status check
 - Webhook `POST /payments/paystack/webhook` (Convex HTTP route) —
   `charge.success` / `charge.failed`
+
+**Paystack dashboard webhook URL.** Paystack must call the backend's
+`.convex.site` route, not the frontend `SITE_URL`:
+
+```
+https://incredible-warbler-335.convex.site/payments/paystack/webhook
+```
+
+The path is implemented by `src/convex/http.ts`. The dashboard configuration is
+separate from `SITE_URL` (which only controls where the customer returns after
+hosted checkout). No application code change is needed when the dashboard
+already points at that URL.
 
 **Card data never enters Lasha.** The customer enters card details on
 Paystack's hosted page. There is no direct `/charge` call, no OTP relay, and no
@@ -84,11 +123,11 @@ Existing `payment_transactions` table — reused, not re-created:
 | `amount` | Copied from the authoritative `orders.price` (cents ZAR) |
 | `currency` | `ZAR` |
 | `method` | `card` (hosted checkout) \| `wallet` (the server sets this; the client cannot choose it) |
-| `provider` | `paystack` |
+| `provider` | `paystack` for card; `lasha_wallet` for wallet |
 | `providerTransactionId` | Paystack transaction ID, attached at verification |
 | `status` | State machine above |
 | `createdAt` / `completedAt` | Lifecycle timestamps |
-| `metadata` | Attempt counter / failure reason (no credentials, no card data) |
+| `metadata` | Attempt counter / failure reason / duplicate-refund flag (no credentials, no card data) |
 
 Indexes: `by_order`, `by_user`, `by_status`, `by_idempotency`, `by_provider`.
 
@@ -111,14 +150,15 @@ bank codes. Only the server-side secret key can initialize or verify a payment.
 The initiation action takes `orderId` plus an optional legacy `"card"` literal
 (kept only for compatibility with the already-deployed action); amount and
 recorded method are resolved server-side. There is no amount input in Checkout.
-If Paystack's verification reports an amount differing from the stored charge,
+If Paystack's verification reports a missing, non-integer, or differing amount,
 completion is refused. Payment is refused server-side for cancelled orders,
 cancelled/failed deliveries, refunded payments, and non-positive amounts.
 Checkout reads payment state from `payments.queries.getMyPaymentOverview`,
-which returns the latest
-`payment_transactions` row for each of the customer's orders; Checkout selects
-the row for the order being paid. Payment state is never inferred from delivery
-status.
+which returns authoritative order-level `paid` and `refunded` facts (derived
+from any attempt), the latest attempt for labelling, and
+`hasOpenCardCheckout`. A newer failed duplicate-charge quarantine must never
+make an already-paid order look unpaid. Payment state is never inferred from
+delivery status.
 
 **Authorization.** Identity always resolves from the authenticated session:
 - Initiation: the order's sender (or super admin); drivers, fleet managers and
@@ -165,7 +205,10 @@ Layer 2 (settlement) documentation: see `docs/driver-earnings-settlement.md`.
 ## 6. Refund / Reversal
 
 **Currently implemented:** the `refunded` status literal exists in the schema
-(minimal state representation). Nothing enters or processes it.
+(minimal state representation). Nothing enters or processes it. Separately,
+duplicate verified charges are quarantined as `failed` with `refundRequired`
+metadata and surfaced by reconciliation; this is a **refund-review flag**, not
+a refund flow. No money is moved automatically.
 
 **Future rules to establish (not yet decided — no amounts or policy fabricated):**
 
@@ -186,16 +229,24 @@ Layer 2 (settlement) documentation: see `docs/driver-earnings-settlement.md`.
 - Transaction creation re-checks `by_idempotency` before inserting.
 - Completion/failure mutations short-circuit on their existing terminal state;
   duplicate webhooks and repeated verifies cannot double-complete.
-- A `failed` transaction cannot be resurrected by a late success event; the
-  retry path mints a fresh reference instead.
-- An already-paid order refuses re-initiation (`alreadyPaid: true`).
+- A later verified provider success may recover a `failed` attempt; the
+  completed guard prevents duplicate credit on replayed events.
+- An already-paid order refuses re-initiation and wallet debit
+  (`alreadyPaid: true`), including when the latest attempt is a failed
+  duplicate-charge record.
+- A second verified provider success is quarantined as `failed` with
+  `refundRequired` rather than becoming a second completion.
 
 ## Testing
 
-`src/convex/testing/payment.test.ts` — 33 assertions covering the model,
+`src/convex/testing/payment.test.ts` — 35 assertions covering the model,
 authorization, amount integrity, state machine, idempotency, webhook security,
-settlement/delivery separation, credential hygiene, and UI integrity. Run:
-`bunx tsx src/convex/testing/payment.test.ts`.
+settlement/delivery separation, credential hygiene, and UI integrity.
+`src/convex/testing/paymentRace.test.ts` — 16 pure policy tests for the
+card/wallet locks, duplicate completion quarantine, late failure recovery, and
+provider status classification. Run:
+`bunx tsx src/convex/testing/payment.test.ts` and
+`bunx tsx src/convex/testing/paymentRace.test.ts`.
 
 ## Remaining Limitations
 
@@ -204,7 +255,11 @@ settlement/delivery separation, credential hygiene, and UI integrity. Run:
   amount is debited from the Lasha wallet in the same mutation that records the
   completed payment.
 - Wallet top-ups use Paystack hosted checkout. Provider verification or a
-  signature-verified webhook credits the wallet exactly once.
+  signature-verified webhook credits the wallet exactly once. A top-up marked
+  failed may still be credited by a later verified provider success, so a late
+  successful charge is not stranded.
+- No automatic refunds: duplicate card charges are flagged for manual refund
+  review.
 - Wallet-to-wallet transfers and external withdrawals are not implemented.
 - No standalone payment-history page: payment state appears on the order
   Checkout and delivery tracking. A customer-wide payment ledger is future work.

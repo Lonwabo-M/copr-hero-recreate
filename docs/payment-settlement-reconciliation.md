@@ -69,10 +69,10 @@ carry `orderId`; reconciliation can be computed per order:
 
 ```
 For order O:
-  payment = latest payment_transactions where orderId = O
+  payment = any completed payment_transactions where orderId = O
   settle  = unique settlements where orderId = O        (by_order index)
 
-  customerPaid   = payment?.status === "completed" && payment.amount === O.price
+  customerPaid   = payment != null && payment.amount === O.price
   driverEntitled = settle != null                        (settle.driverEarnings)
   platformRevenue = O.price − settle.driverEarnings      (when settle exists)
   settledPaid    = settle?.status === "completed"
@@ -132,7 +132,7 @@ place, reversible by policy change).
 | **Payment fails after delivery** | Settlement remains `pending`/payable; payment `failed`. Driver entitlement and customer non-payment coexist | Under Model B, payout stays blocked — correct. Escalation (retry payment / cancel) needs ops tooling |
 | **Refund after successful payment** | Schema has a `refunded` literal; nothing enters it. No effect on settlement/wallet today | Requires full policy: payment → refunded; wallet claw-back if settlement already `completed`; settlement reversal handling. **Unresolved** |
 | **Partial payment** | **Unsupported** — Paystack is initialized for the full charge; `completePaymentTransaction` refuses any provider amount ≠ stored charge | Explicitly: partial payments are unsupported until a policy and amount-tracking model exist |
-| **Duplicate payment** | Safe (verified): one deterministic reference per order; second init returns `alreadyPaid`; amount-mismatch and provider-ID-mismatch guards; completion short-circuits `alreadyCompleted` | Two *different* references cannot both complete for one order because reference 1 completing makes the latest-payment check return `alreadyPaid` before a second checkout is created. Webhook replays are no-ops |
+| **Duplicate payment** | **Prevented across methods, quarantined if provider already charged.** One completed payment per order is authoritative. Wallet debits are refused while a card attempt can still succeed (open attempts are re-verified first); card creation is refused after any completion. A second verified provider success is written as `failed` with `duplicatePayment` / `refundRequired` / `duplicateOf` metadata, flagged by reconciliation, and blocks payout eligibility. No automatic refund exists. Webhook replays remain no-ops | **Manual refund review** for the quarantined duplicate. Future refund workflow must consume the flag; current code never silently treats two completed payments as cleanly paid. Late verified success can recover a prematurely failed attempt, because provider success is authoritative |
 | **Duplicate settlement** | Safe (verified): `settlement-${deliveryId}` deterministic key, `by_idempotency` + `by_delivery` double-check, completion gated by `processing` state | — |
 
 ---
@@ -310,8 +310,11 @@ The query checks and reports (without modifying anything):
 3. settlement `driverEarnings` vs quote `driverEarnings`
 4. multiple completed payments for one order (possible duplicate charge —
    never silently collapsed)
-5. multiple settlements for one order (idempotency violation)
-6. order not found; multiple quotes (informational)
+5. failed duplicate or post-refund charges carrying `refundRequired`
+   metadata (the customer was charged twice, or charged after a refund,
+   even though only one completion exists)
+6. multiple settlements for one order (idempotency violation)
+7. order not found; multiple quotes (informational)
 
 ### Customer payment determination
 
@@ -380,7 +383,8 @@ A settlement is **payout-eligible** only when ALL of the following hold:
    row whose amount equals `orders.price` (the same `customerPaid` rule the
    reconciliation model uses).
 6. **Zero reconciliation anomalies** (amount mismatches, duplicate completed
-   payments, duplicate settlements, disputed states). `ANOMALY` always blocks.
+   payments, `refundRequired` duplicate charges, duplicate settlements,
+   disputed states). `ANOMALY` always blocks.
 
 ### Rejected conditions → reason codes
 

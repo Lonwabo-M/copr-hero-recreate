@@ -49,6 +49,16 @@ type WalletPaymentResult = {
   duplicateCharge?: boolean;
 };
 
+type InitiatePaymentResult = {
+  alreadyPaid: boolean;
+  reference: string;
+  authorizationUrl: string | null;
+};
+
+type WebhookEventResult =
+  | { handled: false }
+  | { handled: true; result: "completed" | "failed" | "duplicate" };
+
 type AuthorizedOrderPaymentCtx = {
   orderId: Id<"orders">;
   orderStatus: string;
@@ -108,7 +118,7 @@ export const initiateOrderPayment = action({
     // handler ignores it and always records the hosted card channel.
     method: v.optional(v.literal("card")),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<InitiatePaymentResult> => {
     const secretKey = process.env.PAYSTACK_SECRET_KEY;
     if (!secretKey) {
       throw new Error(
@@ -487,7 +497,7 @@ export const processWebhookEvent = internalAction({
     providerTransactionId: v.optional(v.string()),
     amountFromProvider: v.optional(v.number()),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<WebhookEventResult> => {
     const tx = await ctx.runQuery(internal.payments.queries.getPaymentByReference, {
       reference: args.reference,
     });

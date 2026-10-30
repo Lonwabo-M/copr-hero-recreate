@@ -143,11 +143,19 @@ export default function Checkout() {
     verifyPayment({ reference })
       .then((result) => {
         if (cancelled) return;
-        if (result.status === "completed") {
+        if (result.duplicate) {
+          setNotice("This delivery is already paid.");
+          setError(
+            "A duplicate card charge was detected and has been flagged for refund review. Please contact support.",
+          );
+        } else if (result.status === "completed") {
           setNotice("Payment successful — thank you.");
           setError(null);
         } else if (result.status === "failed") {
           setError("The payment was not completed. You can try again.");
+        } else if (result.status === "refunded") {
+          setNotice("This payment was refunded. No further payment is due.");
+          setError(null);
         } else {
           setNotice(
             "Payment is still pending with the provider. This page updates when it completes.",
@@ -175,13 +183,15 @@ export default function Checkout() {
   const handlePayError = (e: unknown) => {
     const msg = e instanceof Error ? e.message : "";
     setError(
-      msg.includes("not configured") || msg.includes("not enabled")
-        ? "Online payments are not enabled yet. Please try again later."
-        : msg.includes("email")
-          ? "Your account needs a verified email address before paying."
-          : msg.includes("Could not find public function")
-            ? "This payment option is not available on the current backend yet. Please use card checkout."
-            : msg || "We couldn't start your payment. Please try again.",
+      msg.includes("card checkout is still open")
+        ? "A card checkout is still open for this delivery. Complete it, or wait for it to expire, before paying with your wallet."
+        : msg.includes("not configured") || msg.includes("not enabled")
+          ? "Online payments are not enabled yet. Please try again later."
+          : msg.includes("email")
+            ? "Your account needs a verified email address before paying."
+            : msg.includes("Could not find public function")
+              ? "This payment option is not available on the current backend yet. Please use card checkout."
+              : msg || "We couldn't start your payment. Please try again.",
     );
   };
 
@@ -222,6 +232,13 @@ export default function Checkout() {
     setPaying(true);
     try {
       const result = await payWithWallet({ orderId: orderId as never });
+      if (result.duplicateCharge) {
+        setNotice("This delivery is already paid.");
+        setError(
+          "A duplicate card charge was detected and has been flagged for refund review. Please contact support.",
+        );
+        return;
+      }
       setNotice(
         result.alreadyPaid
           ? "This delivery has already been paid."
@@ -279,8 +296,11 @@ export default function Checkout() {
   }
 
   const details = deliveryRow.details;
-  const alreadyPaid = payment?.status === "completed";
-  const refunded = payment?.status === "refunded";
+  // Paid/refunded are order-level facts from ANY attempt. The latest attempt
+  // can be a failed duplicate-charge quarantine after an already-paid order.
+  const alreadyPaid = orderPayment?.paid === true;
+  const refunded = orderPayment?.refunded === true;
+  const hasOpenCardCheckout = orderPayment?.hasOpenCardCheckout === true;
   const closed =
     alreadyPaid ||
     refunded ||
@@ -555,6 +575,13 @@ export default function Checkout() {
                     <p className="co-wallet-hint">
                       Not enough wallet balance.{" "}
                       <Link to="/wallet">Top up</Link>
+                    </p>
+                  )}
+                  {hasOpenCardCheckout && !closed && (
+                    <p className="co-wallet-hint">
+                      A card checkout is still open. Trying the wallet will first
+                      check that card payment; ongoing checkouts must be completed
+                      or allowed to expire.
                     </p>
                   )}
                 </div>

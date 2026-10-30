@@ -141,23 +141,34 @@ export function evaluateCardCreationGate<T extends PaymentAttempt>(
 
 export type CompletionGate<T extends PaymentAttempt> =
   | { kind: "duplicate"; payment: T }
+  | { kind: "refunded"; payment: T }
   | { kind: "allowed" };
 
 /**
- * Decide whether provider evidence may complete this transaction. A different
- * completed payment means the order is already settled; the incoming charge is
- * quarantined instead of producing a second authoritative completion.
+ * Decide whether provider evidence may complete this transaction.
+ *
+ * A different completed payment means the order is already settled; the
+ * incoming charge is quarantined instead of producing a second authoritative
+ * completion. A refunded payment also blocks completion: an already-open card
+ * checkout must not turn a refunded order back into a paid one. The provider
+ * may still have charged it, so the attempt is quarantined for refund review.
  */
 export function evaluateCompletionGate<T extends PaymentAttempt>(
   attempts: readonly T[],
   transactionId: string
 ): CompletionGate<T> {
-  const otherCompleted = findCompletedPayment(
-    attempts.filter((attempt) => attempt._id !== transactionId)
-  );
-  return otherCompleted
-    ? { kind: "duplicate", payment: otherCompleted }
-    : { kind: "allowed" };
+  const others = attempts.filter((attempt) => attempt._id !== transactionId);
+  const otherCompleted = findCompletedPayment(others);
+  if (otherCompleted) {
+    return { kind: "duplicate", payment: otherCompleted };
+  }
+
+  const refunded = findRefundedPayment(others);
+  if (refunded) {
+    return { kind: "refunded", payment: refunded };
+  }
+
+  return { kind: "allowed" };
 }
 
 export type ProviderOutcome = "success" | "failed" | "active";

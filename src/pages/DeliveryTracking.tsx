@@ -89,8 +89,6 @@ export default function DeliveryTracking() {
   const orderPayment = paymentOverview?.find(
     (row) => row.orderId === delivery?.orderId,
   ) ?? null;
-  const payment = orderPayment?.payment ?? null;
-
   // Sender identity for the shipment-details card: getDelivery's customer
   // branch already proves the session user IS the order's sender, so the
   // sender is always the viewer — no extra query needed.
@@ -157,12 +155,13 @@ export default function DeliveryTracking() {
     status === DELIVERY_STATUS.FAILED ||
     status === DELIVERY_STATUS.CANCELLED;
   const isFailed = status === DELIVERY_STATUS.FAILED || status === DELIVERY_STATUS.CANCELLED;
+  // Order-level paid/refunded facts, not the latest attempt: a newer failed
+  // duplicate-charge record must not make a paid delivery look outstanding.
+  const paymentPaid = orderPayment?.paid === true;
+  const paymentRefunded = orderPayment?.refunded === true;
+  const outstandingAmount = orderPayment?.amount ?? 0;
   const paymentOutstanding =
-    payment !== null &&
-    payment.status !== "completed" &&
-    payment.status !== "refunded" &&
-    !isFailed;
-  const outstandingAmount = orderPayment?.amount ?? payment?.amount ?? 0;
+    !isFailed && !paymentPaid && !paymentRefunded && outstandingAmount > 0;
 
   // Tracking freshness — from the backend's isStale plus its timestamps.
   const dl = tracking.driverLocation;

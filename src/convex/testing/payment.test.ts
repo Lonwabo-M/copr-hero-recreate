@@ -157,7 +157,8 @@ test("payment queries hide customer payment data from drivers/operations", () =>
 
 test("order payment status comes from payment_transactions", () => {
   const orderBlock = block(queries, "getMyPaymentOverview", "getAuthorizedOrderForPayment");
-  assertContains(orderBlock, "latestPaymentForOrder", "latest transaction lookup");
+  assertContains(orderBlock, "paymentStateForOrder", "authoritative transaction lookup");
+  assertContains(orderBlock, "paid: state.completed !== null", "paid derived from any completed attempt");
   assertContains(orderBlock, "payment: payment", "payment state returned per order");
   assertTrue(!orderBlock.includes("deliveryStatus"), "payment is not inferred from delivery status");
 });
@@ -186,10 +187,10 @@ test("the client cannot supply amount or an arbitrary payment method", () => {
 test("payment eligibility is enforced server-side", () => {
   assertContains(actions, 'orderCtx.orderStatus === "cancelled"', "cancelled orders rejected");
   assertContains(actions, 'orderCtx.deliveryStatus === "failed"', "failed deliveries rejected");
-  assertContains(actions, 'latestPayment?.status === "refunded"', "refunded orders rejected");
+  assertContains(actions, "orderCtx.refundedPayment", "refunded orders rejected");
   assertContains(mutations, 'order.status === "cancelled"', "wallet path rejects cancelled orders");
   assertContains(mutations, 'delivery?.status === "failed"', "wallet path rejects failed deliveries");
-  assertContains(mutations, 'p.status === "refunded"', "wallet path rejects refunded payments");
+  assertContains(mutations, 'walletGate.kind === "refunded"', "wallet path rejects refunded payments");
 });
 
 test("provider amount mismatch refuses completion", () => {
@@ -232,8 +233,11 @@ test("completion requires provider evidence and guards state", () => {
   const completeBlock = block(mutations, "completePaymentTransaction", "failPaymentTransaction");
   assertContains(completeBlock, 'tx.status === "completed"', "already-completed guard");
   assertContains(completeBlock, "alreadyCompleted: true", "idempotent short-circuit");
-  assertContains(completeBlock, 'tx.status === "failed"', "failed cannot be resurrected");
+  assertContains(completeBlock, 'tx.status === "failed"', "late verified success recovers a failed attempt");
   assertContains(completeBlock, "Provider transaction ID mismatch", "evidence integrity");
+  assertContains(completeBlock, "evaluateCompletionGate", "cross-method completion guard");
+  assertContains(completeBlock, 'completionGate.kind === "refunded"', "post-refund charge quarantined");
+  assertContains(completeBlock, "refundRequired: true", "duplicate charge quarantined for refund review");
 });
 
 test("failure transition is evidence-driven and idempotent", () => {
@@ -280,7 +284,28 @@ test("webhook processing is duplicate-safe", () => {
   const webhookBlock = block(actions, "processWebhookEvent", "");
   assertContains(webhookBlock, "completePaymentTransaction", "success via guarded mutation");
   assertContains(webhookBlock, "failPaymentTransaction", "failure via guarded mutation");
+  assertContains(webhookBlock, "completion.duplicate", "duplicate result handled");
+  assertContains(webhookBlock, "amountFromProvider === undefined", "success requires a provider amount");
   assertContains(webhookBlock, "handled: false", "unknown references acknowledged, not acted on");
+});
+
+test("card and wallet initiation refuse to create a second payment", () => {
+  const createBlock = block(mutations, "createPaymentTransaction", "attachProviderTransaction");
+  assertContains(createBlock, "evaluateCardCreationGate", "card creation checks every attempt");
+  assertContains(createBlock, "alreadyPaid: true", "card creation refuses a paid order");
+
+  const walletBlock = block(mutations, "payOrderFromWallet", "");
+  assertContains(walletBlock, "evaluateWalletPaymentGate", "wallet checks every attempt");
+  assertContains(walletBlock, "CARD_CHECKOUT_OPEN_MESSAGE", "wallet refuses while a card can succeed");
+});
+
+test("wallet action verifies open card attempts before debiting", () => {
+  const walletAction = block(actions, "payOrderWithWallet", "// ─── Verification");
+  assertContains(walletAction, "pendingCards", "open card attempts resolved");
+  assertContains(walletAction, "verifyPaystackTransaction", "provider re-verified before wallet");
+  assertContains(walletAction, "completePaymentTransaction", "verified card success finalized");
+  assertContains(walletAction, "failPaymentTransaction", "terminal card failure closed");
+  assertContains(walletAction, "CARD_CHECKOUT_OPEN_MESSAGE", "unknown/ongoing card blocks the wallet");
 });
 
 // ─── 6. Webhook security ─────────────────────────────────────────────────────

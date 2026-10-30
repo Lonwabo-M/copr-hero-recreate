@@ -111,7 +111,9 @@ test("top-up completion is idempotent and amount-checked", () => {
   );
   assertContains(block, 'topUp.status === "completed"', "already-completed guard");
   assertContains(block, "alreadyCompleted: true", "idempotent short-circuit");
-  assertContains(block, 'topUp.status === "failed"', "failed cannot be credited");
+  assertNotContains(block, 'topUp.status === "failed"', "a failed record does not permanently block a verified success");
+  assertContains(block, "amountFromProvider: v.number()", "provider amount is required");
+  assertContains(block, "Provider transaction ID mismatch", "provider evidence integrity");
   assertContains(block, "amount mismatch", "provider amount integrity");
   assertContains(block, "wallet.balance + topUp.amount", "credit amount");
   assertContains(block, 'type: "credit"', "credit ledger row");
@@ -121,7 +123,8 @@ test("top-up completion is idempotent and amount-checked", () => {
 test("verification is owner-scoped and server-authoritative", () => {
   const block = topUps.slice(topUps.indexOf("export const verifyWalletTopUp"));
   assertContains(block, "topUp.userId !== userId", "owner check");
-  assertContains(block, "transaction/verify/", "Paystack verify call");
+  assertContains(block, "verifyPaystackTransaction", "Paystack verify call");
+  assertContains(block, "classifyProviderStatus", "terminal status classification");
   assertContains(block, "completeWalletTopUp", "verified completion");
   assertNotContains(block, "statusFromClient", "no client status input");
 });
