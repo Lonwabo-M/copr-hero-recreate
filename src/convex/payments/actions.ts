@@ -363,8 +363,8 @@ async function chargeWithPaystack(
       card: {
         number: card.number,
         cvv: card.cvv,
-        month: parseInt(card.month, 10),
-        year: parseInt(year, 10),
+        expiry_month: card.month,
+        expiry_year: year,
       },
       metadata: { orderId, channel: "inline" },
     }),

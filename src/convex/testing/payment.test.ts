@@ -191,6 +191,16 @@ test("pricing is never recalculated in the payment layer", () => {
   );
 });
 
+test("card charge uses Paystack's documented expiry field names", () => {
+  const chargeBlock = block(actions, "PAYSTACK_BASE}/charge", "const tx =");
+  assertContains(chargeBlock, "expiry_month: card.month", "expiry month field");
+  assertContains(chargeBlock, "expiry_year: year", "expiry year field");
+  assertTrue(
+    !/month:\s*parseInt|year:\s*parseInt/.test(chargeBlock),
+    "no undocumented month/year keys"
+  );
+});
+
 // ─── 4. State machine & provider evidence ────────────────────────────────────
 
 console.log("\n4. Payment state machine");

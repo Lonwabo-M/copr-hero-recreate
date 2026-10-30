@@ -1,0 +1,35 @@
+{
+  "email": "lasha.paystack.check.mvvda7g1@gmail.com",
+  "password": "PaystackCheck-mvvda7g1-2026!",
+  "token": "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJzczc1MGQzZjlmc3FldzVuNGNndHE0bmplOThoOXd3NHxwczczdmJoODZjc2g4NjkzcHQ2YTdibTViaDhoOTlwaiIsImlhdCI6MTc5MzM4ODYyNSwiaXNzIjoiaHR0cHM6Ly9pbmNyZWRpYmxlLXdhcmJsZXItMzM1LmNvbnZleC5zaXRlIiwiYXVkIjoiY29udmV4IiwiZXhwIjoxNzkzMzkyMjI1fQ.VkvnAhodnUTItZOiQC9myKRt4pyr-pfSFILHXrajwaQvfe9IVNz-lLpssS_lHyXyJngCt3TKcAofG3rggGAiZWozV4kjv_x0_y2818iiB7f-vTYqm2WiGNhPCkm9v3F5mV26mV_t9xSUyNy78b-AE8KxlIrGpT2RzZJVDkrP7BM4-V6bVC20wnBIpqto5TP_iHGIvefV1g0by8Pb88upFykjBAl7LbCKg1mmDxYfTh-GqudxSV68HlIYr9RnnJ1WfbU7JXZQclHIfI14ZFoBtXbSL6c3rtKj4Egd5XJqFc1yVA-KWl-N2k16xZ9qXGO3d2344kXxpeasSmQXhfN3ag",
+  "orderId": "rn7e33d28s6zjwyjk8necmbnx98h9csb",
+  "deliveryId": "q97afzmhv7rrhe0cyne0trem018h8k5c",
+  "price": 22352,
+  "quote": {
+    "_creationTime": 1793388625601.1738,
+    "_id": "qd72vnpy1bds6frcycf0e0zc7n8h8nmb",
+    "additionalFees": 0,
+    "basePrice": 3000,
+    "calculatedAt": 1793388625601,
+    "deliveryFee": 22352,
+    "distanceFee": 18152,
+    "distanceKm": 40.33749861244796,
+    "driverEarnings": 15646,
+    "expressSurcharge": 0,
+    "orderId": "rn7e33d28s6zjwyjk8necmbnx98h9csb",
+    "platformFee": 6706,
+    "pricingRuleId": "s173wcrcjyyjjvfkg8vgfm796n8ewq3p",
+    "sameDaySurcharge": 0,
+    "subtotal": 22352,
+    "totalCharge": 22352,
+    "userId": "ss750d3f9fsqew5n4cgtq4nje98h9ww4",
+    "weightFee": 1200,
+    "weightKg": 8
+  },
+  "payment": {
+    "alreadyPaid": false,
+    "authorizationUrl": "https://checkout.paystack.com/yjeg6zr063eu827",
+    "reference": "pay-rn7e33d28s6zjwyjk8necmbnx98h9csb",
+    "transactionId": "rs7akrb8zq1hmdj04sahrhz1718h9ckg"
+  }
+}
