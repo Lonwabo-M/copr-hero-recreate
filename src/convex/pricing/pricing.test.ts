@@ -50,7 +50,7 @@ const mockPricingRule = {
   pricePerKg: 200, // R2.00 per kg
   minimumPrice: 8000, // R80.00
   platformFeeType: "percentage" as const,
-  platformFeeValue: 15, // 15%
+  platformFeeValue: 30, // 30% platform / 70% driver
   expressSurcharge: 3000, // R30.00
   sameDaySurcharge: 5000, // R50.00
   version: 1,
@@ -68,18 +68,19 @@ test("should calculate basic pricing correctly", () => {
   const weightFee = Math.round(mockPricingRule.pricePerKg * weightKg);
   const subtotal = basePrice + distanceFee + weightFee;
   const deliveryFee = Math.max(subtotal, mockPricingRule.minimumPrice);
-  const platformFee = Math.round(deliveryFee * (mockPricingRule.platformFeeValue / 100));
-  const totalCharge = deliveryFee + platformFee;
-  const driverEarnings = deliveryFee - platformFee;
+  // The commission is deducted FROM the delivery fee, never added on top.
+  const platformFee = Math.round(deliveryFee * 0.3);
+  const totalCharge = deliveryFee;
+  const driverEarnings = totalCharge - platformFee;
 
   expect(basePrice).toBe(5000);
   expect(distanceFee).toBe(15000);
   expect(weightFee).toBe(400);
   expect(subtotal).toBe(20400);
   expect(deliveryFee).toBe(20400);
-  expect(platformFee).toBe(3060);
-  expect(totalCharge).toBe(23460);
-  expect(driverEarnings).toBe(17340);
+  expect(platformFee).toBe(6120);
+  expect(totalCharge).toBe(20400);
+  expect(driverEarnings).toBe(14280);
 });
 
 test("should apply minimum price", () => {
@@ -128,14 +129,16 @@ test("should apply same-day surcharge", () => {
   expect(deliveryFee).toBe(25400);
 });
 
-test("should handle flat platform fee", () => {
+test("should not add a platform fee on top of the customer charge", () => {
   const deliveryFee = 20400;
-  const platformFeeValue = 5000; // R50.00 flat
-  const platformFee = platformFeeValue;
-  const totalCharge = deliveryFee + platformFee;
+  const platformFee = Math.round(deliveryFee * 0.3);
+  const totalCharge = deliveryFee;
+  const driverEarnings = totalCharge - platformFee;
 
-  expect(platformFee).toBe(5000);
-  expect(totalCharge).toBe(25400);
+  expect(platformFee).toBe(6120);
+  expect(totalCharge).toBe(20400);
+  expect(driverEarnings).toBe(14280);
+  expect(platformFee + driverEarnings).toBe(totalCharge);
 });
 
 test("should handle zero weight", () => {
@@ -179,12 +182,12 @@ test("should validate settlement state transitions", () => {
   expect(validTransitions["failed"].includes("completed")).toBe(false);
 });
 
-test("should calculate driver earnings correctly", () => {
+test("should calculate driver earnings correctly (70%)", () => {
   const deliveryFee = 20400;
-  const platformFee = 3060;
+  const platformFee = Math.round(deliveryFee * 0.3);
   const driverEarnings = deliveryFee - platformFee;
 
-  expect(driverEarnings).toBe(17340);
+  expect(driverEarnings).toBe(14280);
 });
 
 // ─── Authorization Tests ──────────────────────────────────────────────────────

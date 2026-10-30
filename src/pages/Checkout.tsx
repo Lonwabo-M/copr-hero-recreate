@@ -314,8 +314,6 @@ export default function Checkout() {
     deliveryRow.status === DELIVERY_STATUS.CANCELLED;
 
   const total = details?.price ?? quote?.totalCharge ?? 0;
-  const deliveryFee = quote?.deliveryFee ?? total;
-  const platformFee = quote?.platformFee ?? null;
 
   return (
     <CustomerShell activeItem="Request Delivery">
@@ -456,14 +454,11 @@ export default function Checkout() {
                 </div>
                 <div className="co-fee-row">
                   <span>Delivery fee</span>
-                  <strong>{formatRands(deliveryFee)}</strong>
+                  <strong>{formatRands(total)}</strong>
                 </div>
-                {platformFee != null && platformFee > 0 && (
-                  <div className="co-fee-row">
-                    <span>Service fee</span>
-                    <strong>{formatRands(platformFee)}</strong>
-                  </div>
-                )}
+                <p style={{ fontSize: 12, lineHeight: 1.5, color: "#8a8a8a", margin: "2px 0 12px" }}>
+                  Includes the 30% Lasha platform service fee.
+                </p>
                 <div className="co-fee-row total">
                   <span>Total</span>
                   <strong>{formatRands(total)}</strong>

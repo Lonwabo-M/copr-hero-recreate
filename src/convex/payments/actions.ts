@@ -57,6 +57,16 @@ export const initiateOrderPayment = action({
       );
     }
 
+    // Paystack returns the customer to the WEB app after checkout. SITE_URL is
+    // the public frontend origin (the same variable Convex Auth uses);
+    // CONVEX_SITE_URL is the backend function host and has no UI routes.
+    const siteUrl = (process.env.SITE_URL ?? "").replace(/\/$/, "");
+    if (!siteUrl) {
+      throw new Error(
+        "Payment return URL is not configured. Add SITE_URL in the project's environment settings."
+      );
+    }
+
     // Authentication (session-derived) + role check via internal query —
     // actions have no db access, so identity resolution happens in Convex
     // queries/mutations only.
@@ -160,7 +170,7 @@ export const initiateOrderPayment = action({
         currency: "ZAR",
         metadata: { orderId: orderCtx.orderId, method: args.method },
         // Client redirects back; verification is server-side regardless.
-        callback_url: `${process.env.CONVEX_SITE_URL ?? ""}/make-payment?reference=${reference}`,
+        callback_url: `${siteUrl}/make-payment?reference=${encodeURIComponent(reference)}`,
       }),
     });
 

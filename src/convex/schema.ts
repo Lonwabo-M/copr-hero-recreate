@@ -767,12 +767,12 @@ const schema = defineSchema(
       expressSurcharge: v.number(),       // cents
       sameDaySurcharge: v.number(),       // cents
       additionalFees: v.number(),         // cents
-      // Totals
-      deliveryFee: v.number(),            // cents (subtotal + surcharges)
-      platformFee: v.number(),            // cents
-      totalCharge: v.number(),            // cents (deliveryFee + platformFee)
+      // Totals (30/70 split policy: platform 30%, driver 70%)
+      deliveryFee: v.number(),            // cents (subtotal + surcharges = customer charge)
+      platformFee: v.number(),            // cents — 30% of the customer charge
+      totalCharge: v.number(),            // cents — what the customer pays (= deliveryFee)
       // Driver
-      driverEarnings: v.number(),         // cents
+      driverEarnings: v.number(),         // cents — 70% of the customer charge
       // Metadata
       distanceKm: v.number(),
       weightKg: v.number(),

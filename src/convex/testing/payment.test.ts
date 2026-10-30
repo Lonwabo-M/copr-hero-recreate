@@ -315,7 +315,14 @@ console.log("\n8. Credentials and logging");
 test("secret key only read inside actions, never returned", () => {
   const envReads = actions.match(/process\.env\.\w+/g) ?? [];
   for (const read0 of envReads) {
-    assertTrue(read0 === "process.env.PAYSTACK_SECRET_KEY" || read0 === "process.env.CONVEX_SITE_URL", `unexpected env read: ${read0}`);
+    assertTrue(
+      read0 === "process.env.PAYSTACK_SECRET_KEY" ||
+        read0 === "process.env.CONVEX_SITE_URL" ||
+        // Public frontend origin used for the provider's return URL — not a
+        // credential and never returned to the client.
+        read0 === "process.env.SITE_URL",
+      `unexpected env read: ${read0}`,
+    );
   }
   // No return payload contains the key.
   assertTrue(

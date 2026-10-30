@@ -10,7 +10,10 @@
  * Runs inline in the caller's transaction (a plain async helper on ctx, not a
  * nested function call), so quoting and seeding are atomic together.
  *
- * The defaults are written in cents (ZAR) and use a 10% platform fee.
+ * The defaults are written in cents (ZAR). The platform/driver split is a
+ * fixed commercial policy (30% platform, 70% driver — see
+ * pricing/commission.ts); the legacy per-rule fee fields are kept at the same
+ * 30% so the admin rule matrix never contradicts the actual split.
  */
 import type { MutationCtx } from "../_generated/server";
 import type { Doc } from "../_generated/dataModel";
@@ -66,7 +69,7 @@ export async function ensurePricingRules(
         ? { sameDaySurcharge: rule.sameDaySurcharge }
         : {}),
       platformFeeType: "percentage" as const,
-      platformFeeValue: 10,
+      platformFeeValue: 30,
       version: i + 1,
       effectiveFrom: now,
       isActive: true,

@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import AdminShell from "@/components/shells/AdminShell";
 import { Loader2, PowerOff, Tag, Package, Gauge, Percent } from "lucide-react";
+import { PLATFORM_COMMISSION_PERCENT, DRIVER_SHARE_PERCENT } from "@/convex/pricing/commission";
 import "@/styles/dashboard.css";
 import "@/styles/operations.css";
 
@@ -76,7 +77,7 @@ function RuleCard({ rule, retiring, onDeactivate }: {
       <div style={{ display: "flex", gap: 18, marginTop: 8, flexWrap: "wrap", fontSize: 12, color: "#856404" }}>
         <span>
           <Percent size={12} style={{ verticalAlign: -1, marginRight: 4 }} />
-          Platform fee: {rule.platformFeeType === "percentage" ? `${rule.platformFeeValue}%` : money(rule.platformFeeValue)}
+          Platform {PLATFORM_COMMISSION_PERCENT}% · driver {DRIVER_SHARE_PERCENT}%
         </span>
         {rule.expressSurcharge != null && rule.expressSurcharge > 0 && (
           <span>Express +{money(rule.expressSurcharge)}</span>

@@ -20,6 +20,7 @@ import { requireAuth, requirePermission, getCurrentAuthUser } from "../auth/auth
 import { AUDIT_ACTIONS } from "../audit/service";
 import { internal } from "../_generated/api";
 import { ensurePricingRules } from "../seed/pricing";
+import { splitCustomerCharge } from "./commission";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -100,25 +101,16 @@ function calculatePricingBreakdown(
   // Additional fees (e.g., extra stops)
   const additionalFees = 0; // Can be extended later
   
-  // Delivery fee (subtotal + surcharges)
+  // Delivery fee (subtotal + surcharges) = exactly what the customer pays.
+  // The commission is deducted from this amount, never added on top.
   const deliveryFee = Math.max(
     subtotal + expressSurcharge + sameDaySurcharge + additionalFees,
     rule.minimumPrice
   );
-  
-  // Platform fee
-  let platformFee: number;
-  if (rule.platformFeeType === "percentage") {
-    platformFee = Math.round(deliveryFee * (rule.platformFeeValue / 100));
-  } else {
-    platformFee = rule.platformFeeValue;
-  }
-  
-  // Total charge to customer
-  const totalCharge = deliveryFee + platformFee;
-  
-  // Driver earnings (delivery fee minus platform fee)
-  const driverEarnings = deliveryFee - platformFee;
+  const totalCharge = deliveryFee;
+
+  // Fixed commercial policy: platform 30%, driver 70% of the customer charge.
+  const { platformFee, driverEarnings } = splitCustomerCharge(totalCharge);
   
   return {
     pricingRuleId: rule._id,
