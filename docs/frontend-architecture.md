@@ -111,12 +111,13 @@ visibility to `SUPER_ADMIN || OPERATIONS`); no new permissions were invented.
 | Area | Routes |
 |------|--------|
 | — (public) | `/`, `/auth`, `/post-auth` |
-| Customer Portal | `/dashboard`, `/request-delivery`, `/track-delivery`, `/wallet`, `/make-payment`, `/past-deliveries`, `/invoices`, `/notifications`, `/settings`, `/help`, `/legal`, `/downloads` |
+| Customer Portal | `/dashboard`, `/request-delivery`, `/checkout/:orderId`, `/track-delivery`, `/deliveries/:deliveryId`, `/wallet`, `/past-deliveries`, `/invoices`, `/notifications`, `/settings`, `/help`, `/disputes`, `/legal`, `/downloads` |
 | Driver App | `/driver`, `/driver/offers`, `/driver/history`, `/driver/history/:deliveryId`, `/driver/profile`, `/driver/active-delivery` |
 | Operations Centre | `/operations` |
 | Admin | *(none yet — `/admin` reserved)* |
 
-Backwards compatibility: all pre-existing customer routes are unchanged, and
+Backwards compatibility: `/make-payment` redirects to `/dashboard` (the
+standalone page was removed in favour of `/checkout/:orderId`), and
 `/driver/active-delivery` keeps its original path.
 
 ## Role-aware routing after sign-in
@@ -133,9 +134,10 @@ Backwards compatibility: all pre-existing customer routes are unchanged, and
 
 Navigation configs are per-area pure data in `navigation.ts`:
 
-- `customerNavigation` — 12 entries: Activity Center, Past Deliveries,
-  Request Delivery, Track Delivery, Invoices, Wallet, Make Payment,
-  Notifications, Help, Legal, Downloads, Settings
+- `customerNavigation` — 13 entries: Activity Center, Past Deliveries,
+  Request Delivery, Track Delivery, Address Book, Invoices, Wallet,
+  Notifications, Help, Disputes, Legal, Downloads, Settings. Payment is not a
+  top-level destination; it lives inside the order-scoped Checkout.
 - `driverNavigation` — Delivery Offers, Active Delivery, Delivery History, and
   Profile (the driver pages that exist; Earnings/Safety are future work and are
   NOT stubbed)

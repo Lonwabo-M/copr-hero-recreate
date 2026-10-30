@@ -242,7 +242,7 @@ this document and is listed in §6.
 
 ### 4.6 What a reviewer can inspect
 
-- `/make-payment` — customer payment status per order.
+- `/checkout/:orderId` — customer payment status and payment for one order.
 - Payment transaction records — amount, method, reference, provider transaction id, timestamps.
 - Settlement records — delivery fee, platform fee, driver earnings, status, idempotency key.
 - Audit log (`/admin/audit-log`) — payment, settlement and dispute events with actor and timestamp.

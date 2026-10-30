@@ -108,6 +108,20 @@
   color: #92400e;
 }
 
+.co-alert-info {
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  color: #075985;
+}
+
+.co-alert-link {
+  margin-left: auto;
+  color: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 /* ─── Grid ──────────────────────────────────────────────────────────────── */
 
 .co-grid {
@@ -389,6 +403,146 @@
   font-weight: 600;
   color: #0794b5;
   white-space: nowrap;
+}
+
+.co-pay-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 8px 0 12px;
+  font-size: 11.5px;
+  color: #8a97a5;
+}
+
+.co-pay-status {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 4px 11px;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.co-pay-status.paid {
+  color: #166534;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+}
+
+.co-pay-status.pending {
+  color: #075985;
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+}
+
+.co-pay-status.failed {
+  color: #991b1b;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+}
+
+.co-pay-status.unpaid,
+.co-pay-status.refunded {
+  color: #92400e;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+}
+
+.co-pay-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 18px 0 14px;
+  color: #a6b2be;
+  font-size: 11.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.co-pay-divider::before,
+.co-pay-divider::after {
+  content: "";
+  height: 1px;
+  flex: 1;
+  background: #eef1f5;
+}
+
+.co-wallet-option {
+  border: 1px solid #e8ecf1;
+  border-radius: 12px;
+  background: #f8fafb;
+  padding: 14px;
+}
+
+.co-wallet-option-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.co-wallet-option-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #26313c;
+}
+
+.co-wallet-option-title svg {
+  color: #0794b5;
+}
+
+.co-wallet-option-balance {
+  font-size: 11.5px;
+  color: #8a97a5;
+  text-align: right;
+}
+
+.co-wallet-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 11px 14px;
+  border: 1px solid #b9dce5;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #0b6a86;
+  font-family: "Inter", sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.co-wallet-btn:hover:not(:disabled) {
+  border-color: #0794b5;
+  background: #f0fbfd;
+}
+
+.co-wallet-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.co-wallet-hint {
+  margin: 9px 0 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: #8a6d1a;
+}
+
+.co-wallet-hint a {
+  color: #0794b5;
+  font-weight: 700;
 }
 
 .co-pay-fields {

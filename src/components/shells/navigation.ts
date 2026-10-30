@@ -33,7 +33,6 @@ export const customerNavigation: NavItem[] = [
   { label: "Address Book", route: "/address-book" },
   { label: "Invoices", route: "/invoices" },
   { label: "Wallet", route: "/wallet" },
-  { label: "Make Payment", route: "/make-payment" },
   { label: "Notifications", route: "/notifications", hasNotif: true },
   { label: "Help", route: "/help" },
   { label: "Disputes", route: "/disputes" },

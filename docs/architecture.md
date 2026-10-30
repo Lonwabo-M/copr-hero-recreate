@@ -195,12 +195,12 @@ src/
 │   ├── Auth.tsx                     # Email OTP sign-in
 │   ├── Dashboard.tsx                # Activity Center (order management)
 │   ├── RequestDelivery.tsx          # Create delivery request
+│   ├── Checkout.tsx                 # Order-scoped payment surface
 │   ├── TrackDelivery.tsx            # Track shipment by ID
 │   ├── Wallet.tsx                   # Wallet balance, transactions
 │   ├── Settings.tsx                 # Profile, business, notifications, security
 │   ├── PastDeliveries.tsx           # Order history
 │   ├── Invoices.tsx                 # Invoice management
-│   ├── MakePayment.tsx              # Payment processing
 │   ├── Notifications.tsx            # Notification center
 │   ├── Help.tsx                     # Help center (static)
 │   ├── Legal.tsx                    # Legal documents (static)
@@ -239,12 +239,12 @@ src/
 /auth                → Auth           (public, redirect if authenticated)
 /dashboard           → Dashboard      (protected — Activity Center)
 /request-delivery    → RequestDelivery (protected — create order)
+/checkout/:orderId   → Checkout       (protected — order payment)
 /track-delivery      → TrackDelivery  (protected — track shipment)
 /wallet              → Wallet         (protected — wallet & transactions)
 /settings            → Settings       (protected — account settings)
 /past-deliveries     → PastDeliveries (protected — order history)
 /invoices            → Invoices       (protected — invoice management)
-/make-payment        → MakePayment    (protected — payment processing)
 /notifications       → Notifications  (protected — notification center)
 /help                → Help           (protected — help center)
 /legal               → Legal          (protected — legal documents)

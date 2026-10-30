@@ -11,17 +11,24 @@
 ```
 Order created (createOrderAndDelivery)
   → Authoritative charge stored (orders.price ← delivery_quotes.totalCharge)
-  → Customer opens Make Payment (loads getMyPaymentOverview)
+  → Customer opens the order-scoped Checkout (/checkout/:orderId), directly
+    after creation or later from delivery tracking
   → Payment initiated (payments.actions.initiateOrderPayment)
       → pending payment_transactions record (deterministic reference)
       → Paystack transaction/initialize → checkout URL
-  → Customer pays on Paystack's hosted page
-  → Return to /make-payment?reference=…
-      → payments.actions.verifyOrderPayment (server-side Paystack verify)
+  → Customer pays on Paystack's hosted page, or pays from their Lasha wallet
+  → Return to /checkout/:orderId?reference=…
+      → payments.actions.verifyOrderPayment (server-side Paystack verify,
+        scoped to that order)
   → AND/OR Paystack webhook → /payments/paystack/webhook
       → signature verified → processWebhookEvent (internalAction)
   → payment_transactions = completed | failed | pending
 ```
+
+There is no standalone Make Payment page. Payment belongs to one order, and
+the same Checkout is the resumable path for an unpaid delivery (linked from
+delivery tracking). The wallet is a payment method inside Checkout, not a
+separate payment destination.
 
 Both verification paths converge on the same guarded internal mutations, so the
 webhook and the customer's return-verify are mutually idempotent.
@@ -71,7 +78,7 @@ Existing `payment_transactions` table — reused, not re-created:
 | `userId` | The authenticated payer, resolved server-side |
 | `amount` | Copied from the authoritative `orders.price` (cents ZAR) |
 | `currency` | `ZAR` |
-| `method` | `card` \| `eft` \| `wallet` \| `snapscan` (UI selection, provider metadata) |
+| `method` | `card` \| `wallet` (the retired standalone page also wrote `eft` / `snapscan`, but those channels were never actually configured) |
 | `provider` | `paystack` |
 | `providerTransactionId` | Paystack transaction ID, attached at verification |
 | `status` | State machine above |
@@ -91,15 +98,19 @@ The client receives only `{ alreadyPaid, reference, authorizationUrl }`.
 
 **Amount integrity.** The charge is read server-side from the stored order
 (`internal.payments.queries.getAuthorizedOrderForPayment` → `order.price`).
-There is no client amount parameter anywhere; the MakePayment page has no
+There is no client amount parameter anywhere; the order Checkout has no
 amount input. If Paystack's verification reports an amount differing from the
-stored charge, completion is refused.
+stored charge, completion is refused. Checkout reads payment state from
+`payments.queries.getMyOrderPayment`, which returns the latest
+`payment_transactions` row for that order — never a delivery-status inference.
 
 **Authorization.** Identity always resolves from the authenticated session:
 - Initiation: the order's sender (or super admin); drivers, fleet managers and
   operations are explicitly rejected.
-- Verification: the payer of the transaction (or super admin).
-- Overview queries: customers see their own orders, company admins their
+- Verification: the payer of the transaction (or super admin); Checkout also
+  passes the order id and the backend refuses a reference belonging to a
+  different order.
+- Payment-status queries: customers see their own orders, company admins their
   business's; drivers/operations get no customer payment data.
 - All payment record mutations are `internalMutation`s — there is no public
   mutation accepting `{ paymentSuccessful: true }`.
@@ -167,7 +178,7 @@ Layer 2 (settlement) documentation: see `docs/driver-earnings-settlement.md`.
 
 ## Testing
 
-`src/convex/testing/payment.test.ts` — 28 assertions covering the model,
+`src/convex/testing/payment.test.ts` — 32 assertions covering the model,
 authorization, amount integrity, state machine, idempotency, webhook security,
 settlement/delivery separation, credential hygiene, and UI integrity. Run:
 `bunx tsx src/convex/testing/payment.test.ts`.
@@ -181,6 +192,7 @@ settlement/delivery separation, credential hygiene, and UI integrity. Run:
 - Wallet top-ups use Paystack hosted checkout. Provider verification or a
   signature-verified webhook credits the wallet exactly once.
 - Wallet-to-wallet transfers and external withdrawals are not implemented.
-- No customer-facing payment history page beyond the MakePayment overview.
+- No standalone payment-history page: payment state appears on the order
+  Checkout and delivery tracking. A customer-wide payment ledger is future work.
 - Reconciliation between customer payments and driver settlements is a
   deliberately separate future task.

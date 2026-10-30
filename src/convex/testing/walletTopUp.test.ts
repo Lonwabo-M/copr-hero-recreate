@@ -68,7 +68,7 @@ const actions = read("src/convex/payments/actions.ts");
 const mutations = read("src/convex/payments/mutations.ts");
 const walletPage = read("src/pages/Wallet.tsx");
 const walletCss = read("src/styles/wallet.css");
-const makePayment = read("src/pages/MakePayment.tsx");
+const checkoutPage = read("src/pages/Checkout.tsx");
 
 console.log("\n1. Wallet top-up funding model");
 
@@ -215,11 +215,20 @@ test("top-up and wallet payment are wired to real actions", () => {
     "verifyWalletTopUp",
     "wallet page verifies the return",
   );
-  assertContains(makePayment, "payOrderWithWallet", "Make Payment wallet action");
   assertContains(
-    makePayment,
-    'if (method === "wallet")',
-    "wallet method branches before hosted checkout",
+    checkoutPage,
+    "payOrderWithWallet",
+    "order checkout offers wallet payment",
+  );
+  assertContains(
+    checkoutPage,
+    "handleWalletPayment",
+    "wallet payment has its own handler",
+  );
+  assertNotContains(
+    walletPage,
+    "/make-payment",
+    "wallet no longer links to the removed payment page",
   );
 });
 

@@ -3,30 +3,34 @@
  *
  * Final step of the customer request flow: review the delivery (summary, ETA,
  * receiver, fee breakdown) and pay. Route: /checkout/:orderId behind the
- * CUSTOMER RoleGate — navigated to straight from Request Delivery after
- * creation, and reachable from the dashboard for any unpaid order.
+ * CUSTOMER RoleGate — the single payment surface for a delivery, reached from
+ * Request Delivery after creation and from delivery tracking when the customer
+ * chose "Pay later". There is deliberately no standalone Make Payment page:
+ * a payment always belongs to one order.
  *
- * Backend contract — existing authorized queries/actions only:
+ * Backend contract:
  *   - deliveries.state_machine.getMyDeliveries → the customer's own deliveries
  *     (server-scoped) with enriched display details; this page finds the
  *     delivery belonging to :orderId in that list.
  *   - pricing.service.getQuoteForOrder → the authoritative fee breakdown
  *     (delivery fee, platform fee, total) for the order.
- *   - payments.actions.chargeOrderPaymentWithCard → inline card charge per the
- *     approved checkout reference (card fields in the right panel). Card data
- *     is forwarded straight to Paystack with the SECRET key server-side; it is
- *     never stored, logged, or audited by Lasha. Bank challenges surface as an
- *     OTP step handled by payments.actions.submitPaymentOtp.
- *   - payments.actions.initiateOrderPayment → hosted-checkout fallback: a
- *     Paystack hosted-checkout URL (PCI page), also used for unsupported
- *     authorization flows. The amount is always resolved server-side.
+ *   - payments.queries.getMyOrderPayment → authoritative payment state from
+ *     payment_transactions (never inferred from delivery status).
+ *   - payments.actions.verifyOrderPayment → server-side Paystack verification
+ *     when the provider returns to ?reference=…, scoped to this order.
+ *   - payments.actions.payOrderWithWallet → atomic wallet debit + completed
+ *     payment record.
+ *   - payments.actions.chargeOrderPaymentWithCard → inline card charge; card
+ *     data is forwarded straight to Paystack and never stored. Bank challenges
+ *     surface as an OTP step handled by payments.actions.submitPaymentOtp.
+ *   - payments.actions.initiateOrderPayment → hosted Paystack checkout; the
+ *     provider returns to this same order Checkout.
  *
- * Design: mirrors the approved checkout reference — left review column
- * (parcel card, deep-teal ETA card, receiver details, payment summary) and a
- * right payment panel with card fields and the large cyan "Pay R…" action.
+ * The amount is always resolved server-side from the stored order. The browser
+ * displays payment state reactively; it never marks an order paid.
  */
 
-import { useParams, Link, useNavigate } from "react-router";
+import { useParams, Link, useSearchParams } from "react-router";
 import { useQuery, useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import CustomerShell from "@/components/shells/CustomerShell";
@@ -49,8 +53,9 @@ import {
   ShieldCheck,
   ArrowLeft,
   Lock,
+  Wallet,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import "@/styles/dashboard.css";
 import "@/styles/checkout.css";
 
@@ -94,13 +99,16 @@ function DetailCell({
 
 export default function Checkout() {
   const { orderId } = useParams<{ orderId: string }>();
-  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [paying, setPaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const chargeWithCard = useAction(api.payments.actions.chargeOrderPaymentWithCard);
   const submitOtp = useAction(api.payments.actions.submitPaymentOtp);
   const initiatePayment = useAction(api.payments.actions.initiateOrderPayment);
+  const payWithWallet = useAction(api.payments.actions.payOrderWithWallet);
+  const verifyPayment = useAction(api.payments.actions.verifyOrderPayment);
 
   // Inline card fields (per the approved checkout reference design).
   const [holderName, setHolderName] = useState("");
@@ -124,7 +132,57 @@ export default function Checkout() {
     orderId ? { orderId: orderId as never } : "skip",
   );
 
-  const loading = myDeliveries === undefined || quote === undefined;
+  // Authoritative payment state for this order. Delivery status is NOT payment
+  // status: a delivered parcel can be unpaid, and a paid parcel remains paid
+  // while it is in transit.
+  const payment = useQuery(
+    api.payments.queries.getMyOrderPayment,
+    orderId ? { orderId: orderId as never } : "skip",
+  );
+  const wallet = useQuery(api.users.getWallet, {});
+
+  const loading =
+    myDeliveries === undefined || quote === undefined || payment === undefined;
+
+  // Paystack returns here after hosted checkout. The provider status is
+  // verified server-side; the browser cannot mark an order as paid.
+  const reference = searchParams.get("reference");
+  const verifying = Boolean(reference);
+  useEffect(() => {
+    if (!reference) return;
+    let cancelled = false;
+
+    verifyPayment({ reference, orderId: orderId as never })
+      .then((result) => {
+        if (cancelled) return;
+        if (result.status === "completed") {
+          setNotice("Payment successful — thank you.");
+          setError(null);
+        } else if (result.status === "failed") {
+          setError("The payment was not completed. You can try again.");
+        } else {
+          setNotice(
+            "Payment is still pending with the provider. This page updates when it completes.",
+          );
+        }
+      })
+      .catch((e: unknown) => {
+        if (cancelled) return;
+        setError(e instanceof Error ? e.message : "Payment verification failed");
+      })
+      .finally(() => {
+        if (cancelled) return;
+        // Remove the reference so a refresh cannot re-run an old verification.
+        const next = new URLSearchParams(searchParams);
+        next.delete("reference");
+        setSearchParams(next, { replace: true });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reference]);
 
   // ── Inline-card helpers ──────────────────────────────────────────────────
 
@@ -158,16 +216,16 @@ export default function Checkout() {
     return null;
   }
 
-  /** Post-success: clear card material and hand over to the delivery page. */
-  const finalizePayment = () => {
+  /** Post-success: clear card material and show the authoritative paid state. */
+  const finishPayment = (message: string) => {
     setHolderName("");
     setCardNumber("");
     setExpiry("");
     setCvv("");
     setOtp("");
     setOtpReference(null);
-    const row = myDeliveries?.find((d: { orderId?: string }) => d.orderId === orderId);
-    navigate(row ? `/deliveries/${row._id}` : "/dashboard");
+    setError(null);
+    setNotice(message);
   };
 
   const handlePayError = (e: unknown) => {
@@ -202,7 +260,7 @@ export default function Checkout() {
         },
       });
       if (result.status === "already_paid" || result.status === "completed") {
-        finalizePayment();
+        finishPayment("Payment received — thank you.");
         return;
       }
       if (result.status === "otp_required") {
@@ -224,7 +282,7 @@ export default function Checkout() {
     try {
       const result = await submitOtp({ reference: otpReference, otp: otp.trim() });
       if (result.status === "already_paid" || result.status === "completed") {
-        finalizePayment();
+        finishPayment("Payment received — thank you.");
         return;
       }
       setError("message" in result ? result.message : "We couldn't verify that code.");
@@ -247,7 +305,7 @@ export default function Checkout() {
         method: "card",
       });
       if (result.alreadyPaid) {
-        finalizePayment();
+        finishPayment("This delivery has already been paid.");
         return;
       }
       if (result.authorizationUrl) {
@@ -255,6 +313,25 @@ export default function Checkout() {
         return;
       }
       setError("Payment could not be started. Please try again.");
+    } catch (e) {
+      handlePayError(e);
+    } finally {
+      setPaying(false);
+    }
+  };
+
+  const handleWalletPayment = async () => {
+    if (!orderId) return;
+    setError(null);
+    setNotice(null);
+    setPaying(true);
+    try {
+      const result = await payWithWallet({ orderId: orderId as never });
+      if (result.alreadyPaid) {
+        finishPayment("This delivery has already been paid.");
+      } else {
+        finishPayment("Payment received from your Lasha wallet — thank you.");
+      }
     } catch (e) {
       handlePayError(e);
     } finally {
@@ -307,13 +384,34 @@ export default function Checkout() {
   }
 
   const details = deliveryRow.details;
-  const alreadyPaid = deliveryRow.status === DELIVERY_STATUS.DELIVERED;
+  const alreadyPaid = payment?.status === "completed";
+  const refunded = payment?.status === "refunded";
   const closed =
     alreadyPaid ||
+    refunded ||
     deliveryRow.status === DELIVERY_STATUS.FAILED ||
     deliveryRow.status === DELIVERY_STATUS.CANCELLED;
 
-  const total = details?.price ?? quote?.totalCharge ?? 0;
+  const total = details?.price ?? quote?.totalCharge ?? payment?.amount ?? 0;
+  const paymentLabel = alreadyPaid
+    ? "Paid"
+    : refunded
+      ? "Refunded"
+      : payment?.status === "failed"
+        ? "Failed"
+        : payment?.status === "pending" || payment?.status === "processing"
+          ? "Pending"
+          : "Unpaid";
+  const paymentTone = alreadyPaid
+    ? "paid"
+    : refunded
+      ? "refunded"
+      : payment?.status === "failed"
+        ? "failed"
+        : payment?.status === "pending" || payment?.status === "processing"
+          ? "pending"
+          : "unpaid";
+  const walletInsufficient = wallet !== undefined && wallet.balance < total;
 
   return (
     <CustomerShell activeItem="Request Delivery">
@@ -338,18 +436,39 @@ export default function Checkout() {
             <div className="co-alert co-alert-error">
               <AlertCircle size={18} />
               <p>{error}</p>
+              {error.toLowerCase().includes("insufficient") && (
+                <Link to="/wallet" className="co-alert-link">Top up wallet</Link>
+              )}
             </div>
           )}
-          {alreadyPaid && (
+          {verifying && (
+            <div className="co-alert co-alert-info">
+              <Loader2 size={18} className="animate-spin" />
+              <p>Verifying your payment with the provider…</p>
+            </div>
+          )}
+          {notice && (
+            <div className="co-alert co-alert-ok">
+              <CheckCircle2 size={18} />
+              <p>{notice}</p>
+            </div>
+          )}
+          {alreadyPaid && !notice && (
             <div className="co-alert co-alert-ok">
               <CheckCircle2 size={18} />
               <p>This delivery is already paid.</p>
             </div>
           )}
-          {!alreadyPaid && closed && (
+          {!alreadyPaid && refunded && (
             <div className="co-alert co-alert-warn">
               <AlertCircle size={18} />
-              <p>This delivery was cancelled — payment is no longer required.</p>
+              <p>This payment was refunded. No further payment is due.</p>
+            </div>
+          )}
+          {!alreadyPaid && !refunded && closed && (
+            <div className="co-alert co-alert-warn">
+              <AlertCircle size={18} />
+              <p>This delivery was cancelled or failed — payment is no longer required.</p>
             </div>
           )}
 
@@ -471,14 +590,19 @@ export default function Checkout() {
               <div className="co-card co-pay-card">
                 <div className="co-pay-title-row">
                   <h2 className="co-card-title">Payment Details</h2>
+                  <span className={`co-pay-status ${paymentTone}`}>{paymentLabel}</span>
+                </div>
+                <div className="co-pay-meta">
                   <span className="co-pay-lock">
                     <Lock size={13} />
                     Secure
                   </span>
+                  <span>{formatRands(total)} due for this delivery</span>
                 </div>
                 <p className="co-pay-note">
-                  Card data is sent directly to our payment provider over a secure connection —
-                  it is never stored on Lasha's servers.
+                  Pay by card, use your Lasha wallet, or continue to Paystack's hosted
+                  checkout. Card data is sent directly to our payment provider and is
+                  never stored on Lasha's servers.
                 </p>
 
                 <div className="co-pay-fields">
@@ -609,8 +733,41 @@ export default function Checkout() {
                   Prefer a bank page? Use the secure hosted checkout instead
                 </button>
 
+                <div className="co-pay-divider">
+                  <span>or</span>
+                </div>
+
+                <div className="co-wallet-option">
+                  <div className="co-wallet-option-head">
+                    <span className="co-wallet-option-title">
+                      <Wallet size={15} /> Lasha Wallet
+                    </span>
+                    <span className="co-wallet-option-balance">
+                      {wallet === undefined ? "Loading…" : `${formatRands(wallet.balance)} available`}
+                    </span>
+                  </div>
+                  <button
+                    className="co-wallet-btn"
+                    onClick={handleWalletPayment}
+                    disabled={paying || closed || total <= 0}
+                  >
+                    {paying ? (
+                      <Loader2 size={15} className="animate-spin" />
+                    ) : (
+                      <Wallet size={15} />
+                    )}
+                    Pay with wallet
+                  </button>
+                  {walletInsufficient && !closed && (
+                    <p className="co-wallet-hint">
+                      Not enough wallet balance.{" "}
+                      <Link to="/wallet">Top up</Link>
+                    </p>
+                  )}
+                </div>
+
                 <Link to={`/deliveries/${deliveryRow._id}`} className="co-track-link">
-                  Pay later — view delivery tracking
+                  {closed ? "View delivery tracking" : "Pay later — view delivery tracking"}
                 </Link>
               </div>
             </div>

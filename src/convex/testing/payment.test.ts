@@ -25,7 +25,7 @@
  * Run: bunx tsx src/convex/testing/payment.test.ts
  */
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 // ─── Test harness (matches repo pattern) ─────────────────────────────────────
@@ -75,7 +75,7 @@ const mutations = read("src/convex/payments/mutations.ts");
 const actions = read("src/convex/payments/actions.ts");
 const http = read("src/convex/http.ts");
 const schema = read("src/convex/schema.ts");
-const makePayment = read("src/pages/MakePayment.tsx");
+const checkout = read("src/pages/Checkout.tsx");
 const stateMachine = read("src/convex/deliveries/state_machine.ts");
 const settlementTest = read("src/convex/testing/settlement.test.ts");
 
@@ -96,7 +96,6 @@ test("payment_transactions reused — not redefined", () => {
 });
 
 test("schema can represent the required lifecycle", () => {
-  const block0 = block(schema, "payment_transactions: defineTable", "payment_transactions: defineTable") ;
   const txBlock = schema.slice(
     schema.indexOf("payment_transactions: defineTable"),
     schema.indexOf("// ─── Delivery", schema.indexOf("payment_transactions: defineTable"))
@@ -144,12 +143,25 @@ test("verification restricted to the payer (or super admin)", () => {
 });
 
 test("payment queries hide customer payment data from drivers/operations", () => {
-  const overviewBlock = block(queries, "getMyPaymentOverview", "getAuthorizedOrderForPayment");
+  const overviewBlock = block(queries, "getMyPaymentOverview", "getMyOrderPayment");
   assertContains(
     overviewBlock,
     "no customer payment visibility",
     "driver/operations role branch returns no payment data"
   );
+});
+
+test("order payment status comes from payment_transactions", () => {
+  const orderBlock = block(queries, "getMyOrderPayment", "getAuthorizedOrderForPayment");
+  assertContains(orderBlock, "latestPaymentForOrder", "latest transaction lookup");
+  assertContains(orderBlock, "status: payment?.status", "unpaid is a read model label");
+  assertTrue(!orderBlock.includes("deliveryStatus"), "payment is not inferred from delivery status");
+});
+
+test("verification is scoped to the checkout's order", () => {
+  const verifyBlock = block(actions, "verifyOrderPayment", "processWebhookEvent");
+  assertContains(verifyBlock, "orderId: v.optional(v.id(\"orders\"))", "optional order scope");
+  assertContains(verifyBlock, "does not belong to this order", "cross-order reference refused");
 });
 
 // ─── 3. Amount integrity ─────────────────────────────────────────────────────
@@ -159,7 +171,6 @@ console.log("\n3. Amount integrity");
 test("no client amount parameter exists in initiation or creation", () => {
   const initArgs = block(actions, "args: {\n    orderId: v.id(\"orders\")", "handler:");
   assertTrue(!/amount/.test(initArgs), "initiation accepts no amount from the client");
-  const createArgs = block(mutations, "createPaymentTransaction", "handler:");
   // The internal mutation takes an amount — but it is fed from orderCtx.amount.
   assertContains(
     actions,
@@ -348,13 +359,13 @@ test("audit events use existing payment actions and carry no credentials", () =>
   assertTrue(!/cardNumber|cvv|CVV/.test(mutations), "no card data in audit metadata");
 });
 
-// ─── 9. UI integrity ─────────────────────────────────────────────────────────
+// ─── 9. Checkout UI integrity ───────────────────────────────────────────────
 
-console.log("\n9. MakePayment UI integrity");
+console.log("\n9. Checkout UI integrity");
 
 test("no payment simulation remains", () => {
   // Strip comments: the doc header states the *absence* of simulation.
-  const code = makePayment
+  const code = checkout
     .split("\n")
     .filter((l) => !l.trim().startsWith("//") && !l.trim().startsWith("*") && !l.trim().startsWith("/*"))
     .join("\n");
@@ -362,23 +373,29 @@ test("no payment simulation remains", () => {
   assertTrue(!/simulate|fake|mock/i.test(code), "no simulation wording");
 });
 
-test("amount is server-sourced and read-only", () => {
+test("payment is order-scoped and the amount is read-only", () => {
   assertTrue(
-    !/type="number"/.test(makePayment),
+    !/type="number"/.test(checkout),
     "no amount input field — the customer cannot type an amount"
   );
-  assertContains(makePayment, "getMyPaymentOverview", "authoritative overview query");
-  assertContains(makePayment, "set at order time", "amount labelled as authoritative");
+  assertContains(checkout, "getMyOrderPayment", "order-scoped payment query");
+  assertContains(checkout, "formatRands(total)", "amount rendered from server data");
+  assertTrue(!existsSync("src/pages/MakePayment.tsx"), "duplicate payment page removed");
 });
 
 test("verify runs server-side after checkout return", () => {
-  assertContains(makePayment, "verifyOrderPayment", "verification action called on return");
-  assertContains(makePayment, "reference", "reference-driven verification");
+  assertContains(checkout, "verifyOrderPayment", "verification action called on return");
+  assertContains(checkout, "reference", "reference-driven verification");
+});
+
+test("provider returns to the order checkout, not a duplicate page", () => {
+  assertContains(actions, "callback_url: `${siteUrl}/checkout/", "order-scoped callback URL");
+  assertTrue(!actions.includes("/make-payment?reference="), "no legacy payment page callback");
 });
 
 test("status badges distinguish pending / paid / failed", () => {
   for (const label of ["Paid", "Pending", "Failed", "Unpaid"]) {
-    assertContains(makePayment, label, `status badge ${label}`);
+    assertContains(checkout, label, `status badge ${label}`);
   }
 });
 

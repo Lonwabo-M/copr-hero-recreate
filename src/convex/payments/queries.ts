@@ -9,10 +9,10 @@
  * Payment status here NEVER touches driver settlements or delivery state.
  */
 
-import { query, internalQuery } from "../_generated/server";
+import { query, internalQuery, type QueryCtx } from "../_generated/server";
 import { v } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
-import { requireAuth, getCurrentAuthUser } from "../auth/authorization";
+import { getCurrentAuthUser } from "../auth/authorization";
 import { ROLES } from "../schema";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -44,23 +44,24 @@ function canInspectOrder(
 
 /** Latest payment transaction for an order (by creation, newest first). */
 async function latestPaymentForOrder(
-  ctx: { db: any },
+  ctx: Pick<QueryCtx, "db">,
   orderId: Id<"orders">
 ): Promise<Doc<"payment_transactions"> | null> {
   const txs = await ctx.db
     .query("payment_transactions")
-    .withIndex("by_order", (q: any) => q.eq("orderId", orderId))
+    .withIndex("by_order", (q) => q.eq("orderId", orderId))
     .collect();
   if (txs.length === 0) return null;
-  return txs.sort((a: any, b: any) => b.createdAt - a.createdAt)[0];
+  return txs.sort((a, b) => b.createdAt - a.createdAt)[0];
 }
 
 // ─── Public Queries ───────────────────────────────────────────────────────────
 
 /**
  * Payment overview for the authenticated customer: their orders with the
- * authoritative charge and the latest payment transaction state. Powers the
- * MakePayment page and any customer payment-status display.
+ * authoritative charge and the latest payment transaction state. This is a
+ * customer-wide read model; Checkout and delivery tracking use the
+ * order-scoped getMyOrderPayment query instead.
  *
  * Excludes settlement and wallet data — customers do not see driver financials.
  */
@@ -116,6 +117,41 @@ export const getMyPaymentOverview = query({
   },
 });
 
+// ─── Order-scoped payment status ─────────────────────────────────────────────
+
+/**
+ * Authoritative payment state for one order. Checkout and delivery tracking use
+ * this instead of inferring "paid" from delivery status — a delivered parcel
+ * can still be unpaid, and a paid parcel is paid while it is in transit.
+ *
+ * The order lookup and ownership check happen server-side; the client only
+ * supplies the order id it is already allowed to view.
+ */
+export const getMyOrderPayment = query({
+  args: { orderId: v.id("orders") },
+  handler: async (ctx, args) => {
+    const user = await getCurrentAuthUser(ctx);
+    if (!user) throw new Error("Authentication required");
+
+    const order = await ctx.db.get(args.orderId);
+    // Missing and unauthorized orders return the same empty result. The page
+    // already has a single "Order not found" state and must not reveal whether
+    // another customer's order exists.
+    if (!order || !canInspectOrder(user, order)) return null;
+
+    const payment = await latestPaymentForOrder(ctx, order._id);
+
+    return {
+      orderId: order._id,
+      amount: order.price,
+      // "unpaid" is a read-model label, not a payment_transactions status.
+      status: payment?.status ?? ("unpaid" as const),
+      provider: payment?.provider ?? null,
+      completedAt: payment?.completedAt ?? null,
+    };
+  },
+});
+
 // ─── Internal Queries (for payment actions) ──────────────────────────────────
 
 /**
@@ -141,7 +177,7 @@ export const getAuthorizedOrderForPayment = internalQuery({
     }
 
     const sender = await ctx.db.get(order.senderId);
-    const email = sender && "email" in sender ? ((sender as any).email as string | undefined) : undefined;
+    const email = sender?.email ?? undefined;
 
     const existing = await ctx.db
       .query("payment_transactions")
@@ -201,7 +237,7 @@ export const getUserRoleForPayment = internalQuery({
     return {
       userId: user._id,
       role: user.role as string,
-      businessId: (user as any).businessId as Id<"businesses"> | undefined,
+      businessId: user.businessId,
     };
   },
 });

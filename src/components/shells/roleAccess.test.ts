@@ -92,7 +92,6 @@ const customerOnlyLabels = [
   "Request Delivery",
   "Track Delivery",
   "Wallet",
-  "Make Payment",
   "Invoices",
 ];
 for (const label of customerOnlyLabels) {

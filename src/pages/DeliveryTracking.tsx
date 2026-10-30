@@ -28,7 +28,7 @@ import { useParams, Link } from "react-router";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import CustomerShell from "@/components/shells/CustomerShell";
-import { TrackingHeader, RouteMap, FreshnessChip, freshness, statusCopy, buildSteps, milestonesFromEvents, formatEventTime } from "@/components/tracking/TrackingProgress";
+import { TrackingHeader, RouteMap, FreshnessChip, freshness, buildSteps, milestonesFromEvents, formatEventTime } from "@/components/tracking/TrackingProgress";
 import { DELIVERY_STATUS } from "@/convex/schema";
 import {
   MapPin,
@@ -41,9 +41,9 @@ import {
   Box,
   Calendar,
   Ruler,
-  Copy,
   Check,
   FileCheck2,
+  CreditCard,
 } from "lucide-react";
 import { useState } from "react";
 import "@/styles/dashboard.css";
@@ -71,15 +71,22 @@ export default function DeliveryTracking() {
 
   const delivery = useQuery(
     api.deliveries.state_machine.getDelivery,
-    deliveryId ? { deliveryId: deliveryId as any } : "skip",
+    deliveryId ? { deliveryId: deliveryId as never } : "skip",
   );
   const tracking = useQuery(
     api.tracking.queries.getDeliveryTracking,
-    deliveryId ? { deliveryId: deliveryId as any } : "skip",
+    deliveryId ? { deliveryId: deliveryId as never } : "skip",
   );
   const pod = useQuery(
     api.pod.service.getPODForDelivery,
-    deliveryId ? { deliveryId: deliveryId as any } : "skip",
+    deliveryId ? { deliveryId: deliveryId as never } : "skip",
+  );
+  // Payment is an order fact, not a delivery status. This is the resumable
+  // "pay later" entry point after Checkout — it links back to the same
+  // order-scoped payment surface instead of a separate payment page.
+  const payment = useQuery(
+    api.payments.queries.getMyOrderPayment,
+    delivery?.orderId ? { orderId: delivery.orderId } : "skip",
   );
 
   // Sender identity for the shipment-details card: getDelivery's customer
@@ -135,7 +142,6 @@ export default function DeliveryTracking() {
   }
 
   const status = delivery.status;
-  const sc = statusCopy(status);
 
   // Milestones come from the real tracking event log (routeHistory now carries
   // event metadata). Expected delivery date falls back to the order's
@@ -144,8 +150,18 @@ export default function DeliveryTracking() {
   const expectedTs = delivery.details?.scheduledTime ?? tracking.delivery.estimatedArrival ?? null;
   const steps = buildSteps(status, milestones, expectedTs);
 
-  const isTerminal = [DELIVERY_STATUS.DELIVERED, DELIVERY_STATUS.FAILED, DELIVERY_STATUS.CANCELLED].includes(status as any);
+  const isTerminal =
+    status === DELIVERY_STATUS.DELIVERED ||
+    status === DELIVERY_STATUS.FAILED ||
+    status === DELIVERY_STATUS.CANCELLED;
   const isFailed = status === DELIVERY_STATUS.FAILED || status === DELIVERY_STATUS.CANCELLED;
+  const paymentOutstanding =
+    payment !== undefined &&
+    payment !== null &&
+    payment.status !== "completed" &&
+    payment.status !== "refunded" &&
+    !isFailed;
+  const outstandingAmount = payment?.amount ?? 0;
 
   // Tracking freshness — from the backend's isStale plus its timestamps.
   const dl = tracking.driverLocation;
@@ -155,7 +171,7 @@ export default function DeliveryTracking() {
   const driverVisible = !isTerminal && dl?.lat != null && dl?.lng != null;
 
   const timelineEvents = tracking.routeHistory
-    .filter((e: any) => e.type !== "location_update")
+    .filter((e) => e.type !== "location_update")
     .slice(-10)
     .reverse();
 
@@ -336,7 +352,7 @@ export default function DeliveryTracking() {
                     </div>
                   </div>
                   <div className="track-timeline">
-                    {timelineEvents.map((e: any, i: number) => (
+                    {timelineEvents.map((e, i) => (
                       <div key={i} className="track-timeline-item">
                         <div className="track-timeline-rail">
                           <span className="track-timeline-dot" />
@@ -355,8 +371,32 @@ export default function DeliveryTracking() {
               )}
             </div>
 
-            {/* Right column: status rail + driver + POD */}
+            {/* Right column: payment + status rail + driver + POD */}
             <div className="track-right-col">
+              {paymentOutstanding && (
+                <div className="track-payment-card">
+                  <div className="track-payment-icon">
+                    <CreditCard size={18} />
+                  </div>
+                  <div className="track-payment-body">
+                    <p className="track-payment-label">Payment outstanding</p>
+                    <p className="track-payment-amount">
+                      R {(outstandingAmount / 100).toFixed(2).replace(".", ",")}
+                    </p>
+                    <p className="track-payment-copy">
+                      Complete payment to settle this delivery. You can pay by card or
+                      from your Lasha wallet.
+                    </p>
+                    <Link
+                      to={`/checkout/${delivery.orderId}`}
+                      className="track-payment-btn"
+                    >
+                      Complete payment
+                    </Link>
+                  </div>
+                </div>
+              )}
+
               <div className="track-last-updated">
                 <div className="track-updated-icon is-info"><Clock size={18} /></div>
                 <div>

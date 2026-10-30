@@ -70,7 +70,7 @@ Verified: `/operations` is `RoleGate area=OPERATIONS` (operations, fleet_manager
 
 | Workflow | Status | Evidence | Blocking Issue |
 |---|---|---|---|
-| **Customer delivery** (request → geocode → order+delivery → server-side haversine + stored quote → payment → dispatch → tracking → POD → completion → notifications → history) | **COMPLETE** | `RequestDelivery.tsx` → `createOrderAndDelivery` (pricing computed server-side via `calculateAndStoreQuote`; client never supplies price) → `MakePayment.tsx` → `initiateOrderPayment` (server resolves amount from stored order) → `DeliveryTracking.tsx` (`/deliveries/:id`, ownership-checked) | None |
+| **Customer delivery** (request → geocode → order+delivery → server-side haversine + stored quote → payment → dispatch → tracking → POD → completion → notifications → history) | **COMPLETE** | `RequestDelivery.tsx` → `createOrderAndDelivery` (pricing computed server-side via `calculateAndStoreQuote`; client never supplies price) → `Checkout.tsx` (`/checkout/:orderId`) → `initiateOrderPayment` / `payOrderWithWallet` (server resolves amount from stored order) → `DeliveryTracking.tsx` (`/deliveries/:id`, ownership-checked) | None |
 | **Driver delivery** (offers → accept/reject → active → GPS → transitions → POD gate → completion → history → earnings) | **COMPLETE** | `DriverOffers.tsx` → `dispatch.engine.acceptAssignment` (concurrency-guarded) → `DriverActiveDelivery.tsx` → `state_machine.*` mutations → `completeDelivery` requires POD record server-side | None |
 | **Operations** (dispatch → offers → monitoring → exceptions → reassignment → history) | **COMPLETE** (with offer-expiry gap) | `OperationsCentre.tsx` on live Convex queries; exceptions derived from real conditions only | Expired offers require manual ops action (see §9) |
 | **Payment** (initiate → Paystack → webhook + verify → completion gate) | **COMPLETE** (config-dependent) | `payments/actions.ts`; webhook HMAC-SHA512 verified; provider amount cross-checked against stored charge; deterministic reference idempotency | `PAYSTACK_SECRET_KEY` must be configured; webhook URL registered |
@@ -80,7 +80,7 @@ Verified: `/operations` is `RoleGate area=OPERATIONS` (operations, fleet_manager
 | **Notifications** (lifecycle-wired, idempotent, role-scoped) | **COMPLETE** | `notifications/service.ts` wired at 13 state-machine sites + offer/POD/payment | No SMS/email/push (by design); driver notifications have no deep link |
 | **Offline resilience** (buffer → sync → cleanup) | **COMPLETE** | `src/lib/offline/*` + engine started in `DriverShell`; 42 tests | Browser background limitations documented |
 
-No workflow stage relies on mock data, `Math.random()` (except tracking-number/uniqueness-suffix generation, which is legitimate), `setTimeout()` simulation, or client-only financial state. Wallet "Top Up" is UI-only (no charge occurs, no fake balance write) — documented as a future feature.
+No workflow stage relies on mock data, `Math.random()` (except tracking-number/uniqueness-suffix generation, which is legitimate), `setTimeout()` simulation, or client-only financial state. Wallet top-ups use Paystack hosted checkout and are credited only after server-side verification or a signed webhook; wallet payments debit the stored order amount atomically.
 
 ---
 

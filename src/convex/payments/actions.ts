@@ -176,8 +176,9 @@ export const initiateOrderPayment = action({
         reference,
         currency: "ZAR",
         metadata: { orderId: orderCtx.orderId, method: args.method },
-        // Client redirects back; verification is server-side regardless.
-        callback_url: `${siteUrl}/make-payment?reference=${encodeURIComponent(reference)}`,
+        // Return to the order-scoped checkout; verification is server-side
+        // regardless of what the browser does with this URL.
+        callback_url: `${siteUrl}/checkout/${orderCtx.orderId}?reference=${encodeURIComponent(reference)}`,
       }),
     });
 
@@ -513,7 +514,13 @@ async function settlePaystackChargeResponse(
  * mutations' state guards).
  */
 export const verifyOrderPayment = action({
-  args: { reference: v.string() },
+  args: {
+    reference: v.string(),
+    // Optional for backwards compatibility; Checkout always supplies it so a
+    // reference belonging to another of the user's orders cannot be presented
+    // as this order's payment.
+    orderId: v.optional(v.id("orders")),
+  },
   handler: async (ctx, args) => {
     const secretKey = process.env.PAYSTACK_SECRET_KEY;
     if (!secretKey) {
@@ -530,6 +537,9 @@ export const verifyOrderPayment = action({
     });
     if (!tx) {
       throw new Error("Unknown payment reference");
+    }
+    if (args.orderId !== undefined && tx.orderId !== args.orderId) {
+      throw new Error("Payment reference does not belong to this order");
     }
 
     // Only the payer (or super admin) may verify.

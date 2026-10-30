@@ -237,12 +237,12 @@ export default function Wallet() {
             <button
               type="button"
               className="wallet-action-card"
-              onClick={() => navigate("/make-payment")}
+              onClick={() => navigate("/dashboard")}
             >
               <span className="wallet-action-icon">
                 <ArrowUpRight size={20} />
               </span>
-              <span className="wallet-action-label">Pay delivery</span>
+              <span className="wallet-action-label">View deliveries</span>
             </button>
             <button type="button" className="wallet-action-card" onClick={showHistory}>
               <span className="wallet-action-icon">

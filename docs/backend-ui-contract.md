@@ -52,12 +52,13 @@ authorization boundary.
 | `/post-auth` | — | `PostAuthRedirect.tsx` | Yes | Role-aware post-auth redirect |
 | `/dashboard` | Customer | `Dashboard.tsx` | Yes | Activity Center — order management |
 | `/request-delivery` | Customer | `RequestDelivery.tsx` | Yes | Create new delivery request |
+| `/checkout/:orderId` | Customer | `Checkout.tsx` | Yes | Order-scoped review and payment |
 | `/track-delivery` | Customer | `TrackDelivery.tsx` | Yes | Track shipment by ID |
 | `/wallet` | Customer | `Wallet.tsx` | Yes | Wallet balance, transactions, top-up |
 | `/settings` | Customer | `Settings.tsx` | Yes | Profile, business, notifications, security |
 | `/past-deliveries` | Customer | `PastDeliveries.tsx` | Yes | Order history table |
 | `/invoices` | Customer | `Invoices.tsx` | Yes | Invoice management |
-| `/make-payment` | Customer | `MakePayment.tsx` | Yes | Payment processing |
+| `/make-payment` | — | redirect → `/dashboard` | — | Legacy alias; standalone page removed |
 | `/notifications` | Customer | `Notifications.tsx` | Yes | Notification center |
 | `/help` | Customer | `Help.tsx` | Yes | Help center (static) |
 | `/legal` | Customer | `Legal.tsx` | Yes | Legal documents (static) |
@@ -553,21 +554,29 @@ pricing_rules: {
 }
 ```
 
-### 4.8 Make Payment
+### 4.8 Checkout Payment
 
-| Endpoint | Type | Source | Required Data |
-|----------|------|--------|---------------|
-| `initiatePayment` | Mutation | — | Start payment flow |
-| `processCardPayment` | Action | — | Card payment processing |
-| `processEFT` | Action | — | EFT bank transfer |
-| `payFromWallet` | Mutation | — | Wallet payment |
-| `processSnapScan` | Action | — | SnapScan payment |
+Payment is order-scoped at `/checkout/:orderId`; there is no standalone
+payment page. Card fields post directly to Paystack with the secret key kept
+server-side, or the customer can continue to Paystack hosted checkout. Wallet
+payment debits the authenticated customer's Lasha wallet atomically.
+
+| Endpoint | Type | Purpose |
+|----------|------|---------|
+| `payments.queries.getMyOrderPayment` | Query | Authoritative payment state for one owned order |
+| `payments.actions.chargeOrderPaymentWithCard` | Action | Inline card charge (server-side only) |
+| `payments.actions.submitPaymentOtp` | Action | Complete a bank OTP challenge |
+| `payments.actions.initiateOrderPayment` | Action | Start Paystack hosted checkout |
+| `payments.actions.verifyOrderPayment` | Action | Verify the return reference, scoped to the order |
+| `payments.actions.payOrderWithWallet` | Action | Pay the stored order amount from the wallet |
 
 **Payment Methods:**
-- Credit/Debit Card
-- EFT Bank Transfer
+- Credit/Debit Card (inline or Paystack hosted)
 - Lasha Wallet
-- SnapScan
+
+EFT and SnapScan are not exposed: the previous standalone page listed them
+without configuring the corresponding Paystack channels, so they only opened
+the same card checkout.
 
 ### 4.9 Notifications
 
@@ -918,7 +927,7 @@ interface Transaction {
 | Order status transitions | Dashboard | High |
 | Driver assignment | Dashboard | High |
 | Real-time location tracking | Track Delivery | High |
-| Payment processing | Make Payment | High |
+| Payment processing | Checkout | High |
 | Invoice generation | Invoices | Medium |
 | Notification system | Notifications | Medium |
 | Price calculation | Request Delivery | Medium |
@@ -953,7 +962,7 @@ interface Transaction {
 - **Settings**: 8 endpoints
 - **Past Deliveries**: 2 endpoints
 - **Invoices**: 4 endpoints
-- **Make Payment**: 4 endpoints
+- **Checkout payments**: 6 endpoints
 - **Notifications**: 4 endpoints
 
 ### External Integrations Required (6 services)

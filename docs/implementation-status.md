@@ -5,6 +5,10 @@
 > **Method:** Direct inspection of repository source code. No reliance on previous AI-agent claims.
 > **TypeScript:** `bun tsc -b --noEmit` passes cleanly (0 errors).
 > **Build:** `bun run build` succeeds.
+>
+> **Payment note (2026-10-30):** The MakePayment findings below are historical.
+> The standalone payment page was removed; payment is now order-scoped at
+> `/checkout/:orderId`. See `docs/customer-payment.md` for the current flow.
 
 ---
 

@@ -1,13 +1,12 @@
 import '@vly-ai/integrations';
 import { Toaster } from "@/components/ui/sonner";
 import { APP_AREAS, RoleGate } from "@/components/shells/RoleGate";
-import { homeRouteForRole } from "@/components/shells/roleAccess";
 import { VlyToolbar } from "../vly-toolbar-readonly.tsx";
 import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import { convexClient } from "./lib/convex";
 import React, { StrictMode, useEffect } from "react";
 import { createRoot } from "react-dom/client";
-import { BrowserRouter, Route, Routes, useLocation } from "react-router";
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router";
 import "./index.css";
 
 import Landing from "./pages/Landing.tsx";
@@ -22,7 +21,6 @@ import Wallet from "./pages/Wallet.tsx";
 import Settings from "./pages/Settings.tsx";
 import PastDeliveries from "./pages/PastDeliveries.tsx";
 import Invoices from "./pages/Invoices.tsx";
-import MakePayment from "./pages/MakePayment.tsx";
 import Notifications from "./pages/Notifications.tsx";
 import Help from "./pages/Help.tsx";
 import Legal from "./pages/Legal.tsx";
@@ -246,14 +244,9 @@ createRoot(document.getElementById("root")!).render(
                   </RoleGate>
                 }
               />
-              <Route
-                path="/make-payment"
-                element={
-                  <RoleGate area={APP_AREAS.CUSTOMER}>
-                    <MakePayment />
-                  </RoleGate>
-                }
-              />
+              {/* Legacy alias: payment is order-scoped at /checkout/:orderId.
+                  Kept as a redirect so old bookmarks do not 404. */}
+              <Route path="/make-payment" element={<Navigate to="/dashboard" replace />} />
               <Route
                 path="/past-deliveries"
                 element={
