@@ -23,7 +23,15 @@ This project is set up already and running on a cloud environment, as well as a 
 
 ## Environment Variables
 
-The project is set up with project specific CONVEX_DEPLOYMENT and VITE_CONVEX_URL environment variables on the client side.
+The app's active backend is the user-owned Convex deployment
+`lonwabo-matya / cladogram / incredible-warbler-335`, pinned in
+`src/lib/convex.ts`. The platform-injected `VITE_CONVEX_URL` still points at
+the paused `keen-octopus-299` deployment, so it is intentionally ignored.
+
+The Convex CLI selects its own target. Set `CONVEX_DEPLOY_KEY` to a deploy key
+for `incredible-warbler-335`; it takes precedence over `CONVEX_DEPLOYMENT` and
+prevents commands from falling back to the paused deployment. See
+[`docs/convex-deployment.md`](docs/convex-deployment.md).
 
 The convex server has a separate set of environment variables that are accessible by the convex backend.
 

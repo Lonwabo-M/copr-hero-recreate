@@ -5,6 +5,11 @@
 > provider and staff-only account guard are implemented. Staff can still use
 > the existing local password path until the Web application client secret is
 > configured. No secrets belong in this repository.
+>
+> The Convex CLI must target the active deployment
+> (`incredible-warbler-335`), not the paused `keen-octopus-299` deployment.
+> Use a deployment-scoped `CONVEX_DEPLOY_KEY`; see
+> [convex-deployment.md](convex-deployment.md).
 
 ## Why Zitadel Cloud Free
 
@@ -94,9 +99,15 @@ a committed `.env` file):
 | `ZITADEL_CLIENT_SECRET` | Staff Web application client secret; server-side only |
 
 The provider is already registered in `src/convex/auth.ts`; the values must be
-set on the Convex deployment (use the project's Keys/API keys UI, never a
-committed `.env` file). Until the secret is present, `/staff-login` will report
-that SSO is unavailable; customer and driver password auth is unaffected.
+set on the **active** Convex deployment `incredible-warbler-335` (use the
+project's Keys/API keys UI, never a committed `.env` file). Until the secret is
+present, `/staff-login` will report that SSO is unavailable; customer and
+driver password auth is unaffected.
+
+Before deploying, confirm the CLI target with
+`bunx convex dev --once`; it must name `incredible-warbler-335`, not
+`keen-octopus-299`. The permanent target setup is in
+[convex-deployment.md](convex-deployment.md).
 
 ### 3. Account linking and staff guard
 
@@ -137,7 +148,8 @@ in the account inventory first.
 3. Open Admin → Accounts and use **Prepare staff SSO**; fix any skipped
    accounts that have no email or duplicate emails.
 4. Add `ZITADEL_ISSUER`, `ZITADEL_CLIENT_ID` and `ZITADEL_CLIENT_SECRET` to
-   the Convex deployment, then run `bunx convex dev --once`.
+   the active Convex deployment, confirm `bunx convex dev --once` names
+   `incredible-warbler-335`, then run it.
 5. Sign in through `/staff-login` with a test Operations account and a test
    Admin account. Confirm each lands in the correct area.
 6. Test that a Zitadel staff token cannot call customer/driver endpoints and

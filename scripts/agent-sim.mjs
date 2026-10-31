@@ -21,7 +21,7 @@ import { ConvexHttpClient } from "convex/browser";
 import { api } from "../src/convex/_generated/api.js";
 
 const CONVEX_URL =
-  process.env.CONVEX_URL ?? "https://keen-octopus-299.convex.cloud";
+  process.env.CONVEX_URL ?? "https://incredible-warbler-335.convex.cloud";
 const SITE_URL = CONVEX_URL.replace(".cloud", ".site");
 
 // ─── Deterministic pseudo-randomness so reruns produce stable stories ────────

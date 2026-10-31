@@ -9,6 +9,10 @@ import { ConvexReactClient } from "convex/react";
  * below (Convex dashboard → team lonwabo-matya → project cladogram →
  * deployment incredible-warbler-335), so this constant takes precedence over
  * the injected env var. To retarget the backend, change this single constant.
+ *
+ * This constant controls only the browser client. `convex dev` selects its
+ * target separately; without CONVEX_DEPLOY_KEY it falls back to the paused
+ * platform deployment. See docs/convex-deployment.md.
  */
 export const CONVEX_URL = "https://incredible-warbler-335.convex.cloud";
 
