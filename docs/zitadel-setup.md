@@ -78,12 +78,12 @@ Free (card required) or Google Cloud Identity Free.
      flow, then continues to `/post-auth` (or the original `returnTo` path).
    - Post-logout URI: `https://lasha.freebuff.app/staff-login`
 6. Copy the **Client ID** and **Client Secret**. To find the issuer, open the
-   application's left sidebar and click **URLs**. Copy the **Discovery
-   Endpoint** shown there, then remove the
-   `/.well-known/openid-configuration` suffix. The remaining base URL is
-   `ZITADEL_ISSUER`. For example, a discovery endpoint of
-   `https://example.zitadel.cloud/.well-known/openid-configuration` means the
-   issuer is `https://example.zitadel.cloud`.
+   application's left sidebar and click **URLs**. The page lists endpoints such
+   as Authorization and Token; the issuer is their **shared base URL**, not one
+   of the full endpoint paths. For example, if the Authorization Endpoint is
+   `https://example.zitadel.cloud/oauth/v2/authorize`, the issuer is
+   `https://example.zitadel.cloud`. Alternatively, click the **discovery
+   endpoint** link in the blue banner and use the JSON `issuer` value.
 
    Do not derive the issuer from the browser's `/ui/console/...` address.
    Before wiring, open the exact discovery endpoint and confirm it returns
