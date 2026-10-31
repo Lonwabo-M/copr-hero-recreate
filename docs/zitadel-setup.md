@@ -8,8 +8,8 @@
 >
 > The Convex CLI must target the active deployment
 > (`incredible-warbler-335`), not the paused `keen-octopus-299` deployment.
-> Use a deployment-scoped `CONVEX_DEPLOY_KEY`; see
-> [convex-deployment.md](convex-deployment.md).
+> Freebuff stores the key as `CONVEX_DEPLOY_KEY_LIVE`; the CLI needs an alias
+> named `CONVEX_DEPLOY_KEY`. See [convex-deployment.md](convex-deployment.md).
 
 ## Why Zitadel Cloud Free
 

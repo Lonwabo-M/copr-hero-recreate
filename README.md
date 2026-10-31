@@ -28,10 +28,11 @@ The app's active backend is the user-owned Convex deployment
 `src/lib/convex.ts`. The platform-injected `VITE_CONVEX_URL` still points at
 the paused `keen-octopus-299` deployment, so it is intentionally ignored.
 
-The Convex CLI selects its own target. Set `CONVEX_DEPLOY_KEY` to a deploy key
-for `incredible-warbler-335`; it takes precedence over `CONVEX_DEPLOYMENT` and
-prevents commands from falling back to the paused deployment. See
-[`docs/convex-deployment.md`](docs/convex-deployment.md).
+The Convex CLI selects its own target. Freebuff stores the key as
+`CONVEX_DEPLOY_KEY_LIVE`, but Convex only reads `CONVEX_DEPLOY_KEY`; add an
+`CONVEX_DEPLOY_KEY` alias with the same value. It takes precedence over
+`CONVEX_DEPLOYMENT` and prevents commands from falling back to the paused
+deployment. See [`docs/convex-deployment.md`](docs/convex-deployment.md).
 
 The convex server has a separate set of environment variables that are accessible by the convex backend.
 

@@ -38,23 +38,25 @@ talking to `incredible-warbler-335`.
 to a key for `incredible-warbler-335`, there is no fallback to
 `keen-octopus-299`.
 
-1. Open the active deployment's settings:
+The deployment already has a key stored in Freebuff as
+`CONVEX_DEPLOY_KEY_LIVE` (value starts `dev:incredible-warbler-335|…`). That
+is the right key, but **the `_LIVE` name is not read by the Convex CLI**. Keep
+the Freebuff key where it is and add an alias for the CLI:
 
-   <https://dashboard.convex.dev/t/lonwabo-matya/cladogram/incredible-warbler-335/settings>
+1. Open **Freebuff → Keys/API keys** for this project.
+2. Add a second variable named `CONVEX_DEPLOY_KEY` with the **same value** as
+   `CONVEX_DEPLOY_KEY_LIVE`. Do not create a new key in the Convex dashboard.
+3. Keep `CONVEX_DEPLOY_KEY_LIVE` too if Freebuff's live environment uses it.
 
-2. In **Deploy keys**, generate a **dev deploy key**.
-3. Give it a clear name, such as `lasha-workspace`.
-4. Grant the permissions needed for normal development:
-   - `deployment:deploy` (push code/schema)
-   - read/write data and environment variables (optional, for seeding and
-     checking settings)
-5. Copy the key once. It looks like
-   `dev:incredible-warbler-335|…` and is a secret.
-6. Add it to **Freebuff → Keys/API keys** as `CONVEX_DEPLOY_KEY`. Do not
-   commit it or paste it into a source file.
+If the key is already available in the shell as `CONVEX_DEPLOY_KEY_LIVE`, the
+equivalent one-off command is:
 
-The key is a secret. If it is ever exposed, delete it in the Convex dashboard
-and generate a replacement.
+```bash
+CONVEX_DEPLOY_KEY="$CONVEX_DEPLOY_KEY_LIVE" bunx convex dev --once
+```
+
+Do not commit the value or put it in a source file. If it is ever exposed,
+delete it in the Convex dashboard and update both variables.
 
 ## Verify the target
 
