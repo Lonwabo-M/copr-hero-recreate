@@ -77,13 +77,19 @@ Free (card required) or Google Cloud Identity Free.
    - Post-login destination is handled by the app: `/staff-login` starts the
      flow, then continues to `/post-auth` (or the original `returnTo` path).
    - Post-logout URI: `https://lasha.freebuff.app/staff-login`
-6. Copy the **Client ID** and **Client Secret**, and copy the **Issuer URL**
-   shown by Zitadel. It is the instance host without `/ui/console` (for the
-   current console this looks like
-   `https://lasha-staff-xjjize.eu1.zitadel.cloud`). Before wiring, check that
-   `<issuer>/.well-known/openid-configuration` returns JSON; if it returns
-   `Instance not found`, the instance/domain is not ready and Convex cannot
-   validate the token yet. Convex Auth validates the ID token; do not add a
+6. Copy the **Client ID** and **Client Secret**. To find the issuer, open the
+   application's left sidebar and click **URLs**. Copy the **Discovery
+   Endpoint** shown there, then remove the
+   `/.well-known/openid-configuration` suffix. The remaining base URL is
+   `ZITADEL_ISSUER`. For example, a discovery endpoint of
+   `https://example.zitadel.cloud/.well-known/openid-configuration` means the
+   issuer is `https://example.zitadel.cloud`.
+
+   Do not derive the issuer from the browser's `/ui/console/...` address.
+   Before wiring, open the exact discovery endpoint and confirm it returns
+   JSON. If it returns `Instance not found`, the instance/domain is not ready
+   (or the console URL is not the instance domain); use the link from **URLs**
+   rather than guessing. Convex Auth validates the ID token; do not add a
    second JWT provider or expose the client secret through a `VITE_*`
    variable.
 
@@ -94,7 +100,7 @@ a committed `.env` file):
 
 | Variable | Purpose |
 |---|---|
-| `ZITADEL_ISSUER` | Issuer URL shown in Zitadel (instance host, no `/ui/console`) |
+| `ZITADEL_ISSUER` | Base URL of the app's **URLs → Discovery Endpoint**, without `/.well-known/openid-configuration` |
 | `ZITADEL_CLIENT_ID` | Staff Web application client ID |
 | `ZITADEL_CLIENT_SECRET` | Staff Web application client secret; server-side only |
 
