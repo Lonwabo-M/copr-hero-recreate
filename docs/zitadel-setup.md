@@ -83,7 +83,10 @@ Free (card required) or Google Cloud Identity Free.
    of the full endpoint paths. For example, if the Authorization Endpoint is
    `https://example.zitadel.cloud/oauth/v2/authorize`, the issuer is
    `https://example.zitadel.cloud`. Alternatively, click the **discovery
-   endpoint** link in the blue banner and use the JSON `issuer` value.
+   endpoint** link in the blue banner and use the JSON `issuer` value. For the
+   current instance, the confirmed issuer is
+   `https://lasha-staff-xjjjze.eu1.zitadel.cloud` (note the three `j`s in
+   `xjjjze`).
 
    Do not derive the issuer from the browser's `/ui/console/...` address.
    Before wiring, open the exact discovery endpoint and confirm it returns
