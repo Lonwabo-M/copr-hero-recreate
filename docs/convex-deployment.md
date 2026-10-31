@@ -82,9 +82,22 @@ Then verify the HTTP routes on the active deployment:
 curl -fsS https://incredible-warbler-335.convex.site/.well-known/openid-configuration
 ```
 
-The issuer must be `https://incredible-warbler-335.convex.site`.
+The issuer in this response must be
+`https://incredible-warbler-335.convex.site`. This is the deployment's **own
+Convex Auth issuer**, used for its self-issued session JWTs. It is **not** the
+Zitadel issuer, so never use this URL for `ZITADEL_ISSUER`.
 
-For staff SSO, the OIDC callback route must also exist:
+For staff SSO, verify Zitadel's discovery document separately:
+
+```bash
+curl -fsS https://lasha-staff-xjjjze.eu1.zitadel.cloud/.well-known/openid-configuration
+```
+
+That response's issuer must be
+`https://lasha-staff-xjjjze.eu1.zitadel.cloud`; this is the value for
+`ZITADEL_ISSUER`.
+
+Finally, the OIDC callback route must exist:
 
 ```bash
 curl -sS -o /dev/null -w '%{http_code}\n' \
@@ -92,7 +105,9 @@ curl -sS -o /dev/null -w '%{http_code}\n' \
 ```
 
 A `404` means the backend code has not been deployed to the active deployment
-yet. A redirect or validation error (not `404`) means the route exists.
+yet. A redirect or validation error (not `404`) means the route exists; it does
+not by itself prove the Zitadel client ID or secret is valid. Complete a
+`/staff-login` flow to verify the full exchange.
 
 ## Do not do this
 

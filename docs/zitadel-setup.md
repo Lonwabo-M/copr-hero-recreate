@@ -107,6 +107,11 @@ a committed `.env` file):
 | `ZITADEL_CLIENT_ID` | Staff Web application client ID |
 | `ZITADEL_CLIENT_SECRET` | Staff Web application client secret; server-side only |
 
+`https://incredible-warbler-335.convex.site` is the app's own Convex Auth
+issuer, used for its session JWTs. It is **not** the Zitadel issuer. Never set
+`ZITADEL_ISSUER` to the Convex site URL; doing so points the Zitadel provider
+at the app itself and staff login cannot complete.
+
 The provider is already registered in `src/convex/auth.ts`; the values must be
 set on the **active** Convex deployment `incredible-warbler-335` (use the
 project's Keys/API keys UI, never a committed `.env` file). Until the secret is
