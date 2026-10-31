@@ -4,7 +4,7 @@
  * Pins the controls added after the security review so they cannot silently
  * come back:
  *
- *   1. Test-area elevation is limited to operator-allowlisted accounts.
+ *   1. Production test-area elevation has been removed entirely.
  *   2. Seed-time role provisioning requires a deployment secret.
  *   3. Demo account credentials are never committed, and deployment bootstrap
  *      refuses to run without an operator-supplied password.
@@ -15,9 +15,8 @@
  * Run with: bun test src/convex/auth/accessControls.test.ts
  */
 
-import { readFileSync } from "fs";
+import { existsSync, readFileSync } from "fs";
 import { join } from "path";
-import { isTestAccessAccount } from "./authorization";
 
 const ROOT = process.cwd();
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
@@ -44,39 +43,15 @@ function assert(condition: boolean, message: string) {
   if (!condition) throw new Error(`Assertion failed: ${message}`);
 }
 
-// ─── 1. Test-access allowlist (behavioural) ──────────────────────────────────
+// ─── 1. Test-access removal ──────────────────────────────────────────────────
 
-console.log("\nTest-access allowlist");
+console.log("\nTest-access removal");
 
-test("denies everyone when TEST_ACCESS_EMAILS is unset", () => {
-  delete process.env.TEST_ACCESS_EMAILS;
-  assert(isTestAccessAccount("agent.admin@lasha.test") === false, "must fail closed");
-  assert(isTestAccessAccount("someone@example.com") === false, "must fail closed");
-  assert(isTestAccessAccount(undefined) === false, "missing email must fail closed");
-});
-
-test("allows only explicitly listed emails", () => {
-  process.env.TEST_ACCESS_EMAILS = "agent.admin@lasha.test, agent.ops@lasha.test";
-  assert(isTestAccessAccount("agent.admin@lasha.test") === true, "listed account allowed");
-  assert(isTestAccessAccount("agent.evil@lasha.test") === false, "same domain, not listed");
-  assert(isTestAccessAccount("attacker@example.com") === false, "unlisted account denied");
-  delete process.env.TEST_ACCESS_EMAILS;
-});
-
-test("matching is case-insensitive and whitespace tolerant", () => {
-  process.env.TEST_ACCESS_EMAILS = " Agent.Admin@Lasha.Test ";
-  assert(isTestAccessAccount("agent.admin@lasha.test") === true, "case-insensitive match");
-  delete process.env.TEST_ACCESS_EMAILS;
-});
-
-test("claimTestAreaAccess gates on the allowlist before writing a role", () => {
-  const src = read("src/convex/users/testAccess.ts");
-  const start = src.indexOf("export const claimTestAreaAccess");
-  const block = src.slice(start, start + 2400);
-  const gate = block.indexOf("isTestAccessAccount(user.email)");
-  const patch = block.indexOf("ctx.db.patch");
-  assert(gate > 0, "missing allowlist gate");
-  assert(patch > gate, "gate must run before the role is written");
+test("production test-access elevation endpoint is absent", () => {
+  assert(
+    !existsSync(join(ROOT, "src/convex/users/testAccess.ts")),
+    "testAccess endpoint must not exist in the production source tree",
+  );
 });
 
 // ─── 2. Seed-time provisioning ──────────────────────────────────────────────

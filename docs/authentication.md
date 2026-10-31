@@ -1,16 +1,39 @@
 # Lasha Authentication
 
-## Authentication Method
+## Current state: separate logical realms, staff migration pending
+
+Lasha now has three logical auth realms:
+
+| Realm | Accounts | Status |
+|---|---|---|
+| Customer | `customer` | Email + password (current) |
+| Driver | `driver` | Email + password (current); invite-only enrollment still to be enforced |
+| Staff | `fleet_manager`, `operations`, `company_admin`, `super_admin` | Staff realm and Admin permission implemented; Zitadel SSO/MFA wiring pending credentials |
+
+`company_admin` is **Lasha staff**, not a customer business administrator.
+Customers have no admin portal. Fleet managers are internal staff too.
+
+Important distinction:
+
+- The **logical realm boundary** is implemented server-side: customer/driver
+  roles cannot call staff functions, and staff roles cannot enter the Driver
+  App. Admin is a separate `admin:access` permission.
+- The **staff identity provider** is not switched yet. Staff still use the
+  existing local password path until a Zitadel Cloud application is created
+  and its issuer/client ID are configured. See `docs/zitadel-setup.md`.
+
+## Customer and driver authentication method
 
 **Email + password** via Convex Auth's supported `Password` provider
-(`@convex-dev/auth`). Lasha uses one standard account model:
+(`@convex-dev/auth`):
 
 - Sign up: email + password (+ confirmation)
 - Sign in: email + password
 - Forgot password: email → reset code → new password
 
-There is no OTP, magic-link, social, phone, or MFA authentication. The
-previous email-OTP provider has been removed entirely.
+There is no OTP, magic-link, social, phone, or MFA in this local password
+path. The previous email-OTP provider has been removed entirely. Staff MFA is
+an IdP responsibility and is not implemented by the local password provider.
 
 ## Provider Configuration
 
@@ -198,15 +221,24 @@ Roles remain **server-controlled** and are never accepted from the client:
 - Unprovisioned users default to the customer experience via
   `getCurrentAuthUser`; Convex authorization (`RoleGate` → server RBAC)
   remains authoritative regardless of UI routing.
+- `src/convex/schema.ts` maps every role to exactly one realm. Staff roles
+  are `fleet_manager`, `operations`, `company_admin` and `super_admin`.
+- `admin:access` is a separate permission held by `company_admin` and
+  `super_admin`; Operations and Fleet Manager do not receive it automatically.
 
 ## Role-Aware Routing
 
-Unchanged: after sign-in/sign-up/reset the app navigates to `/post-auth`,
-which resolves the user's home route from their server-known role
-(`homeRouteForRole`): customer → `/dashboard`, driver → `/driver`,
-operations/fleet_manager → `/operations`, company_admin/super_admin →
-`/operations`. Deep links keep their `?returnTo=` target. Users never choose
-a role in the auth UI.
+After sign-in/sign-up/reset the app navigates to `/post-auth`, which resolves
+the user's home route from their server-known role (`homeRouteForRole`):
+
+- customer → `/dashboard`
+- driver → `/driver`
+- operations / fleet_manager → `/operations`
+- company_admin / super_admin → `/admin/driver-approvals`
+
+Deep links keep their `?returnTo=` target. Users never choose a role in the
+auth UI. There is no cross-area navigation and no role-switching elevation:
+entering another area redirects to the account's own home.
 
 ## Security
 
@@ -217,10 +249,18 @@ a role in the auth UI.
 - Secrets: `VLY_INTEGRATION_KEY` is server-only (never `VITE_`-prefixed,
   never logged, never returned). No authentication secret exists in client
   code.
-- Protected routes: unchanged `RequireAuth`/`RoleGate` guards; backend RBAC
-  remains authoritative for every query/mutation.
+- Protected routes: `RequireAuth`/`RoleGate` guards; backend RBAC remains
+  authoritative for every query/mutation.
+- Realm checks: `requireStaff` rejects customer/driver accounts; `requireAdmin`
+  requires the staff realm and the explicit `admin:access` permission.
+- Removed: production `users.testAccess` role elevation. The old test-access
+  mutation and its cross-area UI are gone. The Admin account inventory exposes
+  any legacy `testElevated` records and a safe restore action.
 - Abuse protection: Convex Auth's built-in sign-in rate limiting applies to
   password attempts (no custom rate-limiting service).
+- Staff MFA: not implemented in the local password path. It must be enforced by
+  the Zitadel application when staff SSO is wired; do not claim MFA is active
+  before that cutover.
 
 ## Removed
 
@@ -236,3 +276,10 @@ a role in the auth UI.
 removal, flow wiring (`signUp`/`signIn`/`reset`/`reset-verification`),
 password-policy preservation, user-safe error mapping, legacy linking
 behaviour, OTP-UI removal, and role-routing preservation.
+
+`src/convex/auth/accessControls.test.ts` verifies the retired test-elevation
+endpoint is absent, seed-time provisioning remains gated, demo credentials are
+never committed, and tracking/diagnostics remain protected.
+
+`src/components/shells/roleAccess.test.ts` verifies realm-exclusive area
+access, the explicit Admin permission, home routes and navigation separation.

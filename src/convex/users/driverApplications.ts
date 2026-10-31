@@ -2,7 +2,7 @@ import { getAuthUserId } from "@convex-dev/auth/server";
 import { query, mutation } from "../_generated/server";
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
-import { requireAuth } from "../auth/authorization";
+import { requireAdmin, requireAuth } from "../auth/authorization";
 import { ROLES } from "../schema";
 import { AUDIT_ACTIONS } from "../audit/service";
 import {
@@ -332,23 +332,13 @@ export const getMyDispatchIdentity = query({
 
 // ─── REVIEW (Admin Portal) ───────────────────────────────────────────────────
 
-function requireAdmin(user: { role?: string }): void {
-  if (user.role !== ROLES.COMPANY_ADMIN && user.role !== ROLES.SUPER_ADMIN) {
-    throw new Error("Access denied: admin only");
-  }
-}
-
 /** Pending application queue with applicant + review details (admin only). */
 export const getApplicationsForReview = query({
   args: {
     status: v.optional(v.union(v.literal("pending"), v.literal("approved"), v.literal("rejected"))),
   },
   handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx);
-    if (userId === null) throw new Error("Authentication required");
-    const user = await ctx.db.get(userId);
-    if (!user) throw new Error("Authentication required");
-    requireAdmin(user);
+    await requireAdmin(ctx);
 
     const status = args.status ?? "pending";
     const rows = await ctx.db
@@ -401,10 +391,8 @@ export const acceptDriverApplication = mutation({
     verificationNotes: v.string(),
   },
   handler: async (ctx, args) => {
-    const userId = await requireAuth(ctx);
-    const admin = await ctx.db.get(userId);
-    if (!admin) throw new Error("Authentication required");
-    requireAdmin(admin);
+    const admin = await requireAdmin(ctx);
+    const userId = admin.userId;
 
     const app = await ctx.db.get(args.applicationId);
     if (!app) throw new Error("Application not found");
@@ -620,10 +608,8 @@ export const getDriverRoster = query({
 export const rejectDriverApplication = mutation({
   args: { applicationId: v.id("driver_applications"), notes: v.optional(v.string()) },
   handler: async (ctx, args) => {
-    const userId = await requireAuth(ctx);
-    const admin = await ctx.db.get(userId);
-    if (!admin) throw new Error("Authentication required");
-    requireAdmin(admin);
+    const admin = await requireAdmin(ctx);
+    const userId = admin.userId;
 
     const app = await ctx.db.get(args.applicationId);
     if (!app) throw new Error("Application not found");

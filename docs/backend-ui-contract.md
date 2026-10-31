@@ -83,7 +83,7 @@ src/
 │   │   ├── CustomerShell.tsx   # Customer Portal shell
 │   │   ├── DriverShell.tsx     # Driver App shell
 │   │   ├── OperationsShell.tsx # Operations Centre shell
-│   │   └── AdminShell.tsx      # Admin shell (no pages yet — reserved)
+│   │   └── AdminShell.tsx      # Admin shell (approvals, roster, pricing, health, audit, accounts)
 │   ├── dashboard/              # Dashboard-specific components
 │   │   ├── TopNavigation.tsx   # Top nav bar
 │   │   ├── Sidebar.tsx         # Left sidebar navigation

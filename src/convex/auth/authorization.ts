@@ -27,6 +27,10 @@ import {
   Permission,
   ROLES,
   ROLE_PERMISSIONS,
+  PERMISSIONS,
+  AUTH_REALMS,
+  AuthRealm,
+  realmForRole,
 } from "../schema";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -36,15 +40,10 @@ type Ctx = QueryCtx | MutationCtx;
 export interface AuthUser {
   userId: Id<"users">;
   role: Role;
+  /** Logical identity boundary derived from the server-assigned role. */
+  realm: AuthRealm;
   businessId?: Id<"businesses">;
   isAnonymous?: boolean;
-  /**
-   * Marked, reversible elevation claimed through users.testAccess. Used ONLY
-   * to let a tester traverse role-scoped workspaces (e.g. the Driver App)
-   * end-to-end — never as a substitute for a real staff role in production
-   * data decisions.
-   */
-  testElevated?: boolean;
 }
 
 export interface OwnershipCheck {
@@ -52,24 +51,6 @@ export interface OwnershipCheck {
   ownerField: string;
   /** Field on the record that holds the business ID (optional) */
   businessField?: string;
-}
-
-// ─── Reserved test-account gate ──────────────────────────────────────────────
-// Privilege elevation for manual testing (users.testAccess, dev/seed_accounts)
-// must never be available to a self-registered account: anyone can sign up,
-// and elevation grants staff/admin power. The only accounts allowed through
-// are the ones an operator explicitly lists in the deployment's
-// TEST_ACCESS_EMAILS environment variable (comma-separated, case-insensitive).
-// Unset ⇒ nobody can elevate. Never fall back to an email-domain pattern:
-// anyone can register inside a domain they do not control.
-export function isTestAccessAccount(email: string | null | undefined): boolean {
-  if (!email) return false;
-  const allowlist = (process.env.TEST_ACCESS_EMAILS ?? "")
-    .split(",")
-    .map((entry) => entry.trim().toLowerCase())
-    .filter(Boolean);
-  if (allowlist.length === 0) return false;
-  return allowlist.includes(email.trim().toLowerCase());
 }
 
 // ─── Core Auth Functions ──────────────────────────────────────────────────────
@@ -103,12 +84,13 @@ export async function getCurrentAuthUser(ctx: Ctx): Promise<AuthUser | null> {
   // Type assertion: we know the user table has these fields
   const userDoc = user as Doc<"users">;
 
+  const role = (userDoc.role as Role) ?? ROLES.CUSTOMER;
   return {
     userId,
-    role: (userDoc.role as Role) ?? ROLES.CUSTOMER,
+    role,
+    realm: realmForRole(role),
     businessId: userDoc.businessId,
     isAnonymous: userDoc.isAnonymous,
-    testElevated: userDoc.testElevated === true,
   };
 }
 
@@ -139,10 +121,38 @@ export async function requireRole(
   return {
     userId,
     role: userRole,
+    realm: realmForRole(userRole),
     businessId: userDoc.businessId,
     isAnonymous: userDoc.isAnonymous,
-    testElevated: userDoc.testElevated === true,
   };
+}
+
+/**
+ * Require an account in the internal staff realm. Customer and driver accounts
+ * are rejected even if a client calls a staff function directly.
+ */
+export async function requireStaff(ctx: Ctx): Promise<AuthUser> {
+  const user = await getCurrentAuthUser(ctx);
+  if (!user) {
+    throw new Error("Authentication required");
+  }
+  if (user.realm !== AUTH_REALMS.STAFF) {
+    throw new Error("Access denied: staff account required");
+  }
+  return user;
+}
+
+/**
+ * Require the separate Admin Portal permission. This is the server-side
+ * counterpart to the Admin area guard: Operations and Fleet Manager accounts
+ * are staff, but they do not automatically become administrators.
+ */
+export async function requireAdmin(ctx: Ctx): Promise<AuthUser> {
+  const user = await requireStaff(ctx);
+  if (!hasPermission(user.role, PERMISSIONS.ADMIN_ACCESS)) {
+    throw new Error("Access denied: admin access required");
+  }
+  return user;
 }
 
 // ─── Permission Functions ─────────────────────────────────────────────────────

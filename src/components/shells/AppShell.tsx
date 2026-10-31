@@ -1,14 +1,13 @@
-import { useEffect, useRef, useState } from "react";
-import { Menu, ShieldCheck, Loader2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Menu } from "lucide-react";
 import { useAuthActions } from "@convex-dev/auth/react";
-import { useQuery, useMutation } from "convex/react";
+import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { clearAllOfflineData } from "@/lib/offline/db";
 import { useNavigate } from "react-router";
 import Sidebar from "@/components/dashboard/Sidebar";
 import LashaLogo from "@/components/branding/LashaLogo";
 import { useAuth } from "@/hooks/use-auth";
-import { AREA_HOME } from "./roleAccess";
 import {
   AREA_LABELS,
   AREA_NAVIGATION,
@@ -48,46 +47,8 @@ export default function AppShell({
   // Session user — used only for the business-identity subscription below;
   // area admission is owned entirely by RoleGate.
   const { user } = useAuth();
-  const navigateRef = useRef(navigate);
-  navigateRef.current = navigate;
 
   const navItems: NavItem[] = AREA_NAVIGATION[area];
-
-  // ── Cross-area access points (testing loop) ──────────────────────────────
-  // Access points NAVIGATE FIRST — see handleOpenArea. The only cross-area
-  // state this shell owns is the "Release test access" affordance for the
-  // marked, reversible elevation (users.testAccess) the destination guard
-  // claimed. Real staff are never marked.
-  const releaseTestAccess = useMutation(api.users.testAccess.releaseTestAreaAccess);
-  const testAccessState = useQuery(api.users.testAccess.getTestAccessState, {});
-  const [releasing, setReleasing] = useState(false);
-  const [accessError, setAccessError] = useState<string | null>(null);
-
-  const isTestElevated = testAccessState?.testElevated === true;
-  // The backend testElevated marker is authoritative: real staff are never
-  // marked, and test-elevated accounts always carry a staff role while inside
-  // an elevated area — so the role must NOT gate the release affordance
-  // (otherwise the button vanishes the moment elevation lands and the tester
-  // is trapped in the area).
-
-  const handleOpenArea = (target: AppArea) => {
-    // Immediate client-side navigation. The destination route's RoleGate owns
-    // admission: for walk-ins it claims the reversible elevation with its own
-    // spinner and reload safety net. Racing the elevation from HERE is what
-    // broke Driver/Admin clicks — the role flip unmounts the current route's
-    // guard mid-navigation and bounces the user back to their old area.
-    setAccessError(null);
-    navigateRef.current(AREA_HOME[target]);
-  };
-
-  const handleReleaseTestAccess = async () => {
-    setReleasing(true);
-    try {
-      await releaseTestAccess({});
-    } finally {
-      setReleasing(false);
-    }
-  };
 
   // Reactive unread count — the notification indicator reflects the user's
   // actual unread notifications via the existing session-scoped Convex query
@@ -119,31 +80,9 @@ export default function AppShell({
   }, []);
 
   const handleNav = (item: NavItem) => {
-    // Routes INSIDE the shell's own area navigate directly — routing them
-    // through the area switch sent every in-area click to the area home (the
-    // "only Driver Approvals is clickable" admin bug: /admin/pricing-rules
-    // was treated as an access point and rerouted to /admin/driver-approvals).
-    const sameAreaRoutes = new Set(AREA_NAVIGATION[area].map((n) => n.route));
-    if (sameAreaRoutes.has(item.route)) {
-      navigate(item.route);
-      return;
-    }
-    // Cross-area sidebar entries are the access points: navigate immediately
-    // and let the destination RoleGate admit or elevate. Every cross-area
-    // route MUST be mapped here — an unmapped route navigates raw and
-    // RoleGate silently bounces the user back to their home area (the
-    // "Admin Portal does nothing" bug).
-    const crossArea: Partial<Record<string, AppArea>> = {
-      "/operations": "operations",
-      "/driver": "driver",
-      "/admin/driver-approvals": "admin",
-      "/dashboard": "customer",
-    };
-    const targetArea = crossArea[item.route] ?? (item.route.startsWith("/admin") ? "admin" : undefined);
-    if (targetArea) {
-      handleOpenArea(targetArea);
-      return;
-    }
+    // Navigation is area-scoped. There are no cross-area access points: a
+    // Customer, Driver, Operations and Admin shell each render only routes
+    // belonging to their own realm/area.
     navigate(item.route);
   };
 
@@ -189,25 +128,6 @@ export default function AppShell({
         </div>
 
         <div className="dash-topnav-right">
-          {/* Test-elevation release — only while operating under a claimed
-              (reversible) elevation. */}
-          {isTestElevated && (
-            <button
-              className="dash-topnav-profile"
-              onClick={handleReleaseTestAccess}
-              disabled={releasing}
-              aria-label="Release test access and return to customer portal"
-              title="Release test access"
-              style={{ width: "auto", padding: "0 14px", gap: 7, fontSize: 12.5, fontWeight: 600 }}
-            >
-              {releasing ? (
-                <Loader2 size={15} className="animate-spin" />
-              ) : (
-                <ShieldCheck size={15} />
-              )}
-              Release test access
-            </button>
-          )}
           <button
             className="dash-topnav-profile"
             aria-label={AREA_LABELS[area]}
@@ -254,51 +174,6 @@ export default function AppShell({
           isOpen={sidebarOpen}
           items={navItems}
         />
-
-        {/* Cross-area access failure — surfaced, never swallowed. */}
-        {accessError && (
-          <div
-            role="alert"
-            style={{
-              position: "fixed",
-              top: 100,
-              left: "50%",
-              transform: "translateX(-50%)",
-              zIndex: 60,
-              maxWidth: 440,
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              padding: "12px 16px",
-              borderRadius: 12,
-              background: "#FEF2F2",
-              border: "1px solid #FECACA",
-              boxShadow: "0 8px 24px rgba(32,32,32,0.12)",
-              fontFamily: "Inter, sans-serif",
-              fontSize: 13,
-              fontWeight: 500,
-              color: "#B91C1C",
-            }}
-          >
-            <ShieldCheck size={16} />
-            <span style={{ flex: 1 }}>{accessError}</span>
-            <button
-              onClick={() => setAccessError(null)}
-              aria-label="Dismiss"
-              style={{
-                background: "none",
-                border: "none",
-                color: "#B91C1C",
-                cursor: "pointer",
-                fontFamily: "inherit",
-                fontSize: 12,
-                fontWeight: 700,
-              }}
-            >
-              Dismiss
-            </button>
-          </div>
-        )}
 
         {/* Page content */}
         {children}

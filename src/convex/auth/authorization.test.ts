@@ -9,6 +9,9 @@ import {
   ROLES,
   PERMISSIONS,
   ROLE_PERMISSIONS,
+  AUTH_REALMS,
+  realmForRole,
+  isStaffRole,
   Role,
   Permission,
 } from "../schema";
@@ -86,6 +89,31 @@ describe("CUSTOMER role", () => {
 
   test("should NOT have pricing:manage permission", () => {
     assertEqual(hasPermission(ROLES.CUSTOMER, PERMISSIONS.PRICING_MANAGE), false, "pricing:manage");
+  });
+});
+
+describe("Auth realms", () => {
+  test("customer and driver are public realms", () => {
+    assertEqual(realmForRole(ROLES.CUSTOMER), AUTH_REALMS.CUSTOMER, "customer realm");
+    assertEqual(realmForRole(ROLES.DRIVER), AUTH_REALMS.DRIVER, "driver realm");
+  });
+
+  test("all internal roles are in the staff realm", () => {
+    for (const role of [ROLES.FLEET_MANAGER, ROLES.OPERATIONS, ROLES.COMPANY_ADMIN, ROLES.SUPER_ADMIN]) {
+      assertEqual(realmForRole(role), AUTH_REALMS.STAFF, `${role} is staff`);
+      assertEqual(isStaffRole(role), true, `${role} is staff`);
+    }
+    assertEqual(isStaffRole(ROLES.CUSTOMER), false, "customer is not staff");
+    assertEqual(isStaffRole(ROLES.DRIVER), false, "driver is not staff");
+  });
+
+  test("admin:access is separate from operations permissions", () => {
+    assertEqual(hasPermission(ROLES.COMPANY_ADMIN, PERMISSIONS.ADMIN_ACCESS), true, "company_admin admin access");
+    assertEqual(hasPermission(ROLES.SUPER_ADMIN, PERMISSIONS.ADMIN_ACCESS), true, "super_admin admin access");
+    assertEqual(hasPermission(ROLES.OPERATIONS, PERMISSIONS.ADMIN_ACCESS), false, "operations no admin access");
+    assertEqual(hasPermission(ROLES.FLEET_MANAGER, PERMISSIONS.ADMIN_ACCESS), false, "fleet_manager no admin access");
+    assertEqual(hasPermission(ROLES.DRIVER, PERMISSIONS.ADMIN_ACCESS), false, "driver no admin access");
+    assertEqual(hasPermission(ROLES.CUSTOMER, PERMISSIONS.ADMIN_ACCESS), false, "customer no admin access");
   });
 });
 

@@ -725,7 +725,7 @@ export const acceptAssignment = mutation({
     if (!currentUser) throw new Error("User not found");
 
     const userRole = (currentUser as Doc<"users">).role;
-    if (userRole !== ROLES.DRIVER && userRole !== ROLES.SUPER_ADMIN) {
+    if (userRole !== ROLES.DRIVER) {
       throw new Error("Access denied: only drivers can accept assignments");
     }
 
@@ -740,8 +740,9 @@ export const acceptAssignment = mutation({
       );
     }
 
-    // 4. Validate driver is the assigned driver (or super admin)
-    if (userRole !== ROLES.SUPER_ADMIN && delivery.courierId !== user) {
+    // 4. Validate driver is the assigned driver. Staff inspect deliveries
+    // through the Operations Centre; they do not act as a driver.
+    if (delivery.courierId !== user) {
       throw new Error("Access denied: this delivery is not assigned to you");
     }
 
@@ -801,7 +802,7 @@ export const rejectAssignment = mutation({
     if (!currentUser) throw new Error("User not found");
 
     const userRole = (currentUser as Doc<"users">).role;
-    if (userRole !== ROLES.DRIVER && userRole !== ROLES.SUPER_ADMIN) {
+    if (userRole !== ROLES.DRIVER) {
       throw new Error("Access denied: only drivers can reject assignments");
     }
 
@@ -816,8 +817,9 @@ export const rejectAssignment = mutation({
       );
     }
 
-    // 4. Validate driver is the assigned driver (or super admin)
-    if (userRole !== ROLES.SUPER_ADMIN && delivery.courierId !== user) {
+    // 4. Validate driver is the assigned driver. Staff inspect deliveries
+    // through the Operations Centre; they do not act as a driver.
+    if (delivery.courierId !== user) {
       throw new Error("Access denied: this delivery is not assigned to you");
     }
 
@@ -881,7 +883,7 @@ export const startEnRouteToPickup = mutation({
     if (!currentUser) throw new Error("User not found");
 
     const userRole = (currentUser as Doc<"users">).role;
-    if (userRole !== ROLES.DRIVER && userRole !== ROLES.SUPER_ADMIN) {
+    if (userRole !== ROLES.DRIVER) {
       throw new Error("Access denied: only drivers can start en route");
     }
 
@@ -896,8 +898,9 @@ export const startEnRouteToPickup = mutation({
       );
     }
 
-    // 4. Validate driver is the assigned driver (or super admin)
-    if (userRole !== ROLES.SUPER_ADMIN && delivery.courierId !== user) {
+    // 4. Validate driver is the assigned driver. Staff inspect deliveries
+    // through the Operations Centre; they do not act as a driver.
+    if (delivery.courierId !== user) {
       throw new Error("Access denied: this delivery is not assigned to you");
     }
 
@@ -954,7 +957,7 @@ export const arriveAtPickup = mutation({
     if (!currentUser) throw new Error("User not found");
 
     const userRole = (currentUser as Doc<"users">).role;
-    if (userRole !== ROLES.DRIVER && userRole !== ROLES.SUPER_ADMIN) {
+    if (userRole !== ROLES.DRIVER) {
       throw new Error("Access denied: only drivers can arrive at pickup");
     }
 
@@ -969,8 +972,9 @@ export const arriveAtPickup = mutation({
       );
     }
 
-    // 4. Validate driver is the assigned driver (or super admin)
-    if (userRole !== ROLES.SUPER_ADMIN && delivery.courierId !== user) {
+    // 4. Validate driver is the assigned driver. Staff inspect deliveries
+    // through the Operations Centre; they do not act as a driver.
+    if (delivery.courierId !== user) {
       throw new Error("Access denied: this delivery is not assigned to you");
     }
 
@@ -1027,7 +1031,7 @@ export const pickupPackage = mutation({
     if (!currentUser) throw new Error("User not found");
 
     const userRole = (currentUser as Doc<"users">).role;
-    if (userRole !== ROLES.DRIVER && userRole !== ROLES.SUPER_ADMIN) {
+    if (userRole !== ROLES.DRIVER) {
       throw new Error("Access denied: only drivers can pickup packages");
     }
 
@@ -1042,8 +1046,9 @@ export const pickupPackage = mutation({
       );
     }
 
-    // 4. Validate driver is the assigned driver (or super admin)
-    if (userRole !== ROLES.SUPER_ADMIN && delivery.courierId !== user) {
+    // 4. Validate driver is the assigned driver. Staff inspect deliveries
+    // through the Operations Centre; they do not act as a driver.
+    if (delivery.courierId !== user) {
       throw new Error("Access denied: this delivery is not assigned to you");
     }
 
@@ -1102,7 +1107,7 @@ export const startTrip = mutation({
     if (!currentUser) throw new Error("User not found");
 
     const userRole = (currentUser as Doc<"users">).role;
-    if (userRole !== ROLES.DRIVER && userRole !== ROLES.SUPER_ADMIN) {
+    if (userRole !== ROLES.DRIVER) {
       throw new Error("Access denied: only drivers can start trips");
     }
 
@@ -1117,8 +1122,9 @@ export const startTrip = mutation({
       );
     }
 
-    // 4. Validate driver is the assigned driver (or super admin)
-    if (userRole !== ROLES.SUPER_ADMIN && delivery.courierId !== user) {
+    // 4. Validate driver is the assigned driver. Staff inspect deliveries
+    // through the Operations Centre; they do not act as a driver.
+    if (delivery.courierId !== user) {
       throw new Error("Access denied: this delivery is not assigned to you");
     }
 
@@ -1175,7 +1181,7 @@ export const arriveAtDropoff = mutation({
     if (!currentUser) throw new Error("User not found");
 
     const userRole = (currentUser as Doc<"users">).role;
-    if (userRole !== ROLES.DRIVER && userRole !== ROLES.SUPER_ADMIN) {
+    if (userRole !== ROLES.DRIVER) {
       throw new Error("Access denied: only drivers can arrive at dropoff");
     }
 
@@ -1190,8 +1196,9 @@ export const arriveAtDropoff = mutation({
       );
     }
 
-    // 4. Validate driver is the assigned driver (or super admin)
-    if (userRole !== ROLES.SUPER_ADMIN && delivery.courierId !== user) {
+    // 4. Validate driver is the assigned driver. Staff inspect deliveries
+    // through the Operations Centre; they do not act as a driver.
+    if (delivery.courierId !== user) {
       throw new Error("Access denied: this delivery is not assigned to you");
     }
 
@@ -1248,7 +1255,7 @@ export const completeDelivery = mutation({
     if (!currentUser) throw new Error("User not found");
 
     const userRole = (currentUser as Doc<"users">).role;
-    if (userRole !== ROLES.DRIVER && userRole !== ROLES.SUPER_ADMIN) {
+    if (userRole !== ROLES.DRIVER) {
       throw new Error("Access denied: only drivers can complete deliveries");
     }
 
@@ -1263,8 +1270,9 @@ export const completeDelivery = mutation({
       );
     }
 
-    // 4. Validate driver is the assigned driver (or super admin)
-    if (userRole !== ROLES.SUPER_ADMIN && delivery.courierId !== user) {
+    // 4. Validate driver is the assigned driver. Staff inspect deliveries
+    // through the Operations Centre; they do not act as a driver.
+    if (delivery.courierId !== user) {
       throw new Error("Access denied: this delivery is not assigned to you");
     }
 

@@ -42,6 +42,7 @@ import AdminPricingRules from "./pages/AdminPricingRules.tsx";
 import AdminDriverRoster from "./pages/AdminDriverRoster.tsx";
 import AdminAuditLog from "./pages/AdminAuditLog.tsx";
 import AdminPlatformHealth from "./pages/AdminPlatformHealth.tsx";
+import AdminAccounts from "./pages/AdminAccounts.tsx";
 import DriverApply from "./pages/DriverApply.tsx";
 import BookDemo from "./pages/BookDemo.tsx";
 import PrivacyNotice from "./pages/legal/PrivacyNotice.tsx";
@@ -418,6 +419,14 @@ createRoot(document.getElementById("root")!).render(
                 element={
                   <RoleGate area={APP_AREAS.ADMIN}>
                     <AdminPlatformHealth />
+                  </RoleGate>
+                }
+              />
+              <Route
+                path="/admin/accounts"
+                element={
+                  <RoleGate area={APP_AREAS.ADMIN}>
+                    <AdminAccounts />
                   </RoleGate>
                 }
               />

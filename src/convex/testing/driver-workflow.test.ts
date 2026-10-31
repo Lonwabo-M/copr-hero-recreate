@@ -124,7 +124,7 @@ test("each driver action is a valid transition from its current status", () => {
   }
 });
 
-test("each driver action is permitted only for the driver role (plus super_admin via code)", () => {
+test("each driver action is permitted only for the driver role", () => {
   for (const [status, action] of Object.entries(DRIVER_STATUS_ACTION)) {
     const expectedNext: Record<string, string> = {
       [DELIVERY_STATUS.ASSIGNED]: DELIVERY_STATUS.DRIVER_ACCEPTED,
@@ -162,16 +162,16 @@ test("reject is only offered in the ASSIGNED state (matches server restriction)"
 
 console.log("\n── Driver Authorization Model ──\n");
 
-test("driver mutations reject non-assigned drivers (assigned-driver check pattern)", () => {
+test("driver mutations reject everyone but the assigned driver", () => {
   // Mirrors the check in every state-machine driver mutation:
-  //   if (userRole !== SUPER_ADMIN && delivery.courierId !== user) throw
+  //   if (delivery.courierId !== user) throw
   const delivery = { courierId: "driver_A" as any };
-  const check = (userId: any, role: string) =>
-    !(role !== ROLES.SUPER_ADMIN && delivery.courierId !== userId);
+  const check = (userId: any) => delivery.courierId === userId;
 
-  expect(check("driver_A", ROLES.DRIVER)).toBe(true); // own delivery
-  expect(check("driver_B", ROLES.DRIVER)).toBe(false); // another driver's delivery
-  expect(check("driver_B", ROLES.SUPER_ADMIN)).toBe(true); // super admin override
+  expect(check("driver_A")).toBe(true); // own delivery
+  expect(check("driver_B")).toBe(false); // another driver's delivery
+  // Staff have no driver-realm bypass: super_admin is not a magic driver ID.
+  expect(delivery.courierId === ("super_admin" as any)).toBe(false);
 });
 
 test("getMyCurrentDelivery resolves the delivery from the session, not client args", () => {

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import AdminShell from "@/components/shells/AdminShell";
+import OperationsShell from "@/components/shells/OperationsShell";
 import { AlertTriangle, CheckCircle2, Clock, Loader2, ShieldCheck, XCircle } from "lucide-react";
 import { PRIVACY_REQUEST_LABELS } from "@/convex/privacy/policy";
 import { ROLES } from "@/convex/schema";
@@ -9,7 +9,7 @@ import { useAuth } from "@/hooks/use-auth";
 import "@/styles/dashboard.css";
 import "@/styles/operations.css";
 
-// ─── Privacy Requests (Admin Portal) ─────────────────────────────────────────
+// ─── Privacy Requests (Operations Centre) ────────────────────────────────────
 // The staff side of POPIA data subject requests: the queue the /privacy-rights
 // form and the privacy@lasha.co.za desk feed. Reference, type, 30-day due date
 // and status come from privacy_requests; handling follows the DSAR runbook
@@ -100,7 +100,7 @@ export default function AdminPrivacyRequests() {
 
   if (!allowed) {
     return (
-      <AdminShell activeItem="Privacy Requests">
+      <OperationsShell activeItem="Privacy Requests">
         <main className="ops-main">
           <div className="empty-state">
             <div className="empty-state-icon">
@@ -114,15 +114,15 @@ export default function AdminPrivacyRequests() {
             </div>
           </div>
         </main>
-      </AdminShell>
+      </OperationsShell>
     );
   }
 
   return (
-    <AdminShell activeItem="Privacy Requests">
+    <OperationsShell activeItem="Privacy Requests">
       <main className="ops-main">
         <div className="ops-admin-head">
-          <h1 className="ops-admin-portal">Admin Portal</h1>
+          <h1 className="ops-admin-portal">Operations Centre</h1>
           <span className="ops-admin-section">Privacy Requests</span>
         </div>
 
@@ -368,6 +368,6 @@ export default function AdminPrivacyRequests() {
           </section>
         ) : null}
       </main>
-    </AdminShell>
+    </OperationsShell>
   );
 }

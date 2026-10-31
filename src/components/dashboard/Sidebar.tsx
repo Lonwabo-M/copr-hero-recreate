@@ -15,6 +15,7 @@ import {
   LogOut,
   TrendingUp,
   CheckSquare,
+  Users,
   type LucideIcon,
 } from "lucide-react";
 import type { NavItem } from "@/components/shells/navigation";
@@ -54,12 +55,10 @@ const ICONS: Record<string, LucideIcon> = {
   "Driver Application": FileText,
   // Admin entries
   "Driver Approvals": CheckSquare,
+  Accounts: Users,
   "Log out": LogOut,
   // Operations Centre entries
   "Operations Centre": Truck,
-  // Cross-area access points (testing loop)
-  "Driver App": Truck,
-  "Admin Portal": Settings,
 };
 
 // ─── Sidebar (shared, area-scoped) ───────────────────────────────────────────

@@ -27,6 +27,51 @@ export const roleValidator = v.union(
 );
 export type Role = Infer<typeof roleValidator>;
 
+// ─── Auth Realms ──────────────────────────────────────────────────────────────
+// Logical identity boundaries. A realm is not a role: it answers "which login
+// population does this account belong to?" Role permissions are checked only
+// after the realm boundary. Customer and driver are public-facing realms;
+// every internal Lasha account (operations, fleet manager, company admin and
+// super admin) belongs to the staff realm.
+//
+// This model is intentionally independent of the current single Convex Auth
+// issuer. When staff move to Zitadel, the issuer/audience will be added at the
+// edge, while these realm rules remain the server-side authorization boundary.
+
+export const AUTH_REALMS = {
+  CUSTOMER: "customer",
+  DRIVER: "driver",
+  STAFF: "staff",
+} as const;
+
+export const authRealmValidator = v.union(
+  v.literal(AUTH_REALMS.CUSTOMER),
+  v.literal(AUTH_REALMS.DRIVER),
+  v.literal(AUTH_REALMS.STAFF),
+);
+export type AuthRealm = Infer<typeof authRealmValidator>;
+
+/** The realm every role belongs to. Staff roles are all internal. */
+export const REALM_FOR_ROLE: Record<Role, AuthRealm> = {
+  [ROLES.CUSTOMER]: AUTH_REALMS.CUSTOMER,
+  [ROLES.DRIVER]: AUTH_REALMS.DRIVER,
+  [ROLES.FLEET_MANAGER]: AUTH_REALMS.STAFF,
+  [ROLES.OPERATIONS]: AUTH_REALMS.STAFF,
+  // Lasha staff: the company's internal administrator, NOT a customer/business
+  // administrator. Customers have no admin portal.
+  [ROLES.COMPANY_ADMIN]: AUTH_REALMS.STAFF,
+  [ROLES.SUPER_ADMIN]: AUTH_REALMS.STAFF,
+};
+
+export function realmForRole(role?: Role | null): AuthRealm {
+  if (!role) return AUTH_REALMS.CUSTOMER;
+  return REALM_FOR_ROLE[role] ?? AUTH_REALMS.CUSTOMER;
+}
+
+export function isStaffRole(role?: Role | null): boolean {
+  return !!role && realmForRole(role) === AUTH_REALMS.STAFF;
+}
+
 // ─── Permissions ──────────────────────────────────────────────────────────────
 // Explicit permission strings. Use these in authorization checks.
 
@@ -63,6 +108,10 @@ export const PERMISSIONS = {
   // User permissions
   USER_VIEW: "user:view",
   USER_MANAGE: "user:manage",
+
+  // Admin Portal access. Deliberately separate from operations permissions:
+  // an Operations account can dispatch without being able to open Admin.
+  ADMIN_ACCESS: "admin:access",
 
   // Business permissions
   BUSINESS_VIEW: "business:view",
@@ -117,6 +166,10 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   ],
 
   [ROLES.COMPANY_ADMIN]: [
+    // Internal Lasha administrator. Retains the existing platform-management
+    // permissions, but is now explicitly in the staff realm and requires the
+    // separate Admin Portal permission.
+    PERMISSIONS.ADMIN_ACCESS,
     PERMISSIONS.DELIVERY_CREATE,
     PERMISSIONS.DELIVERY_VIEW,
     PERMISSIONS.DELIVERY_CANCEL,

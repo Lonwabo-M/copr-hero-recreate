@@ -230,7 +230,7 @@ Observability exists: `/health`, `/health/live`, `/health/ready` + Vly monitorin
 | B2 | COMPANY_ADMIN ownership check on `assignDriver` (parity with dispatch/reassign) | Security consistency | **FIXED** — `assignDriver` now enforces the session-derived `delivery.orderId → orders.businessId` ownership rule (fail-closed) before any write; the same-class fail-open edge in `dispatchDelivery` (`undefined !== undefined`) was also fixed. See `docs/dispatch-engine.md` → "Assignment Authorization". |
 | B3 | Hardcoded email-OTP API key → environment configuration | Secret hygiene | **FIXED, then SUPERSEDED** — the key was moved to the environment (B3), and the email-OTP authentication path has since been fully removed and replaced by email + password (Convex Auth `Password` provider). `EMAIL_OTP_API_KEY` is no longer referenced by any code; the previously exposed OTP credential can be retired with the provider. Password-reset email delivery now uses the platform email API with the already-provisioned `VLY_INTEGRATION_KEY`. |
 
-**Pilot-acceptable (documented, not blocking):** manual role provisioning; no admin-specific pages; no external payout; no SMS/email/push; manual tracking-retention execution; no wallet top-up charging.
+**Pilot-acceptable (documented, not blocking):** manual role provisioning (there is still no automated role-assignment UI); no external payout; no SMS/email/push; manual tracking-retention execution; no wallet top-up charging. Admin operations pages and the account inventory now exist.
 
 ---
 

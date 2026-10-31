@@ -7,8 +7,7 @@
 
 import { query } from "../_generated/server";
 import { v } from "convex/values";
-import { getAuthUserId } from "@convex-dev/auth/server";
-import { ROLES } from "../schema";
+import { requireAdmin } from "../auth/authorization";
 
 export const getOpsWorkload = query({
   args: {
@@ -16,14 +15,7 @@ export const getOpsWorkload = query({
     sinceMs: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx);
-    if (!userId) throw new Error("Authentication required");
-    const admin = await ctx.db.get(userId);
-    if (!admin) throw new Error("Authentication required");
-    const allowed = [ROLES.OPERATIONS, ROLES.COMPANY_ADMIN, ROLES.SUPER_ADMIN];
-    if (!allowed.includes(admin.role as any)) {
-      throw new Error("Access denied");
-    }
+    await requireAdmin(ctx);
 
     const now = Date.now();
     const since = args.sinceMs ?? now - 7 * 24 * 60 * 60 * 1000;

@@ -4,8 +4,7 @@
 // client-supplied numbers), so running it is always safe and repeatable.
 
 import { mutation } from "../_generated/server";
-import { getAuthUserId } from "@convex-dev/auth/server";
-import { ROLES } from "../schema";
+import { requireAdmin } from "../auth/authorization";
 
 /**
  * Recount every driver profile's lifetime trip total from the deliveries
@@ -17,13 +16,7 @@ import { ROLES } from "../schema";
 export const recalculateDriverLifetimeStats = mutation({
   args: {},
   handler: async (ctx) => {
-    const userId = await getAuthUserId(ctx);
-    if (!userId) throw new Error("Authentication required");
-    const admin = await ctx.db.get(userId);
-    if (!admin) throw new Error("Authentication required");
-    if (admin.role !== ROLES.COMPANY_ADMIN && admin.role !== ROLES.SUPER_ADMIN) {
-      throw new Error("Access denied: admin only");
-    }
+    await requireAdmin(ctx);
 
     const profiles = await ctx.db.query("driver_profiles").collect();
     let updated = 0;

@@ -13,12 +13,12 @@ it is organized into **four role-specific application experiences**:
 | Customer Portal | Customer/business delivery functionality | `/dashboard` |
 | Driver App | Driver/courier workflow (assignments, POD, GPS) | `/driver` |
 | Operations Centre | Dispatch and operational monitoring | `/operations` |
-| Admin | Platform administration (no pages yet — reserved) | `/operations`* |
+| Admin | Platform administration | `/admin/driver-approvals` |
 
-\* No admin-only pages exist yet. Admin-role users (`company_admin`,
-`super_admin`) are routed to the Operations Centre, which their role already
-has access to. When the first admin page is built it gets the `/admin` route
-inside `AdminShell` and the first `adminNavigation` entry.
+Admin is a separate permission (`admin:access`) inside the staff login realm.
+`company_admin` is a Lasha staff administrator, not a customer/business role.
+Customers have no admin portal. Operations and Fleet Manager are staff, but do
+not automatically receive Admin access.
 
 ## What the audit found (before the refactor)
 
@@ -50,7 +50,7 @@ src/components/shells/
 ├── CustomerShell.tsx   # area="customer"
 ├── DriverShell.tsx     # area="driver"
 ├── OperationsShell.tsx # area="operations"
-└── AdminShell.tsx      # area="admin" (reserved)
+└── AdminShell.tsx      # area="admin"
 ```
 
 ### Shells
@@ -68,25 +68,26 @@ src/components/shells/
 
 ### Role → area mapping (`roleAccess.ts`)
 
-| Role | Area | Rationale |
-|------|------|-----------|
-| `customer` | Customer Portal | Delivery requester |
-| `driver` | Driver App | Courier workflow |
-| `operations` | Operations Centre | Dispatch/ops permissions |
-| `fleet_manager` | Operations Centre | fleet:view/manage permissions |
-| `company_admin` | Admin (→ Operations for now) | user:manage, business:manage |
-| `super_admin` | Admin (→ Operations for now) | all permissions |
-| unknown/missing | Customer Portal | Safe default; Convex still authorizes data |
+| Role | Realm | Area | Rationale |
+|------|-------|------|-----------|
+| `customer` | Customer | Customer Portal | Delivery requester |
+| `driver` | Driver | Driver App | Courier workflow |
+| `operations` | Staff | Operations Centre | Dispatch/ops permissions |
+| `fleet_manager` | Staff | Operations Centre | Internal fleet operations |
+| `company_admin` | Staff | Admin | Internal Lasha administrator |
+| `super_admin` | Staff | Admin | Internal platform administrator |
+| unknown/missing | Customer default | Customer Portal | Safe default; Convex still authorizes data |
 
-Area access (`canAccessArea`):
+Area access (`canAccessArea`) is realm-exclusive:
 
-- **customer** — all authenticated roles (backend scopes every query per-user)
-- **driver** — `driver`, `super_admin`
-- **operations** — `operations`, `fleet_manager`, `company_admin`, `super_admin`
-- **admin** — `company_admin`, `super_admin` only
+- **customer** — `customer` (and roleless new sign-ups, before provisioning)
+- **driver** — `driver` only
+- **operations** — `operations`, `fleet_manager`
+- **admin** — roles holding `admin:access` (`company_admin`, `super_admin`)
 
-These mirror the backend's own checks (e.g. `users.ts` grants cross-user
-visibility to `SUPER_ADMIN || OPERATIONS`); no new permissions were invented.
+There is no cross-area walk-in and no test elevation. A user who opens another
+area is redirected to their own home. The backend enforces the same boundaries
+with `requireStaff()` and `requireAdmin()`.
 
 ### Route guard (`RoleGate`)
 
@@ -114,7 +115,7 @@ visibility to `SUPER_ADMIN || OPERATIONS`); no new permissions were invented.
 | Customer Portal | `/dashboard`, `/request-delivery`, `/checkout/:orderId`, `/track-delivery`, `/deliveries/:deliveryId`, `/wallet`, `/past-deliveries`, `/invoices`, `/notifications`, `/settings`, `/help`, `/disputes`, `/legal`, `/downloads` |
 | Driver App | `/driver`, `/driver/offers`, `/driver/history`, `/driver/history/:deliveryId`, `/driver/profile`, `/driver/active-delivery` |
 | Operations Centre | `/operations` |
-| Admin | *(none yet — `/admin` reserved)* |
+| Admin | `/admin/driver-approvals`, `/admin/driver-roster`, `/admin/pricing-rules`, `/admin/platform-health`, `/admin/audit-log`, `/admin/accounts` |
 
 Backwards compatibility: `/make-payment` forwards old Paystack references to
 `/checkout/:orderId` (and otherwise redirects to `/dashboard`); the standalone
@@ -129,7 +130,7 @@ keeps its original path.
    `PostAuthRedirect.tsx` resolves the user's role via the existing
    `useAuth()` hook and redirects to the area home: customer → `/dashboard`,
    driver → `/driver`, operations/fleet_manager → `/operations`,
-   company_admin/super_admin → `/operations` (until admin pages exist).
+   company_admin/super_admin → `/admin/driver-approvals`.
 
 ## Navigation separation
 
@@ -139,14 +140,16 @@ Navigation configs are per-area pure data in `navigation.ts`:
   Request Delivery, Track Delivery, Address Book, Invoices, Wallet,
   Notifications, Help, Disputes, Legal, Downloads, Settings. Payment is not a
   top-level destination; it lives inside the order-scoped Checkout.
-- `driverNavigation` — Delivery Offers, Active Delivery, Delivery History, and
-  Profile (the driver pages that exist; Earnings/Safety are future work and are
-  NOT stubbed)
-- `operationsNavigation` — Operations Centre
-- `adminNavigation` — empty until admin pages exist
+- `driverNavigation` — Delivery Offers, Active Delivery, Delivery History,
+  Earnings, Driver Application and Profile. No customer/Operations/Admin links.
+- `operationsNavigation` — Operations Centre, Disputes, Privacy Requests. No
+  Driver App or Admin Portal link.
+- `adminNavigation` — Driver Approvals, Driver Roster, Pricing Rules, Platform
+  Health, Audit Log and Accounts. No Operations or Customer links.
 
-There is no global nav list, and separation is enforced by the route
-architecture + area-scoped shells, not by CSS hiding.
+There is no global nav list, no cross-area access point and no test elevation.
+Separation is enforced by the route architecture + area-scoped shells, not by
+CSS hiding.
 
 ## Preserved functionality
 
@@ -157,19 +160,21 @@ architecture + area-scoped shells, not by CSS hiding.
   untouched — the page now renders inside `DriverShell`.
 - POD remains driver-only; customers have no POD submission controls.
 - Operations Centre: unchanged, now inside `OperationsShell`.
-- Authentication: unchanged Convex Auth (email OTP) via `@convex-dev/auth`.
+- Authentication: Convex Auth (email + password) for customer/driver; staff
+  realm and Admin permission implemented, with Zitadel SSO/MFA pending
+  credentials (see `docs/zitadel-setup.md`).
 - Backend: **zero changes** to Convex domain logic, pricing, dispatch, delivery
   state transitions, POD authorization, or tracking validation.
 
 ## Tests
 
-`src/components/shells/roleAccess.test.ts` (56 assertions) covers:
+`src/components/shells/roleAccess.test.ts` covers:
 
 - role → area mapping for all six roles + unknown/missing fallback
-- the full area-access matrix (allow + deny cases per area)
-- home routes per role (including the documented admin→operations gap)
-- navigation separation (driver nav has no customer entries or routes;
-  customer nav has no driver/operations entries; admin nav empty)
+- the full realm-exclusive area-access matrix (allow + deny cases per area)
+- `admin:access` held only by `company_admin` and `super_admin`
+- home routes per role
+- navigation separation (no customer/driver/operations/admin cross-links)
 
 Run: `bunx tsx src/components/shells/roleAccess.test.ts`
 
@@ -381,15 +386,15 @@ Run: `bunx tsx src/pages/driverProfile.test.ts`
 
 ## Remaining gaps (intentionally not built here)
 
-1. **Admin pages** — no user/pricing/business admin UI exists yet. `AdminShell`
-   and the `admin` RoleGate area are ready; `/admin` is not registered as a
-   route until real admin pages exist.
+1. **Admin pages** — driver approvals, roster, pricing, health, audit and the
+   account inventory exist. Further admin surfaces (user management, business
+   management) still need explicit backend operations and permissions.
 2. **Driver App depth** — Delivery Offers, Active Delivery, Delivery History,
    and Profile exist. Earnings/Wallet and Safety/SOS need both backend queries
    and pages before they get navigation entries.
-3. **Operations ↔ Admin distinction** — with the current RBAC there is
-   meaningful overlap (both see all deliveries; `company_admin` ⊃ operations
-   permissions). The roles were kept as-is and the ambiguity is documented
-   rather than inventing a new permission model.
+3. **Operations ↔ Admin distinction** — the areas are now separated in the
+   frontend and Admin requires `admin:access`. Some legacy backend queries
+   still use broader staff role lists (especially shared operations reads);
+   those are being tightened as each Admin surface is migrated.
 4. **Customer POD viewing** — explicitly out of scope for the driver POD task
    and this refactor; can be added to the Customer Portal later.

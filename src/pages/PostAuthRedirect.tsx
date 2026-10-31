@@ -8,13 +8,12 @@ import { homeRouteForRole } from "@/components/shells/roleAccess";
 import { ROLES } from "@/convex/schema";
 
 // ─── PostAuthRedirect ────────────────────────────────────────────────────────
-// Role-aware post-auth entry point. After sign-in with no specific returnTo,
-// users land in the Activity Center (/dashboard) — the platform's daily home —
-// except drivers, who go straight to the Driver App (/driver) because their
-// jobs and status actions live there. Operations and Admin workspaces stay one
-// click away in the customer sidebar. Unknown/missing roles default to the
-// Customer experience; Convex remains the authoritative authorization layer
-// regardless of where the UI sends users.
+// Role-aware post-auth entry point. Each realm lands in its own application:
+// customers in the Customer Portal, drivers in the Driver App, Operations and
+// Fleet Managers in the Operations Centre, and Admin-permission staff in the
+// Admin Portal. There is no shared dashboard or cross-area navigation.
+// Unknown/missing roles default to the Customer experience; Convex remains the
+// authoritative authorization layer regardless of where the UI sends users.
 //
 // Customer onboarding: a customer (or unprovisioned account, which the backend
 // defaults to the customer experience) whose onboarding is incomplete is sent
@@ -74,12 +73,9 @@ function AuthenticatedDestination({
   useEffect(() => {
     if (!roleResolved) return; // role not yet known — never route early
     if (!isCustomerExperience) {
-      // Staff land in the Activity Center. Drivers keep the Driver App: the
-      // customer sidebar has no Driver App entry, so sending them to
-      // /dashboard would strand them away from their active delivery.
-      navigate(role === ROLES.DRIVER ? homeRouteForRole(role) : "/dashboard", {
-        replace: true,
-      });
+      // Every non-customer role lands in its own area. The old shared
+      // /dashboard landing is gone: staff do not enter the customer product.
+      navigate(homeRouteForRole(role), { replace: true });
       return;
     }
     // `unauthenticated` means the status query ran before the fresh session

@@ -23,7 +23,7 @@ import { query, internalMutation, internalQuery, QueryCtx, MutationCtx } from ".
 import { v } from "convex/values";
 import { Id, Doc } from "../_generated/dataModel";
 import { ROLES, PERMISSIONS } from "../schema";
-import { getCurrentAuthUser, AuthUser } from "../auth/authorization";
+import { getCurrentAuthUser, requireAdmin, AuthUser } from "../auth/authorization";
 
 // ─── Audit Event Types ────────────────────────────────────────────────────────
 
@@ -541,14 +541,8 @@ export const getRecentAuditEvents = query({
     action: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const user = await getCurrentAuthUser(ctx);
-    if (!user) throw new Error("Authentication required");
-
-    // Only operations, company_admin, and super_admin can view global audit logs
-    const allowedRoles = [ROLES.OPERATIONS, ROLES.COMPANY_ADMIN, ROLES.SUPER_ADMIN];
-    if (!allowedRoles.includes(user.role as any)) {
-      throw new Error("Access denied: insufficient permissions to view audit logs");
-    }
+    // Global audit is an Admin Portal capability, not a general staff read.
+    await requireAdmin(ctx);
 
     const limit = args.limit ?? 100;
     let events;
@@ -822,13 +816,8 @@ export const getAuditStats = query({
     endDate: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const user = await getCurrentAuthUser(ctx);
-    if (!user) throw new Error("Authentication required");
-
-    const allowedRoles = [ROLES.OPERATIONS, ROLES.COMPANY_ADMIN, ROLES.SUPER_ADMIN];
-    if (!allowedRoles.includes(user.role as any)) {
-      throw new Error("Access denied: insufficient permissions to view audit stats");
-    }
+    // Audit statistics power the Admin Portal dashboard.
+    await requireAdmin(ctx);
 
     const now = Date.now();
     const startDate = args.startDate ?? (now - 24 * 60 * 60 * 1000); // Last 24h

@@ -42,10 +42,8 @@ export const customerNavigation: NavItem[] = [
 ];
 
 // ─── Driver App Navigation ───────────────────────────────────────────────────
-// Driver pages plus the cross-area test loop return paths: the Driver App is
-// reachable from the Operations sidebar, so Operations Centre and Dashboard
-// ride along. Guards decide admission; entering an area you don't hold
-// triggers the reversible test elevation (see AppShell handleNav).
+// Driver-only pages. The Driver App never advertises customer, Operations or
+// Admin entries; those are different realms/applications.
 export const driverNavigation: NavItem[] = [
   { label: "Delivery Offers", route: "/driver/offers" },
   { label: "Active Delivery", route: "/driver/active-delivery" },
@@ -53,43 +51,29 @@ export const driverNavigation: NavItem[] = [
   { label: "Earnings", route: "/driver/earnings" },
   { label: "Driver Application", route: "/driver/apply" },
   { label: "Profile", route: "/driver/profile" },
-  { label: "Operations Centre", route: "/operations" },
-  { label: "Dashboard", route: "/dashboard" },
 ];
 
 // ─── Operations Centre Navigation ────────────────────────────────────────────
-// Operations/dispatch functionality, plus every cross-area access point for
-// the testing loop: the customer Dashboard (return path) and the Driver App
-// (claim/reveal). Real staff navigate straight through; others trigger the
-// reversible test elevation in AppShell handleNav.
+// Internal operations work only. Operations does not receive an Admin Portal
+// entry: Admin is a separate permission held by Lasha administrators.
 export const operationsNavigation: NavItem[] = [
   { label: "Operations Centre", route: "/operations" },
   { label: "Disputes", route: "/admin/disputes" },
   { label: "Privacy Requests", route: "/admin/privacy-requests" },
-  { label: "Driver App", route: "/driver" },
-  { label: "Admin Portal", route: "/admin/driver-approvals" },
-  { label: "Dashboard", route: "/dashboard" },
 ];
 
 // ─── Admin Navigation ────────────────────────────────────────────────────────
-// Platform administration — the responsibilities the portal owns beyond the
-// operations floor: driver onboarding approvals (Capture → Review → Accept),
-// the approved-driver roster of record, the pricing rule matrix behind every
-// quote, platform health telemetry and the audit trail. Reached from the
-// Operations sidebar ("Admin Portal") via the same reversible test elevation
-// as the Driver App.
+// Platform administration for accounts holding `admin:access`: driver
+// onboarding approvals, the roster of record, pricing rules, platform health,
+// audit trail and the account inventory. Admin staff do not get Operations or
+// Customer navigation; those are separate areas.
 export const adminNavigation: NavItem[] = [
   { label: "Driver Approvals", route: "/admin/driver-approvals" },
   { label: "Driver Roster", route: "/admin/driver-roster" },
   { label: "Pricing Rules", route: "/admin/pricing-rules" },
   { label: "Platform Health", route: "/admin/platform-health" },
   { label: "Audit Log", route: "/admin/audit-log" },
-  { label: "Disputes", route: "/admin/disputes" },
-  // POPIA data subject requests (access, correction, deletion, objection,
-  // opt-out, complaint) with their 30-day deadlines — docs/popia/dsar-runbook.md.
-  { label: "Privacy Requests", route: "/admin/privacy-requests" },
-  { label: "Operations Centre", route: "/operations" },
-  { label: "Dashboard", route: "/dashboard" },
+  { label: "Accounts", route: "/admin/accounts" },
 ];
 
 // ─── Area → Navigation ───────────────────────────────────────────────────────

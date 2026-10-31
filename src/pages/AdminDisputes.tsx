@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import AdminShell from "@/components/shells/AdminShell";
+import OperationsShell from "@/components/shells/OperationsShell";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -18,7 +18,7 @@ import type { Id } from "@/convex/_generated/dataModel";
 import "@/styles/dashboard.css";
 import "@/styles/operations.css";
 
-// ─── Disputes (Admin Portal / Operations) ────────────────────────────────────
+// ─── Disputes (Operations Centre) ────────────────────────────────────────────
 // The staff side of the disputes workflow. A dispute raised by a customer
 // arrives here with a 7-day response target; the linked driver settlement is
 // held as "disputed" until someone records an outcome and decides the payout.
@@ -188,7 +188,7 @@ export default function AdminDisputes() {
 
   if (!allowed) {
     return (
-      <AdminShell activeItem="Disputes">
+      <OperationsShell activeItem="Disputes">
         <main className="ops-main">
           <div className="empty-state">
             <div className="empty-state-icon">
@@ -201,15 +201,15 @@ export default function AdminDisputes() {
             </div>
           </div>
         </main>
-      </AdminShell>
+      </OperationsShell>
     );
   }
 
   return (
-    <AdminShell activeItem="Disputes">
+    <OperationsShell activeItem="Disputes">
       <main className="ops-main">
         <div className="ops-admin-head">
-          <h1 className="ops-admin-portal">Admin Portal</h1>
+          <h1 className="ops-admin-portal">Operations Centre</h1>
           <span className="ops-admin-section">Disputes</span>
         </div>
 
@@ -621,6 +621,6 @@ export default function AdminDisputes() {
           </section>
         )}
       </main>
-    </AdminShell>
+    </OperationsShell>
   );
 }
