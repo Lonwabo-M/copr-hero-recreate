@@ -63,8 +63,9 @@ Free (card required) or Google Cloud Identity Free.
    challenge; do not enable implicit flow.
 5. Configure the callback URL. The callback belongs to the Convex deployment,
    not to the React route:
-   - Current development deployment:
-     `https://keen-octopus-299.convex.site/api/auth/callback/zitadel`
+   - Current deployment:
+     `https://incredible-warbler-335.convex.site/api/auth/callback/zitadel`
+     (backend: `https://incredible-warbler-335.convex.cloud`)
    - Production stays on the deployment's `*.convex.site` host. A future
      `ops.lasha.co.za` or `admin.lasha.co.za` host does not change this unless
      `CUSTOM_AUTH_SITE_URL` is introduced deliberately.
