@@ -50,7 +50,7 @@ Free (card required) or Google Cloud Identity Free.
 
 1. Create a Zitadel Cloud instance/organisation for Lasha.
 2. Create a project, e.g. `Lasha Staff`.
-3. Add a **Web** OpenID Connect application, e.g. `Lasha Staff Portal`.
+3. Add a **User Agent** (single-page app) OpenID Connect application, e.g. `Lasha Staff Portal`. Do not choose **Web** for the React SPA; that type expects a client secret.
 4. Enable authorization-code flow with PKCE. Do not enable implicit flow.
 5. Configure redirect URIs after the subdomains exist:
    - `https://ops.lasha.co.za/auth/callback`
