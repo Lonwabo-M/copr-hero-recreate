@@ -111,7 +111,7 @@ with `requireStaff()` and `requireAdmin()`.
 
 | Area | Routes |
 |------|--------|
-| — (public) | `/`, `/auth`, `/post-auth` |
+| — (public) | `/`, `/auth`, `/staff-login`, `/post-auth` |
 | Customer Portal | `/dashboard`, `/request-delivery`, `/checkout/:orderId`, `/track-delivery`, `/deliveries/:deliveryId`, `/wallet`, `/past-deliveries`, `/invoices`, `/notifications`, `/settings`, `/help`, `/disputes`, `/legal`, `/downloads` |
 | Driver App | `/driver`, `/driver/offers`, `/driver/history`, `/driver/history/:deliveryId`, `/driver/profile`, `/driver/active-delivery` |
 | Operations Centre | `/operations` |
@@ -124,8 +124,9 @@ keeps its original path.
 
 ## Role-aware routing after sign-in
 
-1. `Auth.tsx` honours `?returnTo=` (set by `RequireAuth`/`RoleGate`) so deep
-   links survive authentication.
+1. `Auth.tsx` (customer/driver password) and `StaffLogin.tsx` (ZITADEL staff
+   SSO) honour `?returnTo=` (set by `RequireAuth`/`RoleGate`) so deep links
+   survive authentication.
 2. Without a `returnTo`, sign-in lands on `/post-auth`, where
    `PostAuthRedirect.tsx` resolves the user's role via the existing
    `useAuth()` hook and redirects to the area home: customer → `/dashboard`,
@@ -161,8 +162,9 @@ CSS hiding.
 - POD remains driver-only; customers have no POD submission controls.
 - Operations Centre: unchanged, now inside `OperationsShell`.
 - Authentication: Convex Auth (email + password) for customer/driver; staff
-  realm and Admin permission implemented, with Zitadel SSO/MFA pending
-  credentials (see `docs/zitadel-setup.md`).
+  use ZITADEL OIDC at `/staff-login` once the deployment secret is configured.
+  The staff realm and Admin permission remain server-side; MFA is enforced in
+  ZITADEL, not by the frontend (see `docs/zitadel-setup.md`).
 - Backend: **zero changes** to Convex domain logic, pricing, dispatch, delivery
   state transitions, POD authorization, or tracking validation.
 

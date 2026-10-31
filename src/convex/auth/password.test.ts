@@ -56,8 +56,9 @@ test("reset flow is wired to the email-delivery bridge (provider-supported reset
     "bridge implements the provider's email contract",
   );
   assert.ok(
-    emailBridge.includes("https://integrations.vly.ai/v1/email/send"),
-    "bridge delivers the reset code via the platform email API",
+    emailBridge.includes("VLY_INTEGRATION_BASE_URL") &&
+      emailBridge.includes("/v1/email/send"),
+    "bridge delivers the reset code via the configured platform email base URL",
   );
 });
 

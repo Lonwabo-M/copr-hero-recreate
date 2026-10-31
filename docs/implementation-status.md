@@ -244,7 +244,7 @@
 | | |
 |---|---|
 | **Status** | **COMPLETE** |
-| **Evidence** | The architecture follows the intended pattern: React → Convex queries/mutations/actions → Convex data. No PostgreSQL, MySQL, MongoDB, Firebase, Supabase, Express, NestJS, or separate backend. Convex is the single source of truth. Business logic is server-side. External integrations (routing, password-reset email) go through Convex actions. Customer/driver auth is managed by Convex Auth; staff SSO/MFA is planned on Zitadel (see docs/zitadel-setup.md). |
+| **Evidence** | The architecture follows the intended pattern: React → Convex queries/mutations/actions → Convex data. No PostgreSQL, MySQL, MongoDB, Firebase, Supabase, Express, NestJS, or separate backend. Convex is the single source of truth. Business logic is server-side. External integrations (routing, password-reset email) go through Convex actions. Customer/driver auth is managed by Convex Auth; staff SSO is wired on Zitadel, with activation and MFA policy pending deployment credentials (see docs/zitadel-setup.md). |
 | **Relevant files** | Entire codebase |
 | **What is incorrect** | 1. `docs/architecture.md` references a `domains/` nested structure (`api.domains.drivers.internal.*`) that does not exist in the code. The actual structure uses flat module directories. 2. `docs/architecture.md` references a `trips` table and trip domain that does not exist — trip state is managed through delivery status. 3. `docs/architecture.md` references Paystack payment integration that does not exist — MakePayment is a stub. 4. `docs/architecture.md` references SMS gateway integration that does not exist. |
 

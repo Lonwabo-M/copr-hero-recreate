@@ -8,7 +8,7 @@ Lasha now has three logical auth realms:
 |---|---|---|
 | Customer | `customer` | Email + password (current) |
 | Driver | `driver` | Email + password (current); invite-only enrollment still to be enforced |
-| Staff | `fleet_manager`, `operations`, `company_admin`, `super_admin` | Staff realm and Admin permission implemented; Zitadel SSO/MFA wiring pending credentials |
+| Staff | `fleet_manager`, `operations`, `company_admin`, `super_admin` | Staff realm and Admin permission implemented; Zitadel SSO wired at `/staff-login`; deployment secret and MFA policy pending |
 
 `company_admin` is **Lasha staff**, not a customer business administrator.
 Customers have no admin portal. Fleet managers are internal staff too.
@@ -18,9 +18,13 @@ Important distinction:
 - The **logical realm boundary** is implemented server-side: customer/driver
   roles cannot call staff functions, and staff roles cannot enter the Driver
   App. Admin is a separate `admin:access` permission.
-- The **staff identity provider** is not switched yet. Staff still use the
-  existing local password path until a Zitadel Cloud application is created
-  and its issuer/client ID are configured. See `docs/zitadel-setup.md`.
+- The **staff identity provider** is Zitadel OIDC through
+  `/staff-login`. The provider code is wired, but staff still have the existing
+  local password path until `ZITADEL_ISSUER`, `ZITADEL_CLIENT_ID` and
+  `ZITADEL_CLIENT_SECRET` are configured on the deployment. See
+  `docs/zitadel-setup.md` for the Web application and account-linking steps.
+- A Zitadel identity cannot self-provision. It must link to an existing user
+  with a staff role; the guard rejects customers, drivers and unknown emails.
 
 ## Customer and driver authentication method
 
@@ -52,9 +56,18 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
       },
     }),
     Anonymous, // pre-existing platform provider (guest/bridge) — not used by the app UI
+    Zitadel({  // staff SSO only; configured from deployment env
+      clientId: process.env.ZITADEL_CLIENT_ID,
+      clientSecret: process.env.ZITADEL_CLIENT_SECRET,
+      issuer: process.env.ZITADEL_ISSUER,
+    }),
   ],
 });
 ```
+
+`ZITADEL_CLIENT_SECRET` is read only inside Convex functions; it must never be
+put in a `VITE_*` variable or shipped to the browser. The staff provider uses a
+Web application (client secret), not a public User Agent client.
 
 - **Password handling**: hashed with Scrypt by the provider. Plaintext
   passwords never touch the database, logs, query responses, or error
@@ -259,8 +272,8 @@ entering another area redirects to the account's own home.
 - Abuse protection: Convex Auth's built-in sign-in rate limiting applies to
   password attempts (no custom rate-limiting service).
 - Staff MFA: not implemented in the local password path. It must be enforced by
-  the Zitadel application when staff SSO is wired; do not claim MFA is active
-  before that cutover.
+  the Zitadel application before staff SSO is live; do not claim MFA is active
+  until the Zitadel policy has been tested.
 
 ## Removed
 

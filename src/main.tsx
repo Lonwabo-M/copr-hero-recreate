@@ -11,6 +11,7 @@ import "./index.css";
 
 import Landing from "./pages/Landing.tsx";
 import AuthPage from "./pages/Auth.tsx";
+import StaffLogin from "./pages/StaffLogin.tsx";
 import Dashboard from "./pages/Dashboard.tsx";
 import RequestDelivery from "./pages/RequestDelivery.tsx";
 import Checkout from "./pages/Checkout.tsx";
@@ -166,6 +167,7 @@ createRoot(document.getElementById("root")!).render(
             <Routes>
               <Route path="/" element={<Landing />} />
               <Route path="/auth" element={<AuthPage />} />
+              <Route path="/staff-login" element={<StaffLogin />} />
               <Route path="/book-demo" element={<BookDemo />} />
               <Route path="/post-auth" element={<PostAuthRedirect />} />
 

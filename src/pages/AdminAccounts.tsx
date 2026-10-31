@@ -98,9 +98,11 @@ function RealmBadge({ realm }: { realm: Realm }) {
 export default function AdminAccounts() {
   const inventory = useQuery(api.admin.accounts.getAccountInventory, {});
   const restoreLegacy = useMutation(api.admin.accounts.restoreLegacyTestElevations);
+  const prepareStaffSso = useMutation(api.admin.accounts.prepareStaffSsoLinking);
   const [search, setSearch] = useState("");
   const [realm, setRealm] = useState<"all" | Realm>("all");
   const [busy, setBusy] = useState(false);
+  const [preparingSso, setPreparingSso] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -141,6 +143,33 @@ export default function AdminAccounts() {
       setError(err instanceof Error ? err.message : "Could not restore test elevations");
     } finally {
       setBusy(false);
+    }
+  };
+
+  const handlePrepareSso = async () => {
+    if (!inventory?.staffMissingVerifiedEmail) return;
+    const confirmed = window.confirm(
+      `Prepare ${inventory.staffMissingVerifiedEmail} staff account(s) for ZITADEL linking? This marks only unique staff emails as verified; customers and drivers are never touched.`,
+    );
+    if (!confirmed) return;
+
+    setPreparingSso(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await prepareStaffSso({});
+      setNotice(
+        result.prepared === 0
+          ? "No staff accounts needed preparation."
+          : `Prepared ${result.prepared} staff account(s) for ZITADEL sign-in.` +
+              (result.skippedNoEmail || result.skippedDuplicateEmail
+                ? ` Skipped ${result.skippedNoEmail} without an email and ${result.skippedDuplicateEmail} with duplicate emails.`
+                : ""),
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not prepare staff SSO linking");
+    } finally {
+      setPreparingSso(false);
     }
   };
 
@@ -196,6 +225,38 @@ export default function AdminAccounts() {
             </div>
           </div>
         </div>
+
+        {inventory?.staffMissingVerifiedEmail ? (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              padding: "12px 14px",
+              marginBottom: 16,
+              borderRadius: 12,
+              background: "rgba(7,148,181,0.06)",
+              border: "1px solid rgba(7,148,181,0.25)",
+              flexWrap: "wrap",
+            }}
+          >
+            <ShieldCheck size={17} style={{ color: "#0794B5", flexShrink: 0 }} />
+            <div style={{ flex: 1, minWidth: 220, fontSize: 12.5, color: "#075e73" }}>
+              {inventory.staffMissingVerifiedEmail} staff account(s) need an
+              email prepared before ZITADEL can link to them. This only marks
+              unique staff emails.
+            </div>
+            <button
+              className="ops-btn ops-btn-secondary"
+              onClick={handlePrepareSso}
+              disabled={preparingSso}
+              style={{ fontSize: 12, padding: "7px 12px" }}
+            >
+              {preparingSso ? <Loader2 size={13} className="animate-spin" /> : <ShieldCheck size={13} />}
+              Prepare staff SSO
+            </button>
+          </div>
+        ) : null}
 
         {inventory?.legacyTestElevated ? (
           <div
@@ -321,6 +382,10 @@ export default function AdminAccounts() {
                       {account.legacyTestElevated ? (
                         <span style={{ color: "#856404", fontWeight: 700 }}>
                           Legacy test elevation
+                        </span>
+                      ) : account.realm === "staff" && account.email && !account.emailVerified ? (
+                        <span style={{ color: "#0794B5", fontWeight: 700 }}>
+                          SSO email not prepared
                         </span>
                       ) : account.role === "unassigned" ? (
                         <span style={{ color: "#856404", fontWeight: 700 }}>

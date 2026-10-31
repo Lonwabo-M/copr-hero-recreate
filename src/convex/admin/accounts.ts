@@ -13,6 +13,7 @@ import { requireAdmin } from "../auth/authorization";
 import {
   AUTH_REALMS,
   ROLES,
+  isStaffRole,
   realmForRole,
   type AuthRealm,
   type Role,
@@ -78,6 +79,7 @@ export const getAccountInventory = query({
           businessName: business?.name ?? null,
           providers: providersByUser.get(user._id) ?? [],
           isAnonymous: user.isAnonymous === true,
+          emailVerified: user.emailVerificationTime !== undefined,
           createdAt: user._creationTime,
           // Legacy marker from the retired test-access mechanism. These
           // accounts should be restored before staff migration.
@@ -100,6 +102,12 @@ export const getAccountInventory = query({
       countsByRealm,
       countsByRole,
       legacyTestElevated: rows.filter((row) => row.legacyTestElevated).length,
+      staffMissingVerifiedEmail: rows.filter(
+        (row) =>
+          row.realm === AUTH_REALMS.STAFF &&
+          row.email !== null &&
+          !row.emailVerified,
+      ).length,
       accounts: rows,
     };
   },
@@ -155,5 +163,74 @@ export const restoreLegacyTestElevations = mutation({
     }
 
     return { scanned: users.length, restored };
+  },
+});
+
+/**
+ * Prepare existing staff accounts for ZITADEL email linking.
+ *
+ * Convex Auth only links an OAuth identity to an existing user when the
+ * existing user's email is marked verified. Password-era staff records may
+ * predate that marker. This marks only unique staff emails; it never touches
+ * customers or drivers, and it refuses ambiguous duplicate addresses. The
+ * subsequent ZITADEL login still has to prove `email_verified` and pass the
+ * staff-realm guard in auth.ts.
+ */
+export const prepareStaffSsoLinking = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const admin = await requireAdmin(ctx);
+    const users = await ctx.db.query("users").take(MAX_USERS);
+
+    let prepared = 0;
+    let alreadyVerified = 0;
+    let skippedNoEmail = 0;
+    let skippedDuplicateEmail = 0;
+
+    for (const user of users) {
+      if (!isStaffRole(user.role)) continue;
+
+      const email = user.email?.trim().toLowerCase();
+      if (!email) {
+        skippedNoEmail += 1;
+        continue;
+      }
+      if (user.emailVerificationTime !== undefined) {
+        alreadyVerified += 1;
+        continue;
+      }
+
+      const matchingEmail = users.filter(
+        (candidate) => candidate.email?.trim().toLowerCase() === email,
+      );
+      if (matchingEmail.length !== 1) {
+        skippedDuplicateEmail += 1;
+        continue;
+      }
+
+      const verifiedAt = Date.now();
+      await ctx.db.patch(user._id, { emailVerificationTime: verifiedAt });
+      prepared += 1;
+
+      await ctx.runMutation(internal.audit.service.recordGenericEvent, {
+        actorId: admin.userId,
+        actorRole: admin.role,
+        category: "user",
+        action: AUDIT_ACTIONS.USER_UPDATED,
+        entityType: "users",
+        entityId: user._id,
+        before: JSON.stringify({ emailVerified: false }),
+        after: JSON.stringify({ emailVerified: true }),
+        metadata: "Staff email prepared for ZITADEL SSO linking",
+      });
+    }
+
+    return {
+      scanned: users.length,
+      prepared,
+      alreadyVerified,
+      skippedNoEmail,
+      skippedDuplicateEmail,
+    };
   },
 });

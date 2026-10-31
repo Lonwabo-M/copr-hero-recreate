@@ -1,10 +1,10 @@
 # Zitadel Cloud — staff identity provider (Phase 1)
 
-> Status: **selected, not yet wired.** The staff realm and Admin permission are
-> implemented in the codebase, but the staff login still uses the existing
-> local password path. Zitadel cannot be connected until the staff application
-> exists and its issuer/client ID are available. No secrets belong in this
-> repository.
+> Status: **provider wired; activation pending a Zitadel Web application and
+> deployment environment values.** The staff realm, Admin permission, Zitadel
+> provider and staff-only account guard are implemented. Staff can still use
+> the existing local password path until the Web application client secret is
+> configured. No secrets belong in this repository.
 
 ## Why Zitadel Cloud Free
 
@@ -39,10 +39,14 @@ Free (card required) or Google Cloud Identity Free.
 - `requireStaff()` and `requireAdmin()` enforce the realm and Admin permission
   server-side.
 - Test-area role elevation (`users.testAccess`) has been removed.
-- Admin → Accounts shows the account inventory and can restore any legacy
-  test-elevated account.
+- Admin → Accounts shows the account inventory, can restore any legacy
+  test-elevated account, and can prepare staff emails for SSO linking.
 - The frontend has no cross-area navigation or role switching; each role lands
   in its own area.
+- `/staff-login` starts the Zitadel flow. Customer and driver sign-in remains
+  on `/auth`.
+- Zitadel identities are rejected unless they link to an existing internal
+  staff account. A Zitadel user is never self-provisioned.
 
 ## Remaining setup (needs the Zitadel account)
 
@@ -50,16 +54,32 @@ Free (card required) or Google Cloud Identity Free.
 
 1. Create a Zitadel Cloud instance/organisation for Lasha.
 2. Create a project, e.g. `Lasha Staff`.
-3. Add a **User Agent** (single-page app) OpenID Connect application, e.g. `Lasha Staff Portal`. Do not choose **Web** for the React SPA; that type expects a client secret.
-4. Enable authorization-code flow with PKCE. Do not enable implicit flow.
-5. Configure redirect URIs after the subdomains exist:
-   - `https://ops.lasha.co.za/auth/callback`
-   - `https://admin.lasha.co.za/auth/callback`
-   - Add the current preview/staging callback separately if staff login is
-     tested before the subdomains are live.
-6. Ensure the application emits a signed JWT that Convex can validate. Confirm
-   the exact token type (ID token vs JWT access token) and audience during
-   integration; do not guess.
+3. Add a **Web** OpenID Connect application, e.g. `Lasha Staff Portal`.
+   Do **not** use a User Agent application: Convex Auth exchanges the code on
+   the server and its OIDC handler requires a client secret. A User Agent app
+   is a public client and cannot complete that exchange.
+4. Choose the **Code** authentication method (client ID + client secret) and
+   keep authorization-code flow enabled. Convex Auth also sends a PKCE
+   challenge; do not enable implicit flow.
+5. Configure the callback URL. The callback belongs to the Convex deployment,
+   not to the React route:
+   - Current development deployment:
+     `https://keen-octopus-299.convex.site/api/auth/callback/zitadel`
+   - Production stays on the deployment's `*.convex.site` host. A future
+     `ops.lasha.co.za` or `admin.lasha.co.za` host does not change this unless
+     `CUSTOM_AUTH_SITE_URL` is introduced deliberately.
+   - Post-login destination is handled by the app: `/staff-login` starts the
+     flow, then continues to `/post-auth` (or the original `returnTo` path).
+   - Post-logout URI: `https://lasha.freebuff.app/staff-login`
+6. Copy the **Client ID** and **Client Secret**, and copy the **Issuer URL**
+   shown by Zitadel. It is the instance host without `/ui/console` (for the
+   current console this looks like
+   `https://lasha-staff-xjjize.eu1.zitadel.cloud`). Before wiring, check that
+   `<issuer>/.well-known/openid-configuration` returns JSON; if it returns
+   `Instance not found`, the instance/domain is not ready and Convex cannot
+   validate the token yet. Convex Auth validates the ID token; do not add a
+   second JWT provider or expose the client secret through a `VITE_*`
+   variable.
 
 ### 2. Add the deployment configuration
 
@@ -68,29 +88,34 @@ a committed `.env` file):
 
 | Variable | Purpose |
 |---|---|
-| `ZITADEL_ISSUER` | Zitadel instance issuer, e.g. `https://<instance>.zitadel.cloud` |
-| `ZITADEL_CLIENT_ID` | Staff application client ID (the JWT audience) |
+| `ZITADEL_ISSUER` | Issuer URL shown in Zitadel (instance host, no `/ui/console`) |
+| `ZITADEL_CLIENT_ID` | Staff Web application client ID |
+| `ZITADEL_CLIENT_SECRET` | Staff Web application client secret; server-side only |
 
-`src/convex/auth.config.ts` cannot reference a missing environment variable:
-Convex validates every referenced env var at deploy time. That is why the
-Zitadel provider is **not** added yet. Add the provider only after both values
-are configured, then run `bunx convex dev --once`.
+The provider is already registered in `src/convex/auth.ts`; the values must be
+set on the Convex deployment (use the project's Keys/API keys UI, never a
+committed `.env` file). Until the secret is present, `/staff-login` will report
+that SSO is unavailable; customer and driver password auth is unaffected.
 
-### 3. Add the principal resolver
+### 3. Account linking and staff guard
 
-Convex Auth's `getAuthUserId()` assumes the token subject is an internal
-`users` document ID. A Zitadel `sub` is not that ID. The staff integration must:
+Convex Auth stores the Zitadel subject as an `authAccounts` provider account and
+links it to an existing internal user only when the email is verified. The
+staff integration then applies this guard in `src/convex/auth.ts`:
 
-- validate the Zitadel issuer and audience;
-- look up the staff account by a stable external identity key
-  (`issuer` + `subject`), not by email alone;
-- reject unknown staff immediately (no self-provisioning);
-- attach the internal role from an explicit server-side mapping or a trusted
-  Zitadel group claim;
-- never auto-link a Zitadel identity to a customer account by email.
+- the Zitadel email claim must be verified;
+- a new Convex Auth user is rejected, so there is no self-provisioning;
+- the linked user must have a staff role (`fleet_manager`, `operations`,
+  `company_admin` or `super_admin`);
+- the role comes from the existing Convex user record, never from a client or
+  from the Zitadel group claim;
+- a customer or driver account with the same email is rejected, not elevated.
 
-This resolver is deliberately not being written before the token shape and
-claims are confirmed.
+Password-era staff records may not have an email-verification marker. Open
+Admin → Accounts and use **Prepare staff SSO** before the first Zitadel login;
+it marks only unique staff emails and never touches customer/driver accounts.
+Staff without an email, or with duplicate emails, are skipped and must be fixed
+in the account inventory first.
 
 ### 4. Enforce MFA and admin policy in Zitadel
 
@@ -98,21 +123,27 @@ claims are confirmed.
 - Prefer passkeys/security keys; allow an authenticator app as fallback.
 - For `super_admin`, require a stronger method and shorter session lifetime.
 - Keep customer and driver accounts out of the Zitadel organisation.
-- Use Zitadel groups or a server-side allowlist to assign
-  `operations`/`fleet_manager`/`company_admin`/`super_admin`; a client must
-  never choose its role.
+- Roles stay on the existing Convex user records. Zitadel groups may later be
+  used as an input to a server-side role sync, but a group or client value must
+  never be accepted directly as the Lasha role.
 
 ### 5. Cutover
 
-1. Create staff accounts in Zitadel and map them to existing internal users.
+1. Create staff accounts in Zitadel with the same verified email addresses as
+   the existing internal users.
 2. Verify the Admin account inventory: every staff account is in the Staff
    realm; no customer/driver accounts remain in staff roles.
-3. Enable the Zitadel provider and staff login route.
-4. Test that a Zitadel token cannot call customer/driver endpoints and that a
-   customer token cannot call staff endpoints.
-5. Force a sign-out of the old shared session, disable legacy staff passwords,
+3. Open Admin → Accounts and use **Prepare staff SSO**; fix any skipped
+   accounts that have no email or duplicate emails.
+4. Add `ZITADEL_ISSUER`, `ZITADEL_CLIENT_ID` and `ZITADEL_CLIENT_SECRET` to
+   the Convex deployment, then run `bunx convex dev --once`.
+5. Sign in through `/staff-login` with a test Operations account and a test
+   Admin account. Confirm each lands in the correct area.
+6. Test that a Zitadel staff token cannot call customer/driver endpoints and
+   that a customer token cannot call staff endpoints.
+7. Force a sign-out of the old shared session, disable legacy staff passwords,
    and keep the customer/driver password path unchanged.
-6. Roll back by disabling the Zitadel provider; do not delete the customer
+8. Roll back by disabling the Zitadel provider; do not delete the customer
    auth path during the first cutover.
 
 ## Security rules for the integration
@@ -121,5 +152,6 @@ claims are confirmed.
 - Never merge identities by email across realms.
 - Never expose a staff signup form.
 - Never put Zitadel secrets in `VITE_*` variables or client code.
+- Never allow a Zitadel identity to create a Convex Auth user.
 - Never claim MFA is enforced until the Zitadel policy is active and tested.
 - Keep the Admin permission server-side; hiding the sidebar is not a control.

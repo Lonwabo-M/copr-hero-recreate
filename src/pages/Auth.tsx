@@ -461,6 +461,25 @@ export default function AuthPage({ redirectAfterAuth = "/post-auth" }: AuthProps
           <Link to="/privacy">Privacy Notice</Link>.
         </p>
 
+        <p
+          style={{
+            fontSize: 11.5,
+            color: "var(--lasha-muted)",
+            marginTop: 18,
+            paddingTop: 16,
+            borderTop: "1px solid var(--lasha-border-light)",
+            textAlign: "center",
+          }}
+        >
+          Lasha staff?{" "}
+          <Link
+            to="/staff-login"
+            style={{ color: "var(--lasha-cyan)", fontWeight: 600, textDecoration: "none" }}
+          >
+            Sign in with ZITADEL
+          </Link>
+        </p>
+
         <DevQuickSignIn onError={setError} setLoading={setLoading} />
       </div>
     );
