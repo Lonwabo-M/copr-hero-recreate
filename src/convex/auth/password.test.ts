@@ -19,6 +19,7 @@ function read(relPath: string): string {
 const authTs = read("src/convex/auth.ts");
 const emailBridge = read("src/convex/auth/email.ts");
 const authPage = read("src/pages/Auth.tsx");
+const staffPage = read("src/pages/StaffLogin.tsx");
 const authError = read("src/lib/authError.ts");
 const roleAccess = read("src/components/shells/roleAccess.ts");
 const postAuth = read("src/pages/PostAuthRedirect.tsx");
@@ -210,6 +211,41 @@ test("authentication errors are user-safe", () => {
 test("post-auth role routing is preserved and unchanged", () => {
   assert.ok(postAuth.includes("homeRouteForRole"), "resolves the route from the server-known role");
   assert.ok(authPage.includes('redirectAfterAuth = "/post-auth"'), "auth page routes through /post-auth");
+});
+
+test("customer login does not offer staff quick sign-in", () => {
+  assert.ok(!authPage.includes("agent.ops@lasha.test"), "no Operations shortcut on /auth");
+  assert.ok(!authPage.includes("agent.admin@lasha.test"), "no Admin shortcut on /auth");
+  assert.ok(authPage.includes("agent.customer1@lasha.test"), "customer dev account remains available");
+  assert.ok(authPage.includes("agent.driver1@lasha.test"), "driver dev account remains available");
+});
+
+test("customer sign-in cannot land a staff account in Operations", () => {
+  assert.ok(
+    authPage.includes('source: "customer-auth"'),
+    "customer auth marks the origin before handing off to post-auth",
+  );
+  assert.ok(
+    postAuth.includes("startedFromCustomerAuth") &&
+      postAuth.includes("isStaffRole(role as Role | undefined)"),
+    "post-auth checks the server-known staff role for customer-originated sessions",
+  );
+  const guard = postAuth.indexOf("startedFromCustomerAuth && isStaffRole");
+  const staffHome = postAuth.indexOf("navigate(homeRouteForRole(role)");
+  assert.ok(guard > 0 && guard < staffHome, "staff guard runs before staff-home routing");
+  assert.ok(
+    postAuth.includes('navigate("/staff-login?reason=staff-account"'),
+    "staff sessions are stopped at the staff-login notice",
+  );
+  assert.ok(
+    staffPage.includes("customerLoginStaffSession") &&
+      staffPage.includes("Continue to the staff portal with the legacy session"),
+    "the notice keeps the legacy fallback explicit",
+  );
+  assert.ok(
+    !authPage.includes("navigate(returnTo ?? redirectAfterAuth"),
+    "customer auth no longer bypasses the post-auth staff boundary",
+  );
 });
 
 test("users cannot choose a role in the auth UI", () => {

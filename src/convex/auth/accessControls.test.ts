@@ -54,6 +54,43 @@ test("production test-access elevation endpoint is absent", () => {
   );
 });
 
+test("legacy test elevations are inert until restored", () => {
+  const schema = read("src/convex/schema.ts");
+  assert(
+    schema.includes("export function effectiveRoleForUser"),
+    "must resolve an effective role instead of trusting the stored role",
+  );
+  assert(
+    schema.includes("if (user.testElevated === true) {") &&
+      schema.includes("return user.testPreviousRole ?? ROLES.CUSTOMER"),
+    "marked accounts must fall back to their pre-test role",
+  );
+
+  const authz = read("src/convex/auth/authorization.ts");
+  assert(
+    (authz.match(/effectiveRoleForUser\(userDoc\)/g) ?? []).length >= 4,
+    "all DB-role authorization checks must use the effective role",
+  );
+
+  const users = read("src/convex/users.ts");
+  assert(
+    users.includes("effectiveRoleForUser(user)"),
+    "currentUser must not expose a legacy elevated role to the client router",
+  );
+
+  const authHook = read("src/hooks/use-auth.ts");
+  assert(
+    authHook.includes("effectiveRoleForUser(userDoc)"),
+    "client auth state must apply the same effective role before a backend deploy",
+  );
+
+  const auth = read("src/convex/auth.ts");
+  assert(
+    auth.includes("isStaffRole(effectiveRoleForUser(user))"),
+    "ZITADEL linking must also reject a legacy-elevated non-staff account",
+  );
+});
+
 // ─── 2. Seed-time provisioning ──────────────────────────────────────────────
 
 console.log("\nSeed-time provisioning");

@@ -30,6 +30,7 @@ import {
   PERMISSIONS,
   AUTH_REALMS,
   AuthRealm,
+  effectiveRoleForUser,
   realmForRole,
 } from "../schema";
 
@@ -84,7 +85,7 @@ export async function getCurrentAuthUser(ctx: Ctx): Promise<AuthUser | null> {
   // Type assertion: we know the user table has these fields
   const userDoc = user as Doc<"users">;
 
-  const role = (userDoc.role as Role) ?? ROLES.CUSTOMER;
+  const role = effectiveRoleForUser(userDoc) ?? ROLES.CUSTOMER;
   return {
     userId,
     role,
@@ -110,7 +111,7 @@ export async function requireRole(
   }
 
   const userDoc = user as Doc<"users">;
-  const userRole = (userDoc.role as Role) ?? ROLES.CUSTOMER;
+  const userRole = effectiveRoleForUser(userDoc) ?? ROLES.CUSTOMER;
 
   if (!roles.includes(userRole)) {
     throw new Error(
@@ -261,7 +262,7 @@ export async function requireOwnership(
   }
 
   const userDoc = user as Doc<"users">;
-  const userRole = (userDoc.role as Role) ?? ROLES.CUSTOMER;
+  const userRole = effectiveRoleForUser(userDoc) ?? ROLES.CUSTOMER;
 
   // Super admin can access everything
   if (userRole === ROLES.SUPER_ADMIN) {
@@ -332,7 +333,7 @@ export async function requireCompanyAccess(
   }
 
   const userDoc = user as Doc<"users">;
-  const userRole = (userDoc.role as Role) ?? ROLES.CUSTOMER;
+  const userRole = effectiveRoleForUser(userDoc) ?? ROLES.CUSTOMER;
 
   // Super admin can access everything
   if (userRole === ROLES.SUPER_ADMIN) {
@@ -404,7 +405,7 @@ export async function requireDriverAccess(
   }
 
   const userDoc = user as Doc<"users">;
-  const userRole = (userDoc.role as Role) ?? ROLES.CUSTOMER;
+  const userRole = effectiveRoleForUser(userDoc) ?? ROLES.CUSTOMER;
 
   // Super admin and operations can access all deliveries
   if (userRole === ROLES.SUPER_ADMIN || userRole === ROLES.OPERATIONS) {

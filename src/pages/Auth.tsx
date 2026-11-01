@@ -41,6 +41,23 @@ function validateNewPassword(password: string, confirm: string): string | null {
   return null;
 }
 
+// The customer entry point must never silently hand a staff password session
+// to the Operations/Admin routing tree. Every successful customer sign-in goes
+// through PostAuthRedirect with this marker; PostAuthRedirect stops staff at
+// the staff-login notice instead of their staff home. The notice keeps the
+// agreed legacy fallback explicit and offers the ZITADEL path.
+function customerPostAuthPath(returnTo: string | null, fallback: string): string {
+  const requested =
+    returnTo && returnTo.startsWith("/") && !returnTo.startsWith("//")
+      ? returnTo
+      : fallback;
+  const params = new URLSearchParams({ source: "customer-auth" });
+  if (requested.startsWith("/") && requested !== "/post-auth") {
+    params.set("returnTo", requested);
+  }
+  return `/post-auth?${params.toString()}`;
+}
+
 export default function AuthPage({ redirectAfterAuth = "/post-auth" }: AuthProps) {
   const { signIn } = useAuthActions();
   const navigate = useNavigate();
@@ -104,7 +121,7 @@ export default function AuthPage({ redirectAfterAuth = "/post-auth" }: AuthProps
       // contract), so client-side navigation is safe here — a full page
       // reload would re-download the bundle and add seconds of latency.
       await signIn("password", { email: email.trim(), password, flow: "signIn" });
-      navigate(returnTo ?? redirectAfterAuth, { replace: true });
+      navigate(customerPostAuthPath(returnTo, redirectAfterAuth), { replace: true });
     } catch (err: unknown) {
       setError(safeAuthError(err, "signIn", "Invalid email or password"));
       setLoading(false);
@@ -153,7 +170,7 @@ export default function AuthPage({ redirectAfterAuth = "/post-auth" }: AuthProps
       } catch {
         console.warn("[auth] consent record could not be saved after sign-up");
       }
-      navigate(returnTo ?? redirectAfterAuth, { replace: true });
+      navigate(customerPostAuthPath(returnTo, redirectAfterAuth), { replace: true });
     } catch (err: unknown) {
       setError(safeAuthError(err, "signUp", "Could not create your account"));
       setLoading(false);
@@ -222,7 +239,7 @@ export default function AuthPage({ redirectAfterAuth = "/post-auth" }: AuthProps
         flow: "reset-verification",
       });
       // Reset signs the user in — continue to their role-aware destination.
-      navigate(returnTo ?? redirectAfterAuth, { replace: true });
+      navigate(customerPostAuthPath(returnTo, redirectAfterAuth), { replace: true });
     } catch (err: unknown) {
       setError(safeAuthError(err, "reset-verification", "Invalid or expired reset code"));
       setLoading(false);
@@ -975,26 +992,27 @@ export default function AuthPage({ redirectAfterAuth = "/post-auth" }: AuthProps
 }
 
 // ─── Dev quick sign-in ──────────────────────────────────────────────────────
-// Development/testing affordance: one-click sign-in to the REAL seeded agent
-// accounts from the stress-test waves (all platform data lives on them). It
-// uses the standard password sign-in flow — no backend changes, no elevated
-// privileges.
+// Development/testing affordance: one-click sign-in to the REAL seeded
+// customer and driver accounts from the stress-test waves. It uses the standard
+// password sign-in flow — no backend changes, no elevated privileges.
+//
+// Staff accounts are deliberately absent: this is the customer/driver entry
+// point, and staff must use the separate ZITADEL flow at /staff-login. The
+// post-auth guard would reject a staff password session here anyway, so
+// offering those buttons would only produce a dead end.
 //
 // SECURITY: the demo password is NOT hardcoded. Anything in this file ships in
-// the client bundle, and one of the seeded accounts is a super_admin — a
-// literal password here would be a public backdoor into every deployment.
-// It comes from VITE_DEMO_PASSWORD at build/dev time (matching the
-// deployment's DEMO_ACCOUNTS_PASSWORD), and the panel is hidden entirely in
-// production builds or when the value is absent.
+// the client bundle, and the seeded staff accounts must never be exposed as a
+// public backdoor. It comes from VITE_DEMO_PASSWORD at build/dev time
+// (matching the deployment's DEMO_ACCOUNTS_PASSWORD), and the panel is hidden
+// entirely in production builds or when the value is absent.
 // Gated on DEV as well as PROD: in a production build the branch folds to "",
 // so the env value is dead code and dropped from the bundle rather than merely
 // hidden behind a runtime check.
 const DEV_PASSWORD = import.meta.env.DEV ? (import.meta.env.VITE_DEMO_PASSWORD ?? "") : "";
 const DEV_ACCOUNTS: { label: string; email: string; dest: string }[] = [
-  { label: "Admin", email: "agent.admin@lasha.test", dest: "/admin/driver-approvals" },
-  { label: "Operations", email: "agent.ops@lasha.test", dest: "/operations" },
-  { label: "Driver #1", email: "agent.driver1@lasha.test", dest: "/driver" },
   { label: "Customer #1", email: "agent.customer1@lasha.test", dest: "/dashboard" },
+  { label: "Driver #1", email: "agent.driver1@lasha.test", dest: "/driver" },
 ];
 
 function DevQuickSignIn({ onError, setLoading }: { onError: (m: string) => void; setLoading: (b: boolean) => void }) {

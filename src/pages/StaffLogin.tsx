@@ -1,6 +1,6 @@
 import { useAuthActions, useAuthToken } from "@convex-dev/auth/react";
 import { useState } from "react";
-import { Link, Navigate, useSearchParams } from "react-router";
+import { Link, Navigate, useNavigate, useSearchParams } from "react-router";
 import { ArrowLeft, ArrowRight, Loader2, ShieldCheck } from "lucide-react";
 
 // ─── Staff sign-in (ZITADEL) ──────────────────────────────────────────────────
@@ -13,11 +13,20 @@ import { ArrowLeft, ArrowRight, Loader2, ShieldCheck } from "lucide-react";
 // selected here.
 
 export default function StaffLogin() {
-  const { signIn } = useAuthActions();
+  const { signIn, signOut } = useAuthActions();
   const token = useAuthToken();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [signingOut, setSigningOut] = useState(false);
+  const [error, setError] = useState(
+    searchParams.get("reason") === "staff-account"
+      ? "Staff accounts cannot use the customer sign-in. Continue with ZITADEL below."
+      : "",
+  );
+  const reason = searchParams.get("reason");
+  const customerLoginStaffSession =
+    token !== null && reason === "staff-account";
 
   const requested = searchParams.get("returnTo");
   const returnTo =
@@ -28,9 +37,19 @@ export default function StaffLogin() {
   // Convex Auth processes the OAuth code in the URL before this component's
   // auth state settles. Once the staff session exists, continue to the same
   // role-aware destination used by password sign-in.
-  if (token !== null) {
+  if (token !== null && !customerLoginStaffSession) {
     return <Navigate to={returnTo} replace />;
   }
+
+  const handleStaffSessionSignOut = async () => {
+    setSigningOut(true);
+    try {
+      await signOut();
+    } finally {
+      // The auth client clears local tokens even if the server call fails.
+      navigate("/staff-login", { replace: true });
+    }
+  };
 
   const handleStaffSignIn = async () => {
     setLoading(true);
@@ -51,6 +70,126 @@ export default function StaffLogin() {
       );
     }
   };
+
+  if (customerLoginStaffSession) {
+    return (
+      <main
+        style={{
+          minHeight: "100vh",
+          display: "grid",
+          placeItems: "center",
+          padding: "clamp(20px, 5vw, 56px)",
+          backgroundColor: "var(--lasha-navy)",
+          fontFamily: "Inter, system-ui, -apple-system, sans-serif",
+        }}
+      >
+        <section
+          style={{
+            width: "100%",
+            maxWidth: 520,
+            padding: "clamp(28px, 5vw, 44px)",
+            borderRadius: 24,
+            backgroundColor: "var(--lasha-ivory)",
+            boxShadow: "0 30px 80px rgba(0,0,0,0.28)",
+          }}
+        >
+          <div
+            style={{
+              width: 44,
+              height: 44,
+              display: "grid",
+              placeItems: "center",
+              borderRadius: 12,
+              color: "var(--lasha-cyan)",
+              backgroundColor: "rgba(7,148,181,0.1)",
+            }}
+          >
+            <ShieldCheck size={22} />
+          </div>
+          <p
+            style={{
+              margin: "22px 0 8px",
+              fontSize: 10,
+              letterSpacing: "0.16em",
+              textTransform: "uppercase",
+              fontWeight: 700,
+              color: "var(--lasha-cyan)",
+            }}
+          >
+            Staff account detected
+          </p>
+          <h1
+            style={{
+              margin: 0,
+              fontSize: 30,
+              lineHeight: 1.08,
+              letterSpacing: "-0.035em",
+              color: "var(--lasha-navy)",
+            }}
+          >
+            Use the staff portal
+          </h1>
+          <p
+            style={{
+              margin: "14px 0 24px",
+              fontSize: 14,
+              lineHeight: 1.65,
+              color: "var(--lasha-muted)",
+            }}
+          >
+            You signed in through the customer login. Staff accounts must use
+            ZITADEL. This is a legacy staff password session.
+          </p>
+          <button
+            type="button"
+            onClick={() => void handleStaffSessionSignOut()}
+            disabled={signingOut}
+            style={{
+              width: "100%",
+              minHeight: 48,
+              border: "none",
+              borderRadius: 11,
+              padding: "13px 18px",
+              backgroundColor: signingOut ? "#0b5f8a" : "var(--lasha-cyan)",
+              color: "#fff",
+              fontFamily: "Inter, sans-serif",
+              fontSize: 14,
+              fontWeight: 700,
+              cursor: signingOut ? "wait" : "pointer",
+            }}
+          >
+            {signingOut ? "Signing out…" : "Sign out and use ZITADEL"}
+          </button>
+          <Link
+            to="/post-auth"
+            style={{
+              display: "block",
+              marginTop: 18,
+              textAlign: "center",
+              fontSize: 12.5,
+              fontWeight: 600,
+              color: "var(--lasha-navy)",
+              textDecoration: "none",
+            }}
+          >
+            Continue to the staff portal with the legacy session
+          </Link>
+          <p
+            style={{
+              margin: "18px 0 0",
+              fontSize: 11,
+              lineHeight: 1.6,
+              color: "var(--lasha-muted)",
+              textAlign: "center",
+            }}
+          >
+            The legacy option is temporary; use ZITADEL once staff SSO is
+            configured.
+          </p>
+        </section>
+      </main>
+    );
+  }
 
   return (
     <main

@@ -13,6 +13,7 @@ import { requireAdmin } from "../auth/authorization";
 import {
   AUTH_REALMS,
   ROLES,
+  effectiveRoleForUser,
   isStaffRole,
   realmForRole,
   type AuthRealm,
@@ -188,7 +189,7 @@ export const prepareStaffSsoLinking = mutation({
     let skippedDuplicateEmail = 0;
 
     for (const user of users) {
-      if (!isStaffRole(user.role)) continue;
+      if (!isStaffRole(effectiveRoleForUser(user))) continue;
 
       const email = user.email?.trim().toLowerCase();
       if (!email) {

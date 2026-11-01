@@ -49,7 +49,10 @@ test("client secret is read only from the Convex environment", () => {
 
 test("unknown Zitadel users are rejected before an account can be used", () => {
   assert.ok(authTs.includes("existingUserId === null"), "new users are rejected");
-  assert.ok(authTs.includes("isStaffRole(user.role)"), "linked user must be staff");
+  assert.ok(
+    authTs.includes("isStaffRole(effectiveRoleForUser(user))"),
+    "linked user must be staff after legacy elevations are neutralized",
+  );
   assert.ok(authTs.includes('profile.emailVerified !== true'), "email must be verified");
 });
 

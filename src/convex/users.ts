@@ -3,7 +3,7 @@ import { query, mutation, QueryCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { requireAuth, getCurrentAuthUser } from "./auth/authorization";
-import { ROLES } from "./schema";
+import { effectiveRoleForUser, ROLES } from "./schema";
 import {
   AUDIT_ACTIONS,
 } from "./audit/service";
@@ -26,7 +26,13 @@ export const currentUser = query({
       return null;
     }
 
-    return user;
+    // Legacy test elevations are inert until an admin restores them. Expose
+    // the effective role so client-side routing cannot send a marked customer
+    // into Operations/Admin while the stored elevated role is still present.
+    const effectiveRole = effectiveRoleForUser(user);
+    return effectiveRole === user.role
+      ? user
+      : { ...user, role: effectiveRole };
   },
 });
 
@@ -104,7 +110,7 @@ export const updateMyProfile = mutation({
     // Audit: record who changed their own profile and what changed
     await ctx.runMutation(internal.audit.service.recordGenericEvent, {
       actorId: userId,
-      actorRole: (user.role as string) ?? "customer",
+      actorRole: effectiveRoleForUser(user) ?? "customer",
       category: "user",
       action: AUDIT_ACTIONS.USER_UPDATED,
       entityType: "users",

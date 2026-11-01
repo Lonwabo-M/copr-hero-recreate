@@ -1,7 +1,7 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { query } from "../_generated/server";
 import { v } from "convex/values";
-import { ROLES } from "../schema";
+import { effectiveRoleForUser, ROLES } from "../schema";
 
 // ─── Waybills ────────────────────────────────────────────────────────────────
 // A waybill is created automatically for every delivery, at creation time.
@@ -37,7 +37,8 @@ export const getWaybillForOps = query({
     const user = await ctx.db.get(userId);
     if (!user) throw new Error("Authentication required");
 
-    if (user.role !== ROLES.OPERATIONS && user.role !== ROLES.SUPER_ADMIN) {
+    const role = effectiveRoleForUser(user);
+    if (role !== ROLES.OPERATIONS && role !== ROLES.SUPER_ADMIN) {
       throw new Error("Access denied: operations only");
     }
 

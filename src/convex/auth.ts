@@ -8,7 +8,7 @@ import { Anonymous } from "@convex-dev/auth/providers/Anonymous";
 import { Password } from "@convex-dev/auth/providers/Password";
 import Zitadel from "@auth/core/providers/zitadel";
 import { emailDelivery } from "./auth/email";
-import { isStaffRole } from "./schema";
+import { effectiveRoleForUser, isStaffRole } from "./schema";
 
 /**
  * Primary authentication: email + password via Convex Auth's supported
@@ -105,7 +105,7 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
       }
 
       const user = await _ctx.db.get(existingUserId);
-      if (!user || !isStaffRole(user.role)) {
+      if (!user || !isStaffRole(effectiveRoleForUser(user))) {
         throw new Error("This ZITADEL identity is not linked to an internal staff account");
       }
     },

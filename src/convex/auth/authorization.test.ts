@@ -10,6 +10,7 @@ import {
   PERMISSIONS,
   ROLE_PERMISSIONS,
   AUTH_REALMS,
+  effectiveRoleForUser,
   realmForRole,
   isStaffRole,
   Role,
@@ -105,6 +106,28 @@ describe("Auth realms", () => {
     }
     assertEqual(isStaffRole(ROLES.CUSTOMER), false, "customer is not staff");
     assertEqual(isStaffRole(ROLES.DRIVER), false, "driver is not staff");
+  });
+
+  test("legacy test elevations resolve to their pre-test role", () => {
+    assertEqual(
+      effectiveRoleForUser({
+        role: ROLES.OPERATIONS,
+        testElevated: true,
+        testPreviousRole: ROLES.CUSTOMER,
+      }),
+      ROLES.CUSTOMER,
+      "marked customer cannot keep an operations role",
+    );
+    assertEqual(
+      effectiveRoleForUser({ role: ROLES.OPERATIONS }),
+      ROLES.OPERATIONS,
+      "ordinary staff role is unchanged",
+    );
+    assertEqual(
+      effectiveRoleForUser({ role: ROLES.SUPER_ADMIN, testElevated: true }),
+      ROLES.CUSTOMER,
+      "missing previous role falls back to customer",
+    );
   });
 
   test("admin:access is separate from operations permissions", () => {

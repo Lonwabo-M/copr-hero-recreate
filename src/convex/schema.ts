@@ -72,6 +72,28 @@ export function isStaffRole(role?: Role | null): boolean {
   return !!role && realmForRole(role) === AUTH_REALMS.STAFF;
 }
 
+/**
+ * Resolve the role that authorization and routing may actually use.
+ *
+ * The retired test-access flow stored an elevated role alongside
+ * `testElevated: true` and the account's previous role. Those records can
+ * outlive the feature if an operator never ran the Admin restore action. The
+ * stored elevated role is therefore inert until it is explicitly restored:
+ * a marked account is treated as its previous role (customer when none was
+ * recorded). This keeps a legacy test elevation from becoming a permanent
+ * staff grant.
+ */
+export function effectiveRoleForUser(user: {
+  role?: Role | null;
+  testElevated?: boolean;
+  testPreviousRole?: Role | null;
+}): Role | undefined {
+  if (user.testElevated === true) {
+    return user.testPreviousRole ?? ROLES.CUSTOMER;
+  }
+  return user.role ?? undefined;
+}
+
 // ─── Permissions ──────────────────────────────────────────────────────────────
 // Explicit permission strings. Use these in authorization checks.
 

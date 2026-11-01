@@ -1,11 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
-import { useNavigate } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useAuth } from "@/hooks/use-auth";
 import { homeRouteForRole } from "@/components/shells/roleAccess";
-import { ROLES } from "@/convex/schema";
+import { isStaffRole, ROLES, type Role } from "@/convex/schema";
 
 // ─── PostAuthRedirect ────────────────────────────────────────────────────────
 // Role-aware post-auth entry point. Each realm lands in its own application:
@@ -57,12 +57,17 @@ function DestinationSpinner() {
 function AuthenticatedDestination({
   role,
   roleResolved,
+  startedFromCustomerAuth,
+  returnTo,
 }: {
   role: string | undefined;
   roleResolved: boolean;
+  startedFromCustomerAuth: boolean;
+  returnTo: string | null;
 }) {
   const navigate = useNavigate();
   const status = useQuery(api.users.onboarding.getOnboardingStatus);
+  const staffRedirectStarted = useRef(false);
 
   // While the role is still resolving, hold both branches. Once resolved,
   // unprovisioned accounts (no role) take the customer experience — the same
@@ -72,6 +77,18 @@ function AuthenticatedDestination({
 
   useEffect(() => {
     if (!roleResolved) return; // role not yet known — never route early
+
+    // The customer login must not silently route a staff password account
+    // into Operations/Admin. It stops at the staff-login notice instead. The
+    // notice keeps the agreed legacy fallback explicit: the user can sign out
+    // and use ZITADEL, or deliberately continue with the existing session.
+    if (startedFromCustomerAuth && isStaffRole(role as Role | undefined)) {
+      if (staffRedirectStarted.current) return;
+      staffRedirectStarted.current = true;
+      navigate("/staff-login?reason=staff-account", { replace: true });
+      return;
+    }
+
     if (!isCustomerExperience) {
       // Every non-customer role lands in its own area. The old shared
       // /dashboard landing is gone: staff do not enter the customer product.
@@ -84,15 +101,37 @@ function AuthenticatedDestination({
     // beat, and routing on the placeholder `complete: false` would drop
     // already-onboarded users into onboarding.
     if (status === undefined || status.unauthenticated) return;
+    if (status.complete && returnTo) {
+      // Preserve a customer deep-link through the role check.
+      navigate(returnTo, { replace: true });
+      return;
+    }
     navigate(status.complete ? "/dashboard" : "/onboarding/customer", { replace: true });
-  }, [roleResolved, isCustomerExperience, status, role, navigate]);
+  }, [
+    roleResolved,
+    startedFromCustomerAuth,
+    isCustomerExperience,
+    status,
+    role,
+    returnTo,
+    navigate,
+  ]);
 
   return <DestinationSpinner />;
 }
 
 export default function PostAuthRedirect() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { isLoading, isAuthenticated, user } = useAuth();
+  const startedFromCustomerAuth = searchParams.get("source") === "customer-auth";
+  const requestedReturnTo = searchParams.get("returnTo");
+  const returnTo =
+    requestedReturnTo?.startsWith("/") &&
+    !requestedReturnTo.startsWith("//") &&
+    requestedReturnTo !== "/post-auth"
+      ? requestedReturnTo
+      : null;
 
   // Grace period: immediately after sign-up the token is stored but
   // isAuthenticated is still false for a moment. Only treat the user as
@@ -124,6 +163,8 @@ export default function PostAuthRedirect() {
     <AuthenticatedDestination
       role={user?.role as string | undefined}
       roleResolved={!isLoading}
+      startedFromCustomerAuth={startedFromCustomerAuth}
+      returnTo={returnTo}
     />
   );
 }

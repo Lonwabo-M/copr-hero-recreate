@@ -24,7 +24,7 @@ import {
 } from "../_generated/server";
 import { v } from "convex/values";
 import { Id, Doc } from "../_generated/dataModel";
-import { DELIVERY_STATUS, ROLES } from "../schema";
+import { DELIVERY_STATUS, effectiveRoleForUser, ROLES } from "../schema";
 import { requireAuth, getCurrentAuthUser } from "../auth/authorization";
 import { internal } from "../_generated/api";
 import {
@@ -300,7 +300,7 @@ export const acceptAssignment = mutation({
     const user = await ctx.db.get(userId);
     if (!user) throw new Error("User not found");
 
-    const userRole = (user as Doc<"users">).role;
+    const userRole = effectiveRoleForUser(user as Doc<"users">);
 
     // 2. Verify user is a driver
     if (userRole !== ROLES.DRIVER) {
@@ -329,7 +329,7 @@ export const rejectAssignment = mutation({
     const user = await ctx.db.get(userId);
     if (!user) throw new Error("User not found");
 
-    const userRole = (user as Doc<"users">).role;
+    const userRole = effectiveRoleForUser(user as Doc<"users">);
 
     // 2. Verify user is a driver
     if (userRole !== ROLES.DRIVER) {

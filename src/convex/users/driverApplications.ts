@@ -3,7 +3,7 @@ import { query, mutation } from "../_generated/server";
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import { requireAdmin, requireAuth } from "../auth/authorization";
-import { ROLES } from "../schema";
+import { effectiveRoleForUser, ROLES } from "../schema";
 import { AUDIT_ACTIONS } from "../audit/service";
 import {
   validateSaIdNumber,
@@ -62,7 +62,7 @@ export const generateApplicationUploadUrl = mutation({
     const userId = await requireAuth(ctx);
     const user = await ctx.db.get(userId);
     if (!user) throw new Error("Authentication required");
-    if (user.role !== ROLES.DRIVER) {
+    if (effectiveRoleForUser(user) !== ROLES.DRIVER) {
       throw new Error("Only driver accounts can upload driver documents");
     }
     return await ctx.storage.generateUploadUrl();
@@ -170,7 +170,7 @@ export const submitMyDriverApplication = mutation({
     const user = await ctx.db.get(userId);
     if (!user) throw new Error("User not found");
 
-    if (user.role !== ROLES.DRIVER) {
+    if (effectiveRoleForUser(user) !== ROLES.DRIVER) {
       throw new Error("Only driver accounts can submit a driver application");
     }
 
@@ -552,7 +552,7 @@ export const getDriverRoster = query({
       ROLES.COMPANY_ADMIN,
       ROLES.SUPER_ADMIN,
     ];
-    if (!allowedRoles.includes(user.role as any)) {
+    if (!allowedRoles.includes(effectiveRoleForUser(user) as any)) {
       throw new Error("Access denied: operations only");
     }
 

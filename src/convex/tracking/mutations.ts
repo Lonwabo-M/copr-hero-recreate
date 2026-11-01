@@ -12,7 +12,7 @@
 import { mutation } from "../_generated/server";
 import { v } from "convex/values";
 import { Id, Doc } from "../_generated/dataModel";
-import { DELIVERY_STATUS, ROLES } from "../schema";
+import { DELIVERY_STATUS, effectiveRoleForUser, ROLES } from "../schema";
 import { requireAuth, getCurrentAuthUser } from "../auth/authorization";
 import {
   validateCoordinates,
@@ -61,7 +61,7 @@ export const updateDriverLocation = mutation({
     if (!user) throw new Error("User not found");
 
     // 2. Verify user is a driver
-    const userRole = (user as Doc<"users">).role;
+    const userRole = effectiveRoleForUser(user as Doc<"users">);
     if (userRole !== ROLES.DRIVER) {
       throw new Error("Only drivers can update location");
     }
@@ -134,7 +134,7 @@ export const updateDeliveryLocation = mutation({
     if (!user) throw new Error("User not found");
 
     // 2. Verify user is a driver
-    const userRole = (user as Doc<"users">).role;
+    const userRole = effectiveRoleForUser(user as Doc<"users">);
     if (userRole !== ROLES.DRIVER) {
       throw new Error("Only drivers can update delivery location");
     }
@@ -268,7 +268,7 @@ export const updateDeliveryStatusWithLocation = mutation({
     if (!user) throw new Error("User not found");
 
     // 2. Verify user is a driver
-    const userRole = (user as Doc<"users">).role;
+    const userRole = effectiveRoleForUser(user as Doc<"users">);
     if (userRole !== ROLES.DRIVER) {
       throw new Error("Only drivers can update delivery status");
     }

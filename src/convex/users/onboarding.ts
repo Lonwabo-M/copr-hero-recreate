@@ -31,7 +31,7 @@ import { internal } from "../_generated/api";
 import { requireAuth, getCurrentAuthUser } from "../auth/authorization";
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { Id, Doc } from "../_generated/dataModel";
-import { ROLES, type Role } from "../schema";
+import { effectiveRoleForUser, ROLES, type Role } from "../schema";
 import { AUDIT_ACTIONS } from "../audit/service";
 import {
   validateName,
@@ -221,8 +221,10 @@ export const completeCustomerOnboarding = mutation({
     }
 
     // Role boundary: onboarding belongs to the Customer experience. The role
-    // itself is always server-assigned — never derived from client input.
-    const role: Role = (user.role as Role) ?? ROLES.CUSTOMER;
+    // itself is always server-assigned — never derived from client input. A
+    // legacy test elevation is ignored here too, so the account can finish the
+    // customer onboarding it was originally entitled to.
+    const role: Role = effectiveRoleForUser(user) ?? ROLES.CUSTOMER;
     if (role !== ROLES.CUSTOMER) {
       throw new Error("Access denied: onboarding is only available to customer accounts");
     }

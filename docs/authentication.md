@@ -267,8 +267,11 @@ entering another area redirects to the account's own home.
 - Realm checks: `requireStaff` rejects customer/driver accounts; `requireAdmin`
   requires the staff realm and the explicit `admin:access` permission.
 - Removed: production `users.testAccess` role elevation. The old test-access
-  mutation and its cross-area UI are gone. The Admin account inventory exposes
-  any legacy `testElevated` records and a safe restore action.
+  mutation and its cross-area UI are gone. Any remaining `testElevated` record
+  is inert: authorization and post-auth routing use the pre-test role until an
+  admin runs the restore action in the Admin account inventory. A marked
+  customer can therefore never enter Operations/Admin through a leftover
+  elevated role.
 - Abuse protection: Convex Auth's built-in sign-in rate limiting applies to
   password attempts (no custom rate-limiting service).
 - Staff MFA: not implemented in the local password path. It must be enforced by
