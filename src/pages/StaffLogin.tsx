@@ -176,9 +176,9 @@ export default function StaffLogin() {
                 color: "rgba(255,255,255,0.62)",
               }}
             >
-              ZITADEL verifies your Lasha staff identity and MFA. Your assigned
-              role still determines whether you enter the Operations Centre or
-              the Admin Portal — the browser cannot choose it.
+              ZITADEL verifies your Lasha staff identity. Your assigned role
+              still determines whether you enter the Operations Centre or the
+              Admin Portal — the browser cannot choose it.
             </p>
           </div>
 
@@ -192,7 +192,7 @@ export default function StaffLogin() {
               borderTop: "1px solid rgba(255,255,255,0.10)",
             }}
           >
-            {["Passkeys / MFA", "Staff-only realm", "Server-side roles"].map((item) => (
+            {["ZITADEL OIDC", "Staff-only realm", "Server-side roles"].map((item) => (
               <span
                 key={item}
                 style={{
@@ -361,8 +361,8 @@ export default function StaffLogin() {
               textAlign: "center",
             }}
           >
-            Access is logged. If your staff account is not provisioned, contact
-            a Lasha administrator.
+            Access is limited to provisioned staff accounts. If your staff
+            account is not provisioned, contact a Lasha administrator.
           </p>
         </section>
       </div>

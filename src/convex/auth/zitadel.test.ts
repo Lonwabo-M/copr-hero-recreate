@@ -60,6 +60,11 @@ test("staff sign-in is separate from customer/driver password sign-in", () => {
   assert.ok(authPage.includes('to="/staff-login"'), "customer auth page links to staff sign-in");
 });
 
+test("staff login does not claim MFA before the Zitadel policy is tested", () => {
+  assert.ok(!staffPage.includes("MFA"), "staff page must not advertise MFA yet");
+  assert.ok(!staffPage.includes("Passkeys"), "staff page must not advertise passkeys yet");
+});
+
 test("the role guard accepts only server-assigned staff roles", () => {
   assert.ok(!authTs.includes("params.role"), "role is never accepted from sign-in params");
   assert.ok(!authTs.includes("profile.role"), "role is never accepted from the OIDC profile");

@@ -1,10 +1,11 @@
 # Zitadel Cloud — staff identity provider (Phase 1)
 
-> Status: **provider wired; activation pending a Zitadel Web application and
-> deployment environment values.** The staff realm, Admin permission, Zitadel
-> provider and staff-only account guard are implemented. Staff can still use
-> the existing local password path until the Web application client secret is
-> configured. No secrets belong in this repository.
+> Status: **provider deployed to `incredible-warbler-335`; the Zitadel OAuth
+> callback route is live.** The staff realm, Admin permission, Zitadel provider
+> and staff-only account guard are implemented. MFA policy and end-to-end staff
+> sign-in/cutover remain pending. Staff can still use the existing local
+> password path until the Web application client secret and staff linking are
+> verified. No secrets belong in this repository.
 >
 > The Convex CLI must target the active deployment
 > (`incredible-warbler-335`), not the paused `keen-octopus-299` deployment.
@@ -144,6 +145,16 @@ Staff without an email, or with duplicate emails, are skipped and must be fixed
 in the account inventory first.
 
 ### 4. Enforce MFA and admin policy in Zitadel
+
+Before treating MFA as enforced, confirm the instance is on a fully patched
+ZITADEL release. ZITADEL published multiple Login V2 authentication-bypass
+advisories in 2026. [CVE-2026-85056 / GHSA-9993-rfwp-rhwf](https://github.com/advisories/GHSA-9993-rfwp-rhwf)
+affected **4.0.0 through 4.16.0** and was fixed in **4.16.1**, but later Login
+V2 advisories require newer 4.19.x patches. Do not treat 4.16.1 as a
+sufficient version. Check the [current technical advisory list](https://zitadel.com/docs/support/technical_advisory)
+and verify the Cloud instance is fully patched. If an upgrade is not possible,
+**Force MFA** is the documented workaround for CVE-2026-85056; it does not
+replace patching or cover later vulnerabilities.
 
 - Require MFA for every staff user.
 - Prefer passkeys/security keys; allow an authenticator app as fallback.
