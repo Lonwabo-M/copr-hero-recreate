@@ -34,26 +34,25 @@ talking to `incredible-warbler-335`.
 ## Permanent fix: a deployment-scoped key
 
 `CONVEX_DEPLOY_KEY` takes precedence over `CONVEX_DEPLOYMENT` and scopes
-**every** `convex` command in the workspace to one deployment. Once it is set
-to a key for `incredible-warbler-335`, there is no fallback to
-`keen-octopus-299`.
+**every** `convex` command in the workspace to one deployment. The key must be
+a **development deploy key created for `incredible-warbler-335`**. A key for
+`keen-octopus-299`, or the `vly-dev-service-account` key, always resolves to
+the old deployment even if `CONVEX_DEPLOYMENT` is set.
 
-The deployment already has a key stored in Freebuff as
-`CONVEX_DEPLOY_KEY_LIVE` (value starts `dev:incredible-warbler-335|…`). That
-is the right key, but **the `_LIVE` name is not read by the Convex CLI**. Keep
-the Freebuff key where it is and add an alias for the CLI:
-
-1. Open **Freebuff → Keys/API keys** for this project.
-2. Add a second variable named `CONVEX_DEPLOY_KEY` with the **same value** as
-   `CONVEX_DEPLOY_KEY_LIVE`. Do not create a new key in the Convex dashboard.
-3. Keep `CONVEX_DEPLOY_KEY_LIVE` too if Freebuff's live environment uses it.
-
-If the key is already available in the shell as `CONVEX_DEPLOY_KEY_LIVE`, the
-equivalent one-off command is:
-
-```bash
-CONVEX_DEPLOY_KEY="$CONVEX_DEPLOY_KEY_LIVE" bunx convex dev --once
-```
+1. Open the **active deployment** in the Convex dashboard (`lonwabo-matya` →
+   `cladogram` → `incredible-warbler-335`) → **Settings → Deploy keys**.
+2. Create or copy a **Development** deploy key. Its prefix must contain
+   `incredible-warbler-335`, not `keen-octopus-299` or
+   `vly-dev-service-account`.
+3. Open **Freebuff → Keys/API keys** and **replace** `CONVEX_DEPLOY_KEY` with
+   that value. If `CONVEX_DEPLOY_KEY_LIVE` is used by the live app, replace it
+   with the same active value too. Do not leave the old key in either place.
+4. **Reload or restart the project workspace.** The key is loaded when the
+   workspace starts; saving it in the Keys tab does not update the
+   already-running Convex process.
+5. Verify with `bunx convex dev --once` before trusting the target. The output
+   must name `incredible-warbler-335` and must not contain `keen-octopus-299`
+   or `freebuff:e8a7572b-81bd-4f6c-9314-69e1c9fa3473`.
 
 Do not commit the value or put it in a source file. If it is ever exposed,
 delete it in the Convex dashboard and update both variables.
