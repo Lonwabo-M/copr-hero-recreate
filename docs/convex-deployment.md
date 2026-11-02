@@ -35,13 +35,15 @@ talking to `incredible-warbler-335`.
 
 `CONVEX_DEPLOY_KEY` takes precedence over `CONVEX_DEPLOYMENT` and scopes
 **every** `convex` command in the workspace to one deployment. The key must be
-a **development deploy key created for `incredible-warbler-335`**. A key for
+a **deploy key created for `incredible-warbler-335`**. A key for
 `keen-octopus-299`, or the `vly-dev-service-account` key, always resolves to
 the old deployment even if `CONVEX_DEPLOYMENT` is set.
 
 1. Open the **active deployment** in the Convex dashboard (`lonwabo-matya` →
    `cladogram` → `incredible-warbler-335`) → **Settings → Deploy keys**.
-2. Create or copy a **Development** deploy key. Its prefix must contain
+2. Create or copy a deploy key **for that deployment**. The dashboard labels
+   this deployment **Production**, so use its production deploy key, not a key
+   for a different dev deployment. The prefix must contain
    `incredible-warbler-335`, not `keen-octopus-299` or
    `vly-dev-service-account`.
 3. Open **Freebuff → Keys/API keys** and **replace** `CONVEX_DEPLOY_KEY` with
