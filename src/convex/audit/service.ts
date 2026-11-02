@@ -104,6 +104,7 @@ export const AUDIT_ACTIONS = {
   USER_CREATED: "user.created",
   USER_UPDATED: "user.updated",
   USER_DEACTIVATED: "user.deactivated",
+  USER_REACTIVATED: "user.reactivated",
   USER_ROLE_CHANGED: "user.role_changed",
 
   // Driver actions

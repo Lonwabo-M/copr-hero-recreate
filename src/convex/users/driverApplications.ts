@@ -541,8 +541,7 @@ export const acceptDriverApplication = mutation({
 export const getDriverRoster = query({
   args: {},
   handler: async (ctx) => {
-    const userId = await getAuthUserId(ctx);
-    if (userId === null) throw new Error("Authentication required");
+    const userId = await requireAuth(ctx);
     const user = await ctx.db.get(userId);
     if (!user) throw new Error("Authentication required");
 

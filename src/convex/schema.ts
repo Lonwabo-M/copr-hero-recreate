@@ -94,6 +94,17 @@ export function effectiveRoleForUser(user: {
   return user.role ?? undefined;
 }
 
+/**
+ * Staff access can be suspended independently of the stored role. Suspension is
+ * checked at the authentication/authorization boundary, so a suspended staff
+ * member cannot keep operating through an old session.
+ */
+export function isUserSuspended(user: {
+  staffSuspendedAt?: number | null;
+} | null | undefined): boolean {
+  return user?.staffSuspendedAt != null;
+}
+
 // ─── Permissions ──────────────────────────────────────────────────────────────
 // Explicit permission strings. Use these in authorization checks.
 
@@ -130,6 +141,11 @@ export const PERMISSIONS = {
   // User permissions
   USER_VIEW: "user:view",
   USER_MANAGE: "user:manage",
+
+  // Staff provisioning. Deliberately separate from general user management:
+  // creating/offboarding internal staff is an Admin responsibility, not part
+  // of customer support or business-account administration.
+  STAFF_MANAGE: "staff:manage",
 
   // Admin Portal access. Deliberately separate from operations permissions:
   // an Operations account can dispatch without being able to open Admin.
@@ -209,6 +225,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     PERMISSIONS.SETTLEMENT_MANAGE,
     PERMISSIONS.USER_VIEW,
     PERMISSIONS.USER_MANAGE,
+    PERMISSIONS.STAFF_MANAGE,
     PERMISSIONS.BUSINESS_VIEW,
     PERMISSIONS.BUSINESS_MANAGE,
   ],
@@ -467,6 +484,11 @@ const schema = defineSchema(
       role: v.optional(schemaRoleValidator),
       phone: v.optional(v.string()),
       businessId: v.optional(v.id("businesses")),
+
+      // Staff access lifecycle. Undefined means active; a timestamp means the
+      // account was suspended by an admin. The ZITADEL identity is untouched
+      // so reactivation does not require re-provisioning the IdP user.
+      staffSuspendedAt: v.optional(v.number()),
 
       // Test-access marker: set together with the elevated role by the
       // dashboard's testing access point so the release mutation can restore

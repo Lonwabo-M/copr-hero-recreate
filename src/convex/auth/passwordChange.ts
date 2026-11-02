@@ -32,6 +32,7 @@ export type ChangePasswordResult =
       code:
         | "NOT_AUTHENTICATED"
         | "USER_NOT_FOUND"
+        | "ACCOUNT_SUSPENDED"
         | "NO_PASSWORD_ACCOUNT"
         | "INVALID_CURRENT_PASSWORD"
         | "TOO_MANY_ATTEMPTS"
@@ -57,6 +58,7 @@ export const getPasswordChangeTarget = internalQuery({
     return {
       email: user.email ?? null,
       role: (user.role as string) ?? "customer",
+      suspended: user.staffSuspendedAt !== undefined,
     };
   },
 });
@@ -81,6 +83,12 @@ export const changePassword = action({
     );
     if (!target) {
       return failure("USER_NOT_FOUND", "We couldn't find your account.");
+    }
+    if (target.suspended) {
+      return failure(
+        "ACCOUNT_SUSPENDED",
+        "This account is suspended. Contact an administrator.",
+      );
     }
     if (!target.email) {
       return failure(

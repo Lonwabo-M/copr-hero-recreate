@@ -65,6 +65,7 @@ export const getImportActorContext = internalQuery({
       role: (user.role as string) ?? ROLES.CUSTOMER,
       businessId: user.businessId ?? null,
       name: user.name ?? null,
+      suspended: user.staffSuspendedAt !== undefined,
     };
   },
 });
@@ -252,6 +253,7 @@ export const importOrdersFromCsv = action({
       { userId },
     );
     if (!actor) throw new Error("User not found");
+    if (actor.suspended) throw new Error("This account is suspended");
     if (!IMPORTABLE_ROLES.includes(actor.role)) {
       throw new Error("Access denied: operations only");
     }

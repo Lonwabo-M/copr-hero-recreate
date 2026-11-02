@@ -1,7 +1,7 @@
-import { getAuthUserId } from "@convex-dev/auth/server";
 import { query } from "../_generated/server";
 import { v } from "convex/values";
 import { effectiveRoleForUser, ROLES } from "../schema";
+import { requireAuth } from "../auth/authorization";
 
 // ─── Waybills ────────────────────────────────────────────────────────────────
 // A waybill is created automatically for every delivery, at creation time.
@@ -31,8 +31,7 @@ export function waybillNumberFor(trackingNumber: string): string {
 export const getWaybillForOps = query({
   args: { deliveryId: v.id("deliveries") },
   handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx);
-    if (userId === null) throw new Error("Authentication required");
+    const userId = await requireAuth(ctx);
 
     const user = await ctx.db.get(userId);
     if (!user) throw new Error("Authentication required");

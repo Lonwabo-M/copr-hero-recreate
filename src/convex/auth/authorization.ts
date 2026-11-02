@@ -31,6 +31,7 @@ import {
   AUTH_REALMS,
   AuthRealm,
   effectiveRoleForUser,
+  isUserSuspended,
   realmForRole,
 } from "../schema";
 
@@ -65,6 +66,15 @@ export async function requireAuth(ctx: Ctx): Promise<Id<"users">> {
   if (!userId) {
     throw new Error("Authentication required");
   }
+
+  const user = await ctx.db.get(userId);
+  if (!user) {
+    throw new Error("Authentication required");
+  }
+  if (isUserSuspended(user)) {
+    throw new Error("This account is suspended");
+  }
+
   return userId;
 }
 
@@ -84,6 +94,9 @@ export async function getCurrentAuthUser(ctx: Ctx): Promise<AuthUser | null> {
 
   // Type assertion: we know the user table has these fields
   const userDoc = user as Doc<"users">;
+  if (isUserSuspended(userDoc)) {
+    return null;
+  }
 
   const role = effectiveRoleForUser(userDoc) ?? ROLES.CUSTOMER;
   return {
