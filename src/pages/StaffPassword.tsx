@@ -186,10 +186,11 @@ export default function StaffPassword() {
             color: "var(--lasha-muted)",
           }}
         >
-          First-time admin? Sign in with the seeded staff admin account created
-          for this deployment, then add staff emails under{" "}
-          <strong>Admin → Accounts</strong>. ZITADEL only works after that
-          staff email has been provisioned.
+          First-time admin? If this deployment has a seeded staff admin, sign in
+          with it, then add staff emails under <strong>Admin → Accounts</strong>.
+          If the seeded admin is missing, use the{" "}
+          <Link to="/staff-setup">one-time first-admin setup</Link>. ZITADEL
+          only works after that staff email has been provisioned.
         </p>
 
         {nonStaffSession ? (

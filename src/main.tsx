@@ -13,6 +13,7 @@ import Landing from "./pages/Landing.tsx";
 import AuthPage from "./pages/Auth.tsx";
 import StaffLogin from "./pages/StaffLogin.tsx";
 import StaffPassword from "./pages/StaffPassword.tsx";
+import StaffSetup from "./pages/StaffSetup.tsx";
 import Dashboard from "./pages/Dashboard.tsx";
 import RequestDelivery from "./pages/RequestDelivery.tsx";
 import Checkout from "./pages/Checkout.tsx";
@@ -170,6 +171,7 @@ createRoot(document.getElementById("root")!).render(
               <Route path="/auth" element={<AuthPage />} />
               <Route path="/staff-login" element={<StaffLogin />} />
               <Route path="/staff-password" element={<StaffPassword />} />
+              <Route path="/staff-setup" element={<StaffSetup />} />
               <Route path="/book-demo" element={<BookDemo />} />
               <Route path="/post-auth" element={<PostAuthRedirect />} />
 

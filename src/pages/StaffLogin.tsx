@@ -565,7 +565,30 @@ export default function StaffLogin() {
 
           <p
             style={{
-              margin: "30px 0 0",
+              margin: "22px 0 0",
+              fontSize: 11.5,
+              lineHeight: 1.6,
+              color: "var(--lasha-muted)",
+              textAlign: "center",
+            }}
+          >
+            No administrator yet?{" "}
+            <Link
+              to="/staff-setup"
+              style={{
+                color: "var(--lasha-cyan)",
+                fontWeight: 600,
+                textDecoration: "none",
+              }}
+            >
+              Set up the first administrator
+            </Link>
+            .
+          </p>
+
+          <p
+            style={{
+              margin: "14px 0 0",
               fontSize: 11,
               lineHeight: 1.6,
               color: "var(--lasha-muted)",

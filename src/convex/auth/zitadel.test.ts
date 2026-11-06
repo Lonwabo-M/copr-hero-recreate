@@ -18,6 +18,8 @@ function read(path: string): string {
 const authTs = read("src/convex/auth.ts");
 const staffPage = read("src/pages/StaffLogin.tsx");
 const staffPasswordPage = read("src/pages/StaffPassword.tsx");
+const staffSetupPage = read("src/pages/StaffSetup.tsx");
+const setupTs = read("src/convex/admin/setup.ts");
 const mainTsx = read("src/main.tsx");
 const authPage = read("src/pages/Auth.tsx");
 
@@ -78,6 +80,31 @@ test("staff password bootstrap is separate and staff-role checked", () => {
   assert.ok(
     staffPage.includes("/staff-password?returnTo="),
     "staff login links to the bootstrap, not customer /auth",
+  );
+});
+
+test("first administrator setup is one-time and server-gated", () => {
+  assert.ok(mainTsx.includes('path="/staff-setup"'), "setup route is registered");
+  assert.ok(
+    staffSetupPage.includes("api.admin.setup.getSetupStatus") &&
+      staffSetupPage.includes("claimFirstAdmin"),
+    "setup page reads status and claims through the backend",
+  );
+  assert.ok(
+    setupTs.includes("hasActiveAdmin") &&
+      setupTs.includes("ROLES.SUPER_ADMIN") &&
+      setupTs.includes("getAuthUserId"),
+    "claim requires auth and promotes only to super admin",
+  );
+  const guard = setupTs.indexOf("if (await hasActiveAdmin(ctx))");
+  const patch = setupTs.indexOf("await ctx.db.patch(userId");
+  assert.ok(
+    guard > 0 && guard < patch,
+    "the no-admin guard runs before the promotion",
+  );
+  assert.ok(
+    staffPage.includes('to="/staff-setup"'),
+    "staff login points to first-admin setup",
   );
 });
 
