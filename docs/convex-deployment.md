@@ -6,7 +6,7 @@
 |---|---|
 | Team | `lonwabo-matya` |
 | Project | `cladogram` |
-| Deployment | `incredible-warbler-335` |
+| Deployment | `incredible-warbler-335` (Development / Cloud) |
 | Backend URL | `https://incredible-warbler-335.convex.cloud` |
 | HTTP actions URL | `https://incredible-warbler-335.convex.site` |
 
@@ -16,6 +16,10 @@ The app's browser client is fixed to this deployment in
 
 The old platform deployment, `keen-octopus-299`, is paused by a usage limit.
 It must not be used again.
+
+The project's production deployment is **`abundant-partridge-940`**. This app
+deploys to the **development** deployment `incredible-warbler-335`; it has
+never been deployed to production.
 
 ## Why the frontend URL alone was not enough
 
@@ -41,20 +45,23 @@ the old deployment even if `CONVEX_DEPLOYMENT` is set.
 
 1. Open the **active deployment** in the Convex dashboard (`lonwabo-matya` →
    `cladogram` → `incredible-warbler-335`) → **Settings → Deploy keys**.
-2. Create or copy a deploy key **for that deployment**. The dashboard labels
-   this deployment **Production**, so use its production deploy key, not a key
-   for a different dev deployment. The prefix must contain
-   `incredible-warbler-335`, not `keen-octopus-299` or
-   `vly-dev-service-account`.
-3. Open **Freebuff → Keys/API keys** and **replace** `CONVEX_DEPLOY_KEY` with
-   that value. If `CONVEX_DEPLOY_KEY_LIVE` is used by the live app, replace it
-   with the same active value too. Do not leave the old key in either place.
+2. Create or copy a **development deploy key** for that deployment. The
+   dashboard labels this deployment **Development (Cloud)**; use a key for
+   `dev/lonwabo-matya` (`incredible-warbler-335`), not a production key. The
+   key prefix must start with `dev:` and contain `incredible-warbler-335`, not
+   `keen-octopus-299` or `vly-dev-service-account`.
+3. Open **Freebuff → Keys/API keys → Development** and **replace**
+   `CONVEX_DEPLOY_KEY` with that value. Replace `CONVEX_DEPLOY_KEY_LIVE` with
+   the same value too if it is set. Do not put this key in the **Production**
+   tab; that tab configures the production deployment `abundant-partridge-940`.
 4. **Reload or restart the project workspace.** The key is loaded when the
    workspace starts; saving it in the Keys tab does not update the
    already-running Convex process.
-5. Verify with `bunx convex dev --once` before trusting the target. The output
-   must name `incredible-warbler-335` and must not contain `keen-octopus-299`
-   or `freebuff:e8a7572b-81bd-4f6c-9314-69e1c9fa3473`.
+5. Verify with `bunx convex dev --once` before trusting the target. Use
+   `convex dev`, **not** `convex deploy`: `convex deploy` targets the project's
+   production deployment. The output must name `incredible-warbler-335` and
+   must not contain `keen-octopus-299` or
+   `freebuff:e8a7572b-81bd-4f6c-9314-69e1c9fa3473`.
 
 Do not commit the value or put it in a source file. If it is ever exposed,
 delete it in the Convex dashboard and update both variables.
@@ -112,9 +119,12 @@ not by itself prove the Zitadel client ID or secret is valid. Complete a
 
 ## Do not do this
 
+- Do not run `bunx convex deploy` for this app; it targets the project's
+  production deployment `abundant-partridge-940`. Use
+  `bunx convex dev --once`.
 - Do not set `CONVEX_DEPLOYMENT` to a bare cross-team deployment name; it is
-  resolved against the old Freebuff project. Use the deployment key for a
-  separate project.
+  resolved against the old Freebuff project. Use the development deployment
+  key for the separate project.
 - Do not add `CONVEX_DEPLOY_KEY` to a committed `.env` file or to client-side
   code.
 - Do not remove the hardcoded backend in `src/lib/convex.ts` until the platform

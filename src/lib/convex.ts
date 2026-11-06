@@ -7,8 +7,10 @@ import { ConvexReactClient } from "convex/react";
  * old platform-managed deployment (keen-octopus-299), which is paused by a
  * usage limit. The backend has been migrated to the user-owned deployment
  * below (Convex dashboard → team lonwabo-matya → project cladogram →
- * deployment incredible-warbler-335), so this constant takes precedence over
- * the injected env var. To retarget the backend, change this single constant.
+ * deployment incredible-warbler-335). That is the Development (Cloud)
+ * deployment; production is abundant-partridge-940. This constant takes
+ * precedence over the injected env var. To retarget the backend, change this
+ * single constant.
  *
  * This constant controls only the browser client. `convex dev` selects its
  * target separately; without CONVEX_DEPLOY_KEY it falls back to the paused
