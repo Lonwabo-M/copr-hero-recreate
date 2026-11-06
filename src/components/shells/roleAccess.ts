@@ -2,6 +2,7 @@ import {
   PERMISSIONS,
   ROLE_PERMISSIONS,
   ROLES,
+  isStaffRole,
   type Role,
 } from "@/convex/schema";
 import { APP_AREAS, type AppArea } from "./navigation";
@@ -60,6 +61,29 @@ export function canAccessArea(role: string | undefined, area: AppArea): boolean 
     default:
       return false;
   }
+}
+
+// ─── Authentication Entry Point ──────────────────────────────────────────────
+// Staff areas must never fall through to the customer password login. An
+// unauthenticated /admin or /operations visit belongs at the ZITADEL staff
+// entry point, with the original path preserved for after authentication.
+
+export function isStaffArea(area: AppArea): boolean {
+  return area === APP_AREAS.OPERATIONS || area === APP_AREAS.ADMIN;
+}
+
+export function loginPathForArea(area: AppArea): "/auth" | "/staff-login" {
+  return isStaffArea(area) ? "/staff-login" : "/auth";
+}
+
+// A customer or driver session that reaches a staff area should be offered the
+// staff login, not silently sent back to its own dashboard. Staff roles that
+// merely lack access to this particular staff area keep their normal home.
+export function shouldSwitchToStaffLogin(
+  role: string | undefined,
+  area: AppArea,
+): boolean {
+  return isStaffArea(area) && !isStaffRole(role as Role | undefined);
 }
 
 // ─── Post-Auth Home Route ────────────────────────────────────────────────────

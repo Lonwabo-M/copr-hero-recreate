@@ -3,7 +3,12 @@ import { Navigate, useLocation } from "react-router";
 import { useAuth } from "@/hooks/use-auth";
 import { RequireAuth } from "@/components/RequireAuth";
 import { APP_AREAS, type AppArea } from "./navigation";
-import { canAccessArea, homeRouteForRole } from "./roleAccess";
+import {
+  canAccessArea,
+  homeRouteForRole,
+  loginPathForArea,
+  shouldSwitchToStaffLogin,
+} from "./roleAccess";
 
 // ─── RoleGate ────────────────────────────────────────────────────────────────
 // Authentication + role-aware area guard. This is a UX boundary only: Convex
@@ -21,7 +26,7 @@ interface RoleGateProps {
 
 export function RoleGate({ area, children }: RoleGateProps) {
   return (
-    <RequireAuth>
+    <RequireAuth loginPath={loginPathForArea(area)}>
       <AreaGuard area={area}>{children}</AreaGuard>
     </RequireAuth>
   );
@@ -42,6 +47,14 @@ function AreaGuard({ area, children }: RoleGateProps) {
 
   if (!canAccessArea(role, area)) {
     const returnTo = `${location.pathname}${location.search}`;
+    if (shouldSwitchToStaffLogin(role, area)) {
+      return (
+        <Navigate
+          to={`/staff-login?reason=wrong-session&returnTo=${encodeURIComponent(returnTo)}`}
+          replace
+        />
+      );
+    }
     return (
       <Navigate
         to={homeRouteForRole(role)}

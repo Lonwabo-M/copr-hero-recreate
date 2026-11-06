@@ -65,6 +65,12 @@ export default function AuthPage({ redirectAfterAuth = "/post-auth" }: AuthProps
   // Preserve the exact deep-link the user was trying to reach (set by
   // RequireAuth/RoleGate as ?returnTo=...).
   const returnTo = searchParams.get("returnTo");
+  const staffLoginHref =
+    returnTo?.startsWith("/") &&
+    !returnTo.startsWith("//") &&
+    returnTo !== "/post-auth"
+      ? `/staff-login?returnTo=${encodeURIComponent(returnTo)}`
+      : "/staff-login";
   const initialMode = searchParams.get("mode") === "signup" ? "signup" : "login";
 
   const [mode, setMode] = useState<Mode>(initialMode);
@@ -490,7 +496,7 @@ export default function AuthPage({ redirectAfterAuth = "/post-auth" }: AuthProps
         >
           Lasha staff?{" "}
           <Link
-            to="/staff-login"
+            to={staffLoginHref}
             style={{ color: "var(--lasha-cyan)", fontWeight: 600, textDecoration: "none" }}
           >
             Sign in with ZITADEL

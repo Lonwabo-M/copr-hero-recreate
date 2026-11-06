@@ -3,7 +3,14 @@ import { Loader2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { Navigate, useLocation } from "react-router";
 
-export function RequireAuth({ children }: { children: ReactNode }) {
+export function RequireAuth({
+  children,
+  loginPath = "/auth",
+}: {
+  children: ReactNode;
+  /** Sign-in entry point for this route. Staff areas use /staff-login. */
+  loginPath?: "/auth" | "/staff-login";
+}) {
   const { isLoading, isAuthenticated } = useAuth();
   const location = useLocation();
 
@@ -19,7 +26,7 @@ export function RequireAuth({ children }: { children: ReactNode }) {
     const returnTo = `${location.pathname}${location.search}`;
     return (
       <Navigate
-        to={`/auth?returnTo=${encodeURIComponent(returnTo)}`}
+        to={`${loginPath}?returnTo=${encodeURIComponent(returnTo)}`}
         replace
       />
     );

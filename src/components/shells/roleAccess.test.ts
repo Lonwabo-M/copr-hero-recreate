@@ -18,6 +18,8 @@ import {
   canAccessArea,
   hasAdminAccess,
   homeRouteForRole,
+  loginPathForArea,
+  shouldSwitchToStaffLogin,
 } from "./roleAccess";
 
 let passed = 0;
@@ -75,6 +77,32 @@ assert("admin area DENIED to operations", !canAccessArea(ROLES.OPERATIONS, APP_A
 assert("admin area DENIED to fleet_manager", !canAccessArea(ROLES.FLEET_MANAGER, APP_AREAS.ADMIN));
 assert("admin area DENIED to driver", !canAccessArea(ROLES.DRIVER, APP_AREAS.ADMIN));
 assert("admin area DENIED to customer", !canAccessArea(ROLES.CUSTOMER, APP_AREAS.ADMIN));
+
+// ─── 3b. Sign-in entry point ─────────────────────────────────────────────────
+assert("customer login = /auth", loginPathForArea(APP_AREAS.CUSTOMER) === "/auth");
+assert("driver login = /auth", loginPathForArea(APP_AREAS.DRIVER) === "/auth");
+assert("operations login = /staff-login", loginPathForArea(APP_AREAS.OPERATIONS) === "/staff-login");
+assert("admin login = /staff-login", loginPathForArea(APP_AREAS.ADMIN) === "/staff-login");
+assert(
+  "customer in admin is offered staff login",
+  shouldSwitchToStaffLogin(ROLES.CUSTOMER, APP_AREAS.ADMIN),
+);
+assert(
+  "driver in admin is offered staff login",
+  shouldSwitchToStaffLogin(ROLES.DRIVER, APP_AREAS.ADMIN),
+);
+assert(
+  "roleless session in admin is offered staff login",
+  shouldSwitchToStaffLogin(undefined, APP_AREAS.ADMIN),
+);
+assert(
+  "operations in admin keeps its staff home",
+  !shouldSwitchToStaffLogin(ROLES.OPERATIONS, APP_AREAS.ADMIN),
+);
+assert(
+  "customer in customer area does not switch to staff login",
+  !shouldSwitchToStaffLogin(ROLES.CUSTOMER, APP_AREAS.CUSTOMER),
+);
 
 // ─── 4. Home routes ──────────────────────────────────────────────────────────
 assert("customer home = /dashboard", homeRouteForRole(ROLES.CUSTOMER) === "/dashboard");

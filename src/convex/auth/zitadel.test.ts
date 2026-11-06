@@ -60,7 +60,14 @@ test("staff sign-in is separate from customer/driver password sign-in", () => {
   assert.ok(staffPage.includes('signIn("zitadel"'), "staff page starts the Zitadel flow");
   assert.ok(!staffPage.includes('signIn("password"'), "staff page does not expose password sign-in");
   assert.ok(mainTsx.includes('path="/staff-login"'), "staff route is registered");
-  assert.ok(authPage.includes('to="/staff-login"'), "customer auth page links to staff sign-in");
+  assert.ok(authPage.includes("to={staffLoginHref}"), "customer auth page links to staff sign-in");
+  assert.ok(authPage.includes("staffLoginHref"), "customer auth staff link preserves the return path");
+});
+
+test("staff login does not bounce a customer session into the customer app", () => {
+  assert.ok(staffPage.includes("isStaffRole(role)"), "existing sessions are role-checked");
+  assert.ok(staffPage.includes("nonStaffSession"), "non-staff sessions get a switch notice");
+  assert.ok(!staffPage.includes("useAuthToken"), "redirect is not based on token presence alone");
 });
 
 test("staff login does not claim MFA before the Zitadel policy is tested", () => {

@@ -238,7 +238,7 @@ test("customer sign-in cannot land a staff account in Operations", () => {
     "staff sessions are stopped at the staff-login notice",
   );
   assert.ok(
-    staffPage.includes("customerLoginStaffSession") &&
+    staffPage.includes("legacyStaffPasswordSession") &&
       staffPage.includes("Continue to the staff portal with the legacy session"),
     "the notice keeps the legacy fallback explicit",
   );
@@ -389,7 +389,20 @@ test("no fake guest auth path exists — entering the portal requires a session"
     "utf8"
   );
   assert.ok(requireAuthSource.includes("!isAuthenticated"));
-  assert.ok(requireAuthSource.includes("/auth?returnTo="));
+  assert.ok(requireAuthSource.includes('loginPath = "/auth"'));
+  assert.ok(requireAuthSource.includes("?returnTo="));
+  const roleGateSource = readFileSync(
+    new URL("../../components/shells/RoleGate.tsx", import.meta.url),
+    "utf8"
+  );
+  assert.ok(
+    roleGateSource.includes("loginPathForArea(area)"),
+    "staff areas use the staff sign-in entry point"
+  );
+  assert.ok(
+    roleGateSource.includes("shouldSwitchToStaffLogin(role, area)"),
+    "customer sessions on staff routes are offered staff sign-in"
+  );
 });
 
 // ─── Report ──────────────────────────────────────────────────────────────────

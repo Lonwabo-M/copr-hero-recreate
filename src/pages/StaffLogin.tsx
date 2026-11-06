@@ -1,7 +1,10 @@
-import { useAuthActions, useAuthToken } from "@convex-dev/auth/react";
+import { useAuthActions } from "@convex-dev/auth/react";
 import { useState } from "react";
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router";
 import { ArrowLeft, ArrowRight, Loader2, ShieldCheck } from "lucide-react";
+import { useAuth } from "@/hooks/use-auth";
+import { homeRouteForRole } from "@/components/shells/roleAccess";
+import { isStaffRole, type Role } from "@/convex/schema";
 
 // ─── Staff sign-in (ZITADEL) ──────────────────────────────────────────────────
 // Separate entry point for internal Lasha staff. Customer and driver sign-in
@@ -12,9 +15,28 @@ import { ArrowLeft, ArrowRight, Loader2, ShieldCheck } from "lucide-react";
 // calls the server-side staff guard in src/convex/auth.ts. A role can never be
 // selected here.
 
+function StaffLoginLoading() {
+  return (
+    <main
+      style={{
+        minHeight: "100vh",
+        display: "grid",
+        placeItems: "center",
+        backgroundColor: "var(--lasha-navy)",
+      }}
+    >
+      <Loader2
+        size={24}
+        className="animate-spin"
+        style={{ color: "var(--lasha-cyan-light)" }}
+      />
+    </main>
+  );
+}
+
 export default function StaffLogin() {
   const { signIn, signOut } = useAuthActions();
-  const token = useAuthToken();
+  const { isLoading, isAuthenticated, user } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [loading, setLoading] = useState(false);
@@ -25,19 +47,31 @@ export default function StaffLogin() {
       : "",
   );
   const reason = searchParams.get("reason");
-  const customerLoginStaffSession =
-    token !== null && reason === "staff-account";
+  const role = user?.role as Role | undefined;
+  const staffSession = isAuthenticated && isStaffRole(role);
+  const legacyStaffPasswordSession =
+    staffSession && reason === "staff-account";
+  const nonStaffSession = isAuthenticated && !staffSession;
+  const showSessionNotice = legacyStaffPasswordSession || nonStaffSession;
 
   const requested = searchParams.get("returnTo");
   const returnTo =
     requested?.startsWith("/") && requested !== "/staff-login"
       ? requested
       : "/post-auth";
+  const staffLoginHref = `/staff-login?returnTo=${encodeURIComponent(returnTo)}`;
 
-  // Convex Auth processes the OAuth code in the URL before this component's
-  // auth state settles. Once the staff session exists, continue to the same
-  // role-aware destination used by password sign-in.
-  if (token !== null && !customerLoginStaffSession) {
+  // Wait for both the session and its user document before deciding which
+  // entry point this is. Redirecting on the raw token alone sent an existing
+  // customer session back to /admin/accounts, where the role guard bounced it
+  // to the customer dashboard.
+  if (isLoading) {
+    return <StaffLoginLoading />;
+  }
+
+  // A verified staff session continues to the requested workspace. The legacy
+  // staff password session is deliberately stopped at the notice below.
+  if (staffSession && !legacyStaffPasswordSession) {
     return <Navigate to={returnTo} replace />;
   }
 
@@ -47,7 +81,7 @@ export default function StaffLogin() {
       await signOut();
     } finally {
       // The auth client clears local tokens even if the server call fails.
-      navigate("/staff-login", { replace: true });
+      navigate(staffLoginHref, { replace: true });
     }
   };
 
@@ -71,7 +105,7 @@ export default function StaffLogin() {
     }
   };
 
-  if (customerLoginStaffSession) {
+  if (showSessionNotice) {
     return (
       <main
         style={{
@@ -116,7 +150,9 @@ export default function StaffLogin() {
               color: "var(--lasha-cyan)",
             }}
           >
-            Staff account detected
+            {legacyStaffPasswordSession
+              ? "Staff account detected"
+              : "Wrong account type"}
           </p>
           <h1
             style={{
@@ -127,7 +163,9 @@ export default function StaffLogin() {
               color: "var(--lasha-navy)",
             }}
           >
-            Use the staff portal
+            {legacyStaffPasswordSession
+              ? "Use the staff portal"
+              : "Sign in with a staff account"}
           </h1>
           <p
             style={{
@@ -137,8 +175,9 @@ export default function StaffLogin() {
               color: "var(--lasha-muted)",
             }}
           >
-            You signed in through the customer login. Staff accounts must use
-            ZITADEL. This is a legacy staff password session.
+            {legacyStaffPasswordSession
+              ? "You signed in through the customer login. Staff accounts must use ZITADEL. This is a legacy staff password session."
+              : "You are signed in as a customer or driver. Customer and driver accounts cannot open staff pages. Sign out and continue with ZITADEL."}
           </p>
           <button
             type="button"
@@ -161,7 +200,11 @@ export default function StaffLogin() {
             {signingOut ? "Signing out…" : "Sign out and use ZITADEL"}
           </button>
           <Link
-            to="/post-auth"
+            to={
+              legacyStaffPasswordSession
+                ? "/post-auth"
+                : homeRouteForRole(role)
+            }
             style={{
               display: "block",
               marginTop: 18,
@@ -172,7 +215,9 @@ export default function StaffLogin() {
               textDecoration: "none",
             }}
           >
-            Continue to the staff portal with the legacy session
+            {legacyStaffPasswordSession
+              ? "Continue to the staff portal with the legacy session"
+              : "Go to my dashboard"}
           </Link>
           <p
             style={{
@@ -183,8 +228,9 @@ export default function StaffLogin() {
               textAlign: "center",
             }}
           >
-            The legacy option is temporary; use ZITADEL once staff SSO is
-            configured.
+            {legacyStaffPasswordSession
+              ? "The legacy option is temporary; use ZITADEL once staff SSO is configured."
+              : "Staff access is assigned server-side; signing in here does not grant a role."}
           </p>
         </section>
       </main>

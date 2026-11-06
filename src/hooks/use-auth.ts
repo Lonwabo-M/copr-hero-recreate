@@ -23,8 +23,9 @@ export function useAuth() {
   return {
     isLoading,
     // A suspended staff member has a valid session but no application access.
-    // Treating them as signed out makes RequireAuth send them back to /auth;
-    // the Convex authorization boundary independently rejects every call.
+    // Treating them as signed out makes RequireAuth send them to the
+    // appropriate sign-in page; the Convex authorization boundary
+    // independently rejects every call.
     isAuthenticated: isAuthenticated && !suspended,
     user,
     signIn,
