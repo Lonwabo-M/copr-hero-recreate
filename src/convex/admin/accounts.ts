@@ -11,6 +11,9 @@
 // ZITADEL remains the identity provider. Creating a staff record here does NOT
 // create a ZITADEL user; the account stays in "Awaiting ZITADEL" until an
 // identity with the same verified email signs in and links.
+//
+// Deployment: these lifecycle mutations target the Development deployment
+// (incredible-warbler-335), not the separate production deployment.
 
 import { mutation, query, type MutationCtx, type QueryCtx } from "../_generated/server";
 import { v } from "convex/values";
