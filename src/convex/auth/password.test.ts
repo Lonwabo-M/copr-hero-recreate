@@ -234,13 +234,22 @@ test("customer sign-in cannot land a staff account in Operations", () => {
   const staffHome = postAuth.indexOf("navigate(homeRouteForRole(role)");
   assert.ok(guard > 0 && guard < staffHome, "staff guard runs before staff-home routing");
   assert.ok(
-    postAuth.includes('navigate("/staff-login?reason=staff-account"'),
-    "staff sessions are stopped at the staff-login notice",
+    postAuth.includes("/staff-login?reason=staff-account&returnTo="),
+    "staff sessions are stopped at the staff-login notice with the requested path",
   );
   assert.ok(
     staffPage.includes("legacyStaffPasswordSession") &&
       staffPage.includes("Continue to the staff portal with the legacy session"),
     "the notice keeps the legacy fallback explicit",
+  );
+  assert.ok(
+    staffPage.includes("auth=zitadel") &&
+      staffPage.includes("ZITADEL sign-in returned without a staff session"),
+    "a failed ZITADEL callback is surfaced instead of looping silently",
+  );
+  assert.ok(
+    staffPage.includes("Use the legacy password sign-in"),
+    "staff password bootstrap remains available",
   );
   assert.ok(
     !authPage.includes("navigate(returnTo ?? redirectAfterAuth"),

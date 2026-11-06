@@ -57,10 +57,17 @@ const zitadel = Zitadel({
   allowDangerousEmailAccountLinking: false,
   profile(profile) {
     if (!profile.sub) throw new Error("ZITADEL profile is missing sub");
+    // Convex Auth links by exact email index. Staff records are stored
+    // normalized, so normalize the verified ZITADEL claim too; otherwise a
+    // casing/whitespace difference produces a silent "no staff account" loop.
+    const email =
+      typeof profile.email === "string"
+        ? profile.email.trim().toLowerCase()
+        : profile.email;
     return {
       id: profile.sub,
-      name: profile.name ?? profile.preferred_username ?? profile.email,
-      email: profile.email,
+      name: profile.name ?? profile.preferred_username ?? email,
+      email,
       image: profile.picture,
       // This is what lets the default Convex Auth linking path find an
       // existing staff record. The after-create guard below still rejects the

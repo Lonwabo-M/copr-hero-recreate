@@ -41,12 +41,15 @@ export default function StaffLogin() {
   const [searchParams] = useSearchParams();
   const [loading, setLoading] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
-  const [error, setError] = useState(
-    searchParams.get("reason") === "staff-account"
-      ? "Staff accounts cannot use the customer sign-in. Continue with ZITADEL below."
-      : "",
-  );
   const reason = searchParams.get("reason");
+  const oauthReturned = searchParams.get("auth") === "zitadel";
+  const [error, setError] = useState(
+    reason === "staff-account"
+      ? "Staff accounts cannot use the customer sign-in. Continue with ZITADEL below."
+      : oauthReturned
+        ? "ZITADEL sign-in returned without a staff session. The ZITADEL email may not be linked to a provisioned staff account, may not be prepared for SSO, or the deployment's ZITADEL client secret may be invalid. Check the Convex logs, or use the staff password fallback below."
+        : "",
+  );
   const role = user?.role as Role | undefined;
   const staffSession = isAuthenticated && isStaffRole(role);
   const legacyStaffPasswordSession =
@@ -91,7 +94,7 @@ export default function StaffLogin() {
     try {
       // Return to this page first so an OAuth failure does not strand staff on
       // the customer login screen; the provider redirect then goes to returnTo.
-      const staffReturn = `/staff-login?returnTo=${encodeURIComponent(returnTo)}`;
+      const staffReturn = `/staff-login?returnTo=${encodeURIComponent(returnTo)}&auth=zitadel`;
       await signIn("zitadel", { redirectTo: staffReturn });
       // Successful OAuth starts a full-page redirect. Keep the loading state
       // active until the browser leaves this page.
@@ -202,7 +205,7 @@ export default function StaffLogin() {
           <Link
             to={
               legacyStaffPasswordSession
-                ? "/post-auth"
+                ? returnTo
                 : homeRouteForRole(role)
             }
             style={{
@@ -536,6 +539,29 @@ export default function StaffLogin() {
           >
             Customer or driver? Sign in here
           </Link>
+
+          <p
+            style={{
+              margin: "14px 0 0",
+              textAlign: "center",
+              fontSize: 11.5,
+              lineHeight: 1.6,
+              color: "var(--lasha-muted)",
+            }}
+          >
+            Existing staff password?{" "}
+            <Link
+              to={`/auth?returnTo=${encodeURIComponent(returnTo)}`}
+              style={{
+                color: "var(--lasha-cyan)",
+                fontWeight: 600,
+                textDecoration: "none",
+              }}
+            >
+              Use the legacy password sign-in
+            </Link>
+            .
+          </p>
 
           <p
             style={{

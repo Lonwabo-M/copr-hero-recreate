@@ -64,6 +64,13 @@ test("staff sign-in is separate from customer/driver password sign-in", () => {
   assert.ok(authPage.includes("staffLoginHref"), "customer auth staff link preserves the return path");
 });
 
+test("Zitadel email is normalized before account linking", () => {
+  assert.ok(
+    authTs.includes("profile.email.trim().toLowerCase()"),
+    "verified Zitadel email is normalized to the staff-record format",
+  );
+});
+
 test("staff login does not bounce a customer session into the customer app", () => {
   assert.ok(staffPage.includes("isStaffRole(role)"), "existing sessions are role-checked");
   assert.ok(staffPage.includes("nonStaffSession"), "non-staff sessions get a switch notice");

@@ -85,7 +85,10 @@ function AuthenticatedDestination({
     if (startedFromCustomerAuth && isStaffRole(role as Role | undefined)) {
       if (staffRedirectStarted.current) return;
       staffRedirectStarted.current = true;
-      navigate("/staff-login?reason=staff-account", { replace: true });
+      navigate(
+        `/staff-login?reason=staff-account&returnTo=${encodeURIComponent(returnTo ?? "/post-auth")}`,
+        { replace: true },
+      );
       return;
     }
 
