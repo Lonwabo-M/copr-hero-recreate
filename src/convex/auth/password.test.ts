@@ -248,7 +248,7 @@ test("customer sign-in cannot land a staff account in Operations", () => {
     "a failed ZITADEL callback is surfaced instead of looping silently",
   );
   assert.ok(
-    staffPage.includes("Use the legacy password sign-in"),
+    staffPage.includes("Use the staff password bootstrap"),
     "staff password bootstrap remains available",
   );
   assert.ok(

@@ -17,6 +17,7 @@ function read(path: string): string {
 
 const authTs = read("src/convex/auth.ts");
 const staffPage = read("src/pages/StaffLogin.tsx");
+const staffPasswordPage = read("src/pages/StaffPassword.tsx");
 const mainTsx = read("src/main.tsx");
 const authPage = read("src/pages/Auth.tsx");
 
@@ -62,6 +63,22 @@ test("staff sign-in is separate from customer/driver password sign-in", () => {
   assert.ok(mainTsx.includes('path="/staff-login"'), "staff route is registered");
   assert.ok(authPage.includes("to={staffLoginHref}"), "customer auth page links to staff sign-in");
   assert.ok(authPage.includes("staffLoginHref"), "customer auth staff link preserves the return path");
+});
+
+test("staff password bootstrap is separate and staff-role checked", () => {
+  assert.ok(
+    staffPasswordPage.includes('signIn("password"'),
+    "bootstrap page uses the password provider",
+  );
+  assert.ok(
+    staffPasswordPage.includes("isStaffRole(role)"),
+    "bootstrap page rejects customer and driver sessions",
+  );
+  assert.ok(mainTsx.includes('path="/staff-password"'), "bootstrap route is registered");
+  assert.ok(
+    staffPage.includes("/staff-password?returnTo="),
+    "staff login links to the bootstrap, not customer /auth",
+  );
 });
 
 test("Zitadel email is normalized before account linking", () => {

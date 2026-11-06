@@ -62,7 +62,7 @@ export default function StaffLogin() {
     requested?.startsWith("/") && requested !== "/staff-login"
       ? requested
       : "/post-auth";
-  const staffLoginHref = `/staff-login?returnTo=${encodeURIComponent(returnTo)}`;
+  const staffPasswordHref = `/staff-password?returnTo=${encodeURIComponent(returnTo)}`;
 
   // Wait for both the session and its user document before deciding which
   // entry point this is. Redirecting on the raw token alone sent an existing
@@ -84,7 +84,7 @@ export default function StaffLogin() {
       await signOut();
     } finally {
       // The auth client clears local tokens even if the server call fails.
-      navigate(staffLoginHref, { replace: true });
+      navigate(staffPasswordHref, { replace: true });
     }
   };
 
@@ -179,8 +179,8 @@ export default function StaffLogin() {
             }}
           >
             {legacyStaffPasswordSession
-              ? "You signed in through the customer login. Staff accounts must use ZITADEL. This is a legacy staff password session."
-              : "You are signed in as a customer or driver. Customer and driver accounts cannot open staff pages. Sign out and continue with ZITADEL."}
+              ? "You signed in through the customer login. Staff accounts must use the staff password bootstrap or ZITADEL. This is a legacy staff password session."
+              : "You are signed in as a customer or driver. Customer and driver accounts cannot open staff pages. Sign out and use a staff password or ZITADEL."}
           </p>
           <button
             type="button"
@@ -200,7 +200,7 @@ export default function StaffLogin() {
               cursor: signingOut ? "wait" : "pointer",
             }}
           >
-            {signingOut ? "Signing out…" : "Sign out and use ZITADEL"}
+            {signingOut ? "Signing out…" : "Sign out and use a staff account"}
           </button>
           <Link
             to={
@@ -551,14 +551,14 @@ export default function StaffLogin() {
           >
             Existing staff password?{" "}
             <Link
-              to={`/auth?returnTo=${encodeURIComponent(returnTo)}`}
+              to={staffPasswordHref}
               style={{
                 color: "var(--lasha-cyan)",
                 fontWeight: 600,
                 textDecoration: "none",
               }}
             >
-              Use the legacy password sign-in
+              Use the staff password bootstrap
             </Link>
             .
           </p>
