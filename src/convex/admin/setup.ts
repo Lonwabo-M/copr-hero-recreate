@@ -113,3 +113,4 @@ export const claimFirstAdmin = mutation({
     return { userId, role: ROLES.SUPER_ADMIN };
   },
 });
+
