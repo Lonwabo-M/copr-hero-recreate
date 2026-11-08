@@ -1,5 +1,6 @@
 import {
   LayoutDashboard,
+  House,
   History,
   Package,
   BookUser,
@@ -37,6 +38,7 @@ interface SidebarProps {
 const ICONS: Record<string, LucideIcon> = {
   "Activity Center": LayoutDashboard,
   Dashboard: LayoutDashboard,
+  Home: House,
   "Past Deliveries": History,
   "Request Delivery": Package,
   "Track Delivery": MapPin,

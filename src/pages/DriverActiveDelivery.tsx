@@ -20,8 +20,8 @@
  * - Navigation links open Google Maps directions for pickup/dropoff.
  */
 
-import { useState, useEffect, useMemo, useCallback } from "react";
-import { useQuery, useMutation, useAction } from "convex/react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import DriverShell from "@/components/shells/DriverShell";
 import {
@@ -30,7 +30,6 @@ import {
   MapPin,
   Navigation,
   Clock,
-  Weight,
   Box,
   CheckCircle2,
   Circle,
@@ -43,6 +42,7 @@ import {
   PenLine,
   Upload,
   Check,
+  Phone,
 } from "lucide-react";
 import {
   DELIVERY_STATUS,
@@ -129,6 +129,19 @@ const STATUS_COPY: Partial<Record<Status, string>> = {
   [DELIVERY_STATUS.AT_DROPOFF]: "You're at the dropoff. Complete the delivery once handed over.",
 };
 
+const FAILURE_REASONS = [
+  { value: "recipient_unavailable", label: "Recipient not available" },
+  { value: "incorrect_address", label: "Address is incorrect" },
+  { value: "refused_delivery", label: "Recipient refused the delivery" },
+  { value: "damaged_goods", label: "Goods damaged" },
+  { value: "missing_goods", label: "Goods missing" },
+  { value: "vehicle_problem", label: "Vehicle problem" },
+  { value: "safety_issue", label: "Safety issue" },
+  { value: "other", label: "Other" },
+] as const;
+
+type FailureReason = (typeof FAILURE_REASONS)[number]["value"];
+
 export default function DriverActiveDelivery() {
   const [error, setError] = useState<string | null>(null);
   const [actionPending, setActionPending] = useState<string | null>(null);
@@ -158,7 +171,8 @@ export default function DriverActiveDelivery() {
   // POD mutations (existing POD backend)
   const createPOD = useMutation(api.pod.service.createPOD);
   const addPODEvidence = useMutation(api.pod.service.addPODEvidence);
-  const generateUploadUrl = useAction(api.pod.service.generateUploadUrl);
+  const generateUploadUrl = useMutation(api.pod.service.generateUploadUrl);
+  const recordFailedDelivery = useMutation(api.pod.service.recordFailedDelivery);
 
   const mutations: Record<string, (args: { deliveryId: any }) => Promise<unknown>> = useMemo(
     () => ({
@@ -183,6 +197,15 @@ export default function DriverActiveDelivery() {
 
   const delivery = active?.delivery ?? null;
   const status = (delivery?.status ?? null) as Status | null;
+
+  // Failed delivery flow. Without this the driver is stuck at AT_DROPOFF when
+  // the recipient refuses the parcel or is unavailable: completeDelivery requires
+  // a successful POD, and the UI previously offered no failure path at all.
+  const [showFailureForm, setShowFailureForm] = useState(false);
+  const [failureReason, setFailureReason] = useState<FailureReason>("recipient_unavailable");
+  const [failureNotes, setFailureNotes] = useState("");
+  const [failurePending, setFailurePending] = useState(false);
+  const [failureSuccess, setFailureSuccess] = useState(false);
 
   // ─── Offline resilience state ───────────────────────────────────────────
   // Delivery state transitions, offer accept/reject and POD submission are
@@ -278,6 +301,33 @@ export default function DriverActiveDelivery() {
     }
   }, [deliveryId, rejectAssignment, isOnline]);
 
+  const handleFailureSubmit = useCallback(async () => {
+    if (!deliveryId) return;
+    setError(null);
+    if (!isOnline) {
+      setError(
+        "You're offline. Recording a failed delivery needs a connection — your location is still being saved and will sync automatically."
+      );
+      return;
+    }
+    setFailurePending(true);
+    try {
+      await recordFailedDelivery({
+        deliveryId,
+        failureReason,
+        failureNotes: failureNotes.trim() || undefined,
+      });
+      setShowFailureForm(false);
+      setFailureNotes("");
+      setFailureSuccess(true);
+      setTimeout(() => setFailureSuccess(false), 6000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to record the delivery failure");
+    } finally {
+      setFailurePending(false);
+    }
+  }, [deliveryId, failureReason, failureNotes, recordFailedDelivery, isOnline]);
+
   // ─── POD submission ────────────────────────────────────────────────────
   // Flow (all server-validated, existing POD backend):
   //   1. generateUploadUrl → Convex File Storage upload URL
@@ -289,13 +339,19 @@ export default function DriverActiveDelivery() {
   const [podRecipient, setPodRecipient] = useState("");
   const [podNotes, setPodNotes] = useState("");
   const [podFiles, setPodFiles] = useState<File[]>([]);
+  // Uploaded storage IDs + attachment progress survive a retry so a failure
+  // halfway through evidence attachment does not re-upload and duplicate files.
+  const podUploadsRef = useRef<
+    { file: File; storageId: string; name: string; size: number; mime: string; attached: boolean }[]
+  >([]);
   const [podPhase, setPodPhase] = useState<
     null | "uploading" | "creating" | "evidence" | "completing"
   >(null);
   const [podSuccess, setPodSuccess] = useState(false);
   const podBusy = podPhase !== null;
 
-  const showPODForm = status === DELIVERY_STATUS.AT_DROPOFF && !podSuccess;
+  const showPODForm =
+    status === DELIVERY_STATUS.AT_DROPOFF && !podSuccess && !showFailureForm;
 
   const handleFileSelect = (files: FileList | null) => {
     if (!files) return;
@@ -316,6 +372,9 @@ export default function DriverActiveDelivery() {
     }
     if (valid.length > 0) {
       setError(null);
+      // The picker changes the file set, so any uploads from a previous
+      // incomplete attempt no longer line up with it.
+      podUploadsRef.current = [];
       setPodFiles((prev) => [...prev, ...valid].slice(0, 5));
     }
   };
@@ -340,9 +399,14 @@ export default function DriverActiveDelivery() {
     }
 
     try {
-      // 1–2. Upload each file to Convex File Storage
-      const uploadedIds: string[] = [];
-      if (podFiles.length > 0) {
+      // 1–2. Upload each file to Convex File Storage. If this is a retry after
+      // a partial failure, reuse the storage IDs already obtained instead of
+      // uploading the same evidence again.
+      const filesUnchanged =
+        podUploadsRef.current.length === podFiles.length &&
+        podFiles.every((file, i) => podUploadsRef.current[i]?.file === file);
+      if (!filesUnchanged) {
+        podUploadsRef.current = [];
         setPodPhase("uploading");
         for (const file of podFiles) {
           const uploadUrl = await generateUploadUrl();
@@ -355,7 +419,14 @@ export default function DriverActiveDelivery() {
             throw new Error(`Upload failed for ${file.name}`);
           }
           const { storageId } = (await result.json()) as { storageId: string };
-          uploadedIds.push(JSON.stringify({ storageId, name: file.name, size: file.size, mime: file.type }));
+          podUploadsRef.current.push({
+            file,
+            storageId,
+            name: file.name,
+            size: file.size,
+            mime: file.type,
+            attached: false,
+          });
         }
       }
 
@@ -368,11 +439,12 @@ export default function DriverActiveDelivery() {
         deliveryNotes: podNotes.trim() || undefined,
       });
 
-      // 4. Attach evidence (server re-validates size/MIME)
-      if (uploadedIds.length > 0) {
+      // 4. Attach evidence (server re-validates size/MIME and treats an
+      // already-attached storage ID as idempotent).
+      if (podUploadsRef.current.length > 0) {
         setPodPhase("evidence");
-        for (const raw of uploadedIds) {
-          const meta = JSON.parse(raw) as { storageId: string; name: string; size: number; mime: string };
+        for (const meta of podUploadsRef.current) {
+          if (meta.attached) continue;
           await addPODEvidence({
             podId,
             fileId: meta.storageId,
@@ -381,6 +453,7 @@ export default function DriverActiveDelivery() {
             fileSize: meta.size,
             mimeType: meta.mime,
           });
+          meta.attached = true;
         }
       }
 
@@ -388,6 +461,7 @@ export default function DriverActiveDelivery() {
       setPodPhase("completing");
       await completeDelivery({ deliveryId });
 
+      podUploadsRef.current = [];
       setPodSuccess(true);
       setPodFiles([]);
       setPodRecipient("");
@@ -433,6 +507,21 @@ export default function DriverActiveDelivery() {
       ? `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`
       : null;
 
+  const formatAddress = (
+    address: { street: string; city: string; state?: string | null; zip?: string } | null,
+    lat?: number,
+    lng?: number,
+  ) => {
+    if (address) {
+      return [address.street, address.city, address.state, address.zip]
+        .filter(Boolean)
+        .join(", ");
+    }
+    return lat !== undefined && lng !== undefined
+      ? `${lat.toFixed(5)}, ${lng.toFixed(5)}`
+      : "Address unavailable";
+  };
+
   const currentStepIndex = status ? PROGRESS_STEPS.findIndex((s) => s.status === status) : -1;
 
   // ─── Render ────────────────────────────────────────────────────────────────
@@ -462,8 +551,28 @@ export default function DriverActiveDelivery() {
                   Only drivers can view the active delivery workflow.
                 </div>
               </div>
-            ) : /* Empty state */
-            !delivery ? (
+            ) : /* Empty state — after POD completion the active query goes
+                   null immediately, so keep the confirmation visible for a
+                   moment instead of replacing it with "No active delivery". */
+            !delivery ? failureSuccess ? (
+              <div className="driver-panel" style={{ borderColor: "rgba(220, 38, 38, 0.35)" }}>
+                <AlertTriangle size={26} style={{ color: "#b91c1c", margin: "0 auto" }} />
+                <div className="driver-panel-title">Delivery recorded as failed</div>
+                <div className="driver-panel-desc">
+                  Operations have been notified and will follow up. You can return
+                  to the Driver Home screen for your next assignment.
+                </div>
+              </div>
+            ) : podSuccess ? (
+              <div className="driver-panel" style={{ borderColor: "rgba(22, 163, 74, 0.4)" }}>
+                <CheckCircle2 size={26} style={{ color: "#16a34a", margin: "0 auto" }} />
+                <div className="driver-panel-title">Delivery completed</div>
+                <div className="driver-panel-desc">
+                  Proof of delivery recorded. Your earnings will appear after the
+                  settlement is processed.
+                </div>
+              </div>
+            ) : (
               <div className="driver-panel">
                 <Package size={24} style={{ color: "#999", margin: "0 auto" }} />
                 <div className="driver-panel-title">No active delivery</div>
@@ -662,7 +771,10 @@ export default function DriverActiveDelivery() {
                             {!podBusy && (
                               <button
                                 style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: "var(--text-muted)" }}
-                                onClick={() => setPodFiles((prev) => prev.filter((_, j) => j !== i))}
+                                onClick={() => {
+                                  podUploadsRef.current = [];
+                                  setPodFiles((prev) => prev.filter((_, j) => j !== i));
+                                }}
                                 aria-label={`Remove ${f.name}`}
                               >
                                 ×
@@ -695,6 +807,93 @@ export default function DriverActiveDelivery() {
                           : "Submit POD & Complete"}
                       </button>
                     </div>
+                  </div>
+                )}
+
+                {/* Failed-delivery path. This is the only way to close a
+                    delivery when the recipient refuses or cannot receive it. */}
+                {status === DELIVERY_STATUS.AT_DROPOFF && !podSuccess && (
+                  <div className="driver-action-card">
+                    {!showFailureForm ? (
+                      <div className="driver-action-row">
+                        <button
+                          type="button"
+                          className="driver-secondary-btn"
+                          onClick={() => setShowFailureForm(true)}
+                          disabled={podBusy || failurePending || !isOnline}
+                        >
+                          <AlertTriangle size={16} />
+                          Delivery can't be completed
+                        </button>
+                      </div>
+                    ) : (
+                      <div>
+                        <div className="driver-timeline-title" style={{ marginBottom: 4 }}>
+                          Report a failed delivery
+                        </div>
+                        <p className="driver-action-hint">
+                          Use this only when the parcel cannot be handed over. The
+                          delivery will be closed as failed and operations will follow up.
+                        </p>
+
+                        <label className="driver-detail-label" htmlFor="failure-reason">
+                          Reason *
+                        </label>
+                        <select
+                          id="failure-reason"
+                          className="settings-input"
+                          style={{ width: "100%", marginBottom: 12 }}
+                          value={failureReason}
+                          onChange={(e) => setFailureReason(e.target.value as FailureReason)}
+                          disabled={failurePending}
+                        >
+                          {FAILURE_REASONS.map((reason) => (
+                            <option key={reason.value} value={reason.value}>
+                              {reason.label}
+                            </option>
+                          ))}
+                        </select>
+
+                        <label className="driver-detail-label" htmlFor="failure-notes">
+                          Notes
+                        </label>
+                        <textarea
+                          id="failure-notes"
+                          className="settings-input"
+                          style={{ width: "100%", minHeight: 76, resize: "vertical", marginBottom: 12 }}
+                          placeholder="What happened? (optional)"
+                          value={failureNotes}
+                          onChange={(e) => setFailureNotes(e.target.value)}
+                          maxLength={500}
+                          disabled={failurePending}
+                        />
+
+                        <div className="driver-action-row">
+                          <button
+                            type="button"
+                            className="driver-secondary-btn"
+                            onClick={handleFailureSubmit}
+                            disabled={failurePending || !isOnline}
+                          >
+                            {failurePending ? (
+                              <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} />
+                            ) : (
+                              <AlertTriangle size={16} />
+                            )}
+                            {failurePending ? "Recording…" : "Record failed delivery"}
+                          </button>
+                          <button
+                            type="button"
+                            className="driver-secondary-btn"
+                            onClick={() => setShowFailureForm(false)}
+                            disabled={failurePending}
+                            style={{ color: "var(--text-secondary)", borderColor: "var(--border)" }}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -743,11 +942,26 @@ export default function DriverActiveDelivery() {
                       <span className="driver-location-tag">Pickup</span>
                     </div>
                     <div className="driver-location-address">
-                      {delivery.pickupAddress ? delivery.pickupAddress.street : "Pickup coordinates"}
+                      {formatAddress(
+                        delivery.pickupAddress,
+                        delivery.pickupLat,
+                        delivery.pickupLng,
+                      )}
                     </div>
-                    <div className="driver-location-meta">
-                      {delivery.pickupAddress ? delivery.pickupAddress.city : `${delivery.pickupLat?.toFixed(5)}, ${delivery.pickupLng?.toFixed(5)}`}
-                    </div>
+                    {(delivery.senderName || delivery.senderPhone) && (
+                      <div className="driver-contact-row">
+                        <Phone size={13} />
+                        <span>{delivery.senderName ?? "Pickup contact"}</span>
+                        {delivery.senderPhone && (
+                          <a
+                            className="driver-contact-link"
+                            href={`tel:${delivery.senderPhone}`}
+                          >
+                            Call
+                          </a>
+                        )}
+                      </div>
+                    )}
                     {(() => {
                       const url = mapsUrl(delivery.pickupLat, delivery.pickupLng);
                       return url ? (
@@ -763,11 +977,26 @@ export default function DriverActiveDelivery() {
                       <span className="driver-location-tag dropoff">Dropoff</span>
                     </div>
                     <div className="driver-location-address">
-                      {delivery.dropoffAddress ? delivery.dropoffAddress.street : "Dropoff coordinates"}
+                      {formatAddress(
+                        delivery.dropoffAddress,
+                        delivery.dropoffLat,
+                        delivery.dropoffLng,
+                      )}
                     </div>
-                    <div className="driver-location-meta">
-                      {delivery.dropoffAddress ? delivery.dropoffAddress.city : `${delivery.dropoffLat?.toFixed(5)}, ${delivery.dropoffLng?.toFixed(5)}`}
-                    </div>
+                    {(delivery.recipientName || delivery.recipientPhone) && (
+                      <div className="driver-contact-row">
+                        <Phone size={13} />
+                        <span>{delivery.recipientName ?? "Recipient"}</span>
+                        {delivery.recipientPhone && (
+                          <a
+                            className="driver-contact-link"
+                            href={`tel:${delivery.recipientPhone}`}
+                          >
+                            Call
+                          </a>
+                        )}
+                      </div>
+                    )}
                     {(() => {
                       const url = mapsUrl(delivery.dropoffLat, delivery.dropoffLng);
                       return url ? (
@@ -790,15 +1019,20 @@ export default function DriverActiveDelivery() {
                       {tracking?.order?.packageSize ?? "—"} parcel
                     </div>
                     <div className="driver-detail-sub">
-                      {tracking?.order?.expeditionType
-                        ? tracking.order.expeditionType.replace(/_/g, " ")
-                        : "Standard handling"}
+                      {[
+                        tracking?.order?.expeditionType
+                          ? tracking.order.expeditionType.replace(/_/g, " ")
+                          : "Standard handling",
+                        delivery.weightKg != null ? `${delivery.weightKg} kg` : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
                     </div>
                   </div>
 
                   <div className="driver-detail-card">
                     <div className="driver-detail-label">
-                      <Weight size={12} style={{ display: "inline", marginRight: 4 }} />
+                      <Clock size={12} style={{ display: "inline", marginRight: 4 }} />
                       Scheduled
                     </div>
                     <div className="driver-detail-value">
@@ -809,13 +1043,22 @@ export default function DriverActiveDelivery() {
 
                   <div className="driver-detail-card">
                     <div className="driver-detail-label">
-                      <Clock size={12} style={{ display: "inline", marginRight: 4 }} />
-                      Started
+                      <PenLine size={12} style={{ display: "inline", marginRight: 4 }} />
+                      Picked up
                     </div>
                     <div className="driver-detail-value">
-                      {delivery.startedAt ? formatTime(delivery.startedAt) : "—"}
+                      {status &&
+                      ([
+                        DELIVERY_STATUS.PICKED_UP,
+                        DELIVERY_STATUS.IN_TRANSIT,
+                        DELIVERY_STATUS.AT_DROPOFF,
+                        DELIVERY_STATUS.DELIVERED,
+                      ] as string[]).includes(status) &&
+                      delivery.startedAt
+                        ? formatTime(delivery.startedAt)
+                        : "—"}
                     </div>
-                    <div className="driver-detail-sub">Assignment time</div>
+                    <div className="driver-detail-sub">Pickup time</div>
                   </div>
                 </div>
 

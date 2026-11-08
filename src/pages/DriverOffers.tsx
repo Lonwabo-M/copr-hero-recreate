@@ -8,12 +8,14 @@ import {
   Package,
   MapPin,
   Clock,
+  Banknote,
   CheckCircle2,
   XCircle,
   Loader2,
   Timer,
   Inbox,
   WifiOff,
+  FileText,
 } from "lucide-react";
 import "@/styles/driver.css";
 
@@ -38,7 +40,8 @@ interface OfferShape {
   pickupCity?: string;
   dropoffCity?: string;
   packageSize?: string;
-  orderPrice?: number;
+  /** The driver's share from the stored quote. Never the customer order total. */
+  driverEarnings?: number | null;
 }
 
 const now = () => Date.now();
@@ -70,6 +73,9 @@ function formatCurrency(cents: number): string {
 export default function DriverOffers() {
   const navigate = useNavigate();
   const offers = useQuery(api.dispatch.engine.getMyDispatchOffers, {});
+  // Dispatch only reaches approved drivers. The sidebar can open this page
+  // directly, so show the same onboarding gate the Home CTA uses.
+  const application = useQuery(api.users.driverApplications.getMyDriverApplication, {});
   const acceptAssignment = useMutation(api.dispatch.engine.acceptAssignment);
   const rejectAssignment = useMutation(api.dispatch.engine.rejectAssignment);
   // Offers are concurrency-sensitive (competing drivers, expiry, one-time
@@ -173,6 +179,43 @@ export default function DriverOffers() {
             </div>
           )}
 
+          {/* Application gate — dispatch never sends offers to unapproved
+              drivers, so don't present an unexplained empty inbox. */}
+          {application !== undefined && application?.status !== "approved" && (
+            <div className="driver-action-card" style={{ padding: 16 }}>
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                {application?.status === "pending" ? (
+                  <Clock size={18} color="#856404" style={{ flexShrink: 0, marginTop: 1 }} />
+                ) : (
+                  <FileText size={18} color="#0794B5" style={{ flexShrink: 0, marginTop: 1 }} />
+                )}
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: "#202020" }}>
+                    {application?.status === "pending"
+                      ? "Offers start after approval"
+                      : application === null
+                        ? "Complete your driver application"
+                        : "Your application needs attention"}
+                  </div>
+                  <div style={{ fontSize: 12.5, color: "#666", marginTop: 3, lineHeight: 1.5 }}>
+                    {application?.status === "pending"
+                      ? "The Lasha team is reviewing your details. This page will fill automatically once you're approved."
+                      : "Dispatch only sends offers to approved drivers. Open your application to continue."}
+                  </div>
+                </div>
+              </div>
+              {application?.status !== "pending" && (
+                <button
+                  className="driver-primary-btn"
+                  style={{ marginTop: 12 }}
+                  onClick={() => navigate("/driver/apply")}
+                >
+                  {application === null ? "Start application" : "Review application"}
+                </button>
+              )}
+            </div>
+          )}
+
           {/* Loading */}
           {offers === undefined ? (
             <div style={{ display: "flex", justifyContent: "center", padding: 60 }}>
@@ -226,11 +269,12 @@ export default function DriverOffers() {
                     <span className="driver-offer-chip">
                       Ref {o.deliveryId.slice(-6).toUpperCase()}
                     </span>
-                    {typeof o.orderPrice === "number" && o.orderPrice > 0 && (
-                      <span className="driver-offer-chip">
-                        Delivery fee {formatCurrency(o.orderPrice)}
-                      </span>
-                    )}
+                    <span className="driver-offer-chip">
+                      <Banknote size={12} />
+                      {typeof o.driverEarnings === "number" && o.driverEarnings > 0
+                        ? `Your pay ${formatCurrency(o.driverEarnings)}`
+                        : "Pay confirmed on acceptance"}
+                    </span>
                   </div>
 
                   {/* Accept / Reject */}

@@ -35,6 +35,13 @@ const CAPABILITY_FIELDS = [
 
 type CapabilityKey = (typeof CAPABILITY_FIELDS)[number]["key"];
 
+/** Show only the last four digits of an ID number in read-only summaries. */
+function maskIdNumber(value: string): string {
+  const digits = value.replace(/\D/g, "");
+  if (digits.length <= 4) return value || "—";
+  return `•••• •••• ${digits.slice(-4)}`;
+}
+
 function StatusBanner({
   status,
   notes,
@@ -188,7 +195,7 @@ export default function DriverApply() {
       return setError("Enter a valid South African cell number (e.g. 082 123 4567)");
     }
 
-    if (licenseClass.trim().length < 2) return setError("License class is required (e.g. \"B Code 08\")");
+    if (licenseClass.trim().length < 2) return setError("Licence class is required (e.g. \"B Code 08\")");
     if (vehicleMake.trim().length < 2) return setError("Vehicle make is required");
     if (vehicleModel.trim().length < 2) return setError("Vehicle model is required");
     if (vehicleYear.trim() !== "" && (!Number.isFinite(yearNum) || (yearNum as number) < 1980 || (yearNum as number) > 2100)) {
@@ -197,7 +204,7 @@ export default function DriverApply() {
     if (!Number.isFinite(capacityNum) || capacityNum < 1) {
       return setError("Load capacity (kg) is required");
     }
-    if (vehicleRegistration.trim().length < 3) return setError("License plate is required");
+    if (vehicleRegistration.trim().length < 3) return setError("Licence plate is required");
     if (!idDocumentId) return setError("Upload a copy of your identity document");
     if (!licenseDocumentId) return setError("Upload a copy of your driving licence");
 
@@ -248,10 +255,13 @@ export default function DriverApply() {
   // Prefill identity + vehicle fields once data lands: resubmissions start
   // from the captured application; fresh forms start from the account.
   const prefillDone = useRef(false);
+  const identityPrefillDone = useRef(false);
   useEffect(() => {
-    if (prefillDone.current || application === undefined) return;
-    prefillDone.current = true;
+    if (application === undefined) return;
+
     if (application) {
+      if (prefillDone.current) return;
+      prefillDone.current = true;
       setFirstName(application.firstName ?? knownFirstName);
       setSurname(application.surname ?? knownSurname);
       setIdNumber(application.idNumber ?? "");
@@ -273,12 +283,19 @@ export default function DriverApply() {
         vehicleFlammable: application.vehicleFlammable,
         vehicleTrailer: application.vehicleTrailer,
       });
-    } else {
-      setFirstName(knownFirstName);
-      setSurname(knownSurname);
-      setCellNumber(knownCell);
-    };
-  }, [application, knownFirstName, knownSurname, knownCell]);
+      return;
+    }
+
+    // Fresh application: the query can resolve (null) before the auth user is
+    // available. Wait for an actual identity, then prefill ONCE — never after
+    // the driver has started typing.
+    if (identityPrefillDone.current) return;
+    if (!user || (!user.name && !user.phone)) return;
+    identityPrefillDone.current = true;
+    setFirstName((prev) => prev || knownFirstName);
+    setSurname((prev) => prev || knownSurname);
+    setCellNumber((prev) => prev || knownCell);
+  }, [application, knownFirstName, knownSurname, knownCell, user]);
 
   return (
     <DriverShell activeItem="Driver Application">
@@ -334,10 +351,10 @@ export default function DriverApply() {
                   <div style={{ fontSize: 13, color: "#444", lineHeight: 1.9 }}>
                     Driver: <strong>{displayName}</strong>
                     <br />
-                    ID number: <strong>{displayId}</strong> · Cell:{" "}
+                    ID number: <strong>{maskIdNumber(displayId)}</strong> · Cell:{" "}
                     <strong>{displayCell}</strong>
                     <br />
-                    License: <strong>{liveApp.licenseClass}</strong>
+                    Licence: <strong>{liveApp.licenseClass}</strong>
                     {liveApp.licenseNumber ? ` (${liveApp.licenseNumber})` : ""}
                     <br />
                     Vehicle: <strong>{liveApp.vehicleMake} {liveApp.vehicleModel}</strong>
@@ -375,7 +392,7 @@ export default function DriverApply() {
                       </span>
                     </div>
 
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                    <div className="driver-form-grid">
                       <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                         <span style={{ fontSize: 13, fontWeight: 600, color: "#202020" }}>First name *</span>
                         <input
@@ -431,6 +448,39 @@ export default function DriverApply() {
 
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
                       <FileText size={16} color="#0794B5" />
+                      <span style={{ fontSize: 13.5, fontWeight: 700, color: "#202020" }}>
+                        Driving licence
+                      </span>
+                    </div>
+                    <div className="driver-form-grid">
+                      <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: "#202020" }}>Licence class *</span>
+                        <input
+                          className="dash-search"
+                          style={{ height: 44, paddingLeft: 12 }}
+                          placeholder="B Code 08"
+                          value={licenseClass}
+                          onChange={(e) => setLicenseClass(e.target.value)}
+                          disabled={!canEdit}
+                        />
+                      </label>
+                      <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: "#202020" }}>
+                          Licence number <span style={{ color: "#9A9A9A", fontWeight: 400 }}>(optional)</span>
+                        </span>
+                        <input
+                          className="dash-search"
+                          style={{ height: 44, paddingLeft: 12 }}
+                          placeholder="Licence card number"
+                          value={licenseNumber}
+                          onChange={(e) => setLicenseNumber(e.target.value)}
+                          disabled={!canEdit}
+                        />
+                      </label>
+                    </div>
+
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
+                      <FileText size={16} color="#0794B5" />
                       <span style={{ fontSize: 13.5, fontWeight: 700, color: "#202020" }}>Identity documents</span>
                     </div>
                     <p style={{ fontSize: 12, color: "var(--lasha-muted)", margin: 0, lineHeight: 1.55 }}>
@@ -438,7 +488,7 @@ export default function DriverApply() {
                       We check them against the details above before approving your application.
                       Maximum 10 MB each.
                     </p>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                    <div className="driver-form-grid">
                       <label
                         style={{
                           display: "flex",
@@ -512,7 +562,7 @@ export default function DriverApply() {
                       <span style={{ fontSize: 13.5, fontWeight: 700, color: "#202020" }}>Vehicle</span>
                     </div>
 
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                    <div className="driver-form-grid">
                       <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                         <span style={{ fontSize: 13, fontWeight: 600, color: "#202020" }}>Make *</span>
                         <input
@@ -564,7 +614,7 @@ export default function DriverApply() {
                     </div>
 
                     <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                      <span style={{ fontSize: 13, fontWeight: 600, color: "#202020" }}>License plate *</span>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: "#202020" }}>Licence plate *</span>
                       <input
                         className="dash-search"
                         style={{ height: 44, paddingLeft: 12 }}
@@ -579,7 +629,7 @@ export default function DriverApply() {
                       <CheckCircle2 size={16} color="#0794B5" />
                       <span style={{ fontSize: 13.5, fontWeight: 700, color: "#202020" }}>Handling capabilities</span>
                     </div>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                    <div className="driver-form-grid">
                       {CAPABILITY_FIELDS.map((field) => (
                         <label
                           key={field.key}

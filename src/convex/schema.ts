@@ -450,6 +450,7 @@ export const trackingEventTypeValidator = v.union(
   v.literal("picked_up"),
   v.literal("in_transit"),
   v.literal("delivered"),
+  v.literal("failed"),
   v.literal("location_update"),
 );
 
@@ -460,6 +461,7 @@ export const TRACKING_EVENT_TYPES = {
   PICKED_UP: "picked_up",
   IN_TRANSIT: "in_transit",
   DELIVERED: "delivered",
+  FAILED: "failed",
   LOCATION_UPDATE: "location_update",
 } as const;
 

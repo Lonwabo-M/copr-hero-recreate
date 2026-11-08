@@ -1294,6 +1294,21 @@ export const completeDelivery = mutation({
       );
     }
 
+    // 5c. The POD must actually prove a successful handover, and it must have
+    // been submitted by the driver who is completing the delivery. Checking
+    // only that *some* POD row exists let a failed POD (or another driver's
+    // POD) satisfy the gate.
+    if (existingPOD.outcome !== "delivered") {
+      throw new Error(
+        "Proof of delivery does not record a successful delivery. Record the failed delivery instead."
+      );
+    }
+    if (existingPOD.submittedBy !== user && userRole === ROLES.DRIVER) {
+      throw new Error(
+        "Proof of delivery was submitted by another user. Submit your own POD before completing."
+      );
+    }
+
     // 6. Perform transition
     const now = Date.now();
     await ctx.db.patch(args.deliveryId, {
@@ -1518,9 +1533,16 @@ export const failDelivery = mutation({
       );
     }
 
-    // 4. Validate driver ownership (if driver)
+    // 4. Validate ownership. Drivers may only fail their assigned delivery;
+    // company admins may only fail deliveries belonging to their company.
     if (userRole === ROLES.DRIVER && delivery.courierId !== user) {
       throw new Error("Access denied: this delivery is not assigned to you");
+    }
+    if (userRole === ROLES.COMPANY_ADMIN) {
+      const order = await ctx.db.get(delivery.orderId);
+      if (!currentUser.businessId || !order || order.businessId !== currentUser.businessId) {
+        throw new Error("Access denied: delivery belongs to another company");
+      }
     }
 
     // 5. Perform transition
@@ -1540,7 +1562,7 @@ export const failDelivery = mutation({
     await recordDeliveryEvent(
       ctx,
       args.deliveryId,
-      "delivered",
+      "failed",
       delivery.status,
       DELIVERY_STATUS.FAILED,
       user,

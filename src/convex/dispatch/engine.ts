@@ -49,6 +49,28 @@ export const getDispatchOffers = query({
     const user = await getCurrentAuthUser(ctx);
     if (!user) throw new Error("Authentication required");
 
+    // Dispatch visibility is staff-only. This query enriches offers with
+    // driver names and vehicle registrations, so letting any authenticated
+    // customer read another delivery's offers leaked driver PII. Company
+    // admins are additionally scoped to their own company's orders.
+    const staffRoles = [
+      ROLES.OPERATIONS,
+      ROLES.FLEET_MANAGER,
+      ROLES.COMPANY_ADMIN,
+      ROLES.SUPER_ADMIN,
+    ];
+    if (!staffRoles.includes(user.role as any)) {
+      throw new Error("Access denied: only operations staff can view dispatch offers");
+    }
+    if (user.role === ROLES.COMPANY_ADMIN) {
+      const delivery = await ctx.db.get(args.deliveryId);
+      if (!delivery) throw new Error("Delivery not found");
+      const order = await ctx.db.get(delivery.orderId);
+      if (!user.businessId || !order?.businessId || order.businessId !== user.businessId) {
+        throw new Error("Access denied: delivery belongs to another company");
+      }
+    }
+
     // Get offers
     const offers = await ctx.db
       .query("dispatch_offers")
@@ -83,6 +105,9 @@ export const getMyDispatchOffers = query({
     // Authenticate
     const user = await getCurrentAuthUser(ctx);
     if (!user) throw new Error("Authentication required");
+    if (user.role !== ROLES.DRIVER) {
+      throw new Error("Only drivers can view dispatch offers");
+    }
 
     // Pending offers for this driver — index-led (`by_driver_status`), so the
     // scan scales with the driver's LIVE offers, not their lifetime offer
@@ -107,13 +132,23 @@ export const getMyDispatchOffers = query({
       const pickupAddress = order ? await ctx.db.get(order.pickupAddressId) : null;
       const dropoffAddress = order ? await ctx.db.get(order.dropoffAddressId) : null;
 
+      // Driver pay is the stored quote's driverEarnings, NOT the customer's
+      // order total. Showing orderPrice as a "delivery fee" told drivers they
+      // would earn the full customer charge. Only the driver's own share is
+      // exposed here; platform fee and customer totals stay out of the app.
+      const quote = await ctx.db
+        .query("delivery_quotes")
+        .withIndex("by_order", (q) => q.eq("orderId", delivery.orderId))
+        .order("desc")
+        .first();
+
       enrichedOffers.push({
         ...offer,
         deliveryStatus: delivery.status,
         pickupCity: pickupAddress?.city ?? "Unknown",
         dropoffCity: dropoffAddress?.city ?? "Unknown",
         packageSize: order?.packageSize ?? "small",
-        orderPrice: order?.price ?? 0,
+        driverEarnings: quote?.driverEarnings ?? null,
       });
     }
 

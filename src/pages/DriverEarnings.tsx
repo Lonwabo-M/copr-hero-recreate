@@ -132,11 +132,14 @@ export default function DriverEarnings() {
     };
   }, [daysFilter]);
 
-  // Page query.
+  // Page query. The date window is applied server-side; status is applied
+  // server-side as well (the tabs previously only changed the summary).
   const earnings = useQuery(
     api.driver_earnings.getDriverEarnings,
     {
       status: statusFilter === "all" ? undefined : (statusFilter as any),
+      from,
+      to,
       limit: PAGE_SIZE,
       cursor:
         cursorStack.length > 0
@@ -145,18 +148,15 @@ export default function DriverEarnings() {
     },
   );
 
-  // Per-settlement eligibility for items on the current page (batch is fine;
-  // each is a small driver-scoped query). We load these reactively so the UI
-  // reflects backend eligibility changes.
-
-
-  // Summary (always loaded separately so the header is stable).
+  // Summary is loaded separately so the header reflects the date window, not
+  // just the current page. Status tabs do not change the header totals.
   const summary = useQuery(api.driver_earnings.getDriverEarningsSummary, {
-    status: statusFilter === "all" ? undefined : (statusFilter as any),
+    from,
+    to,
   });
 
   const items = earnings?.items ?? [];
-  const eligibleTotal = earnings?.summary?.eligibleForPayout ?? 0;
+  const eligibleTotal = summary?.eligibleForPayout ?? 0;
   const loading = earnings === undefined || summary === undefined;
 
   const toneFor = (label: string): "payable" | "processing" | "completed" | "failed" | "disputed" | "eligible" | "not-yet" | "not-payable" | "already-settled" | "not-available" => {

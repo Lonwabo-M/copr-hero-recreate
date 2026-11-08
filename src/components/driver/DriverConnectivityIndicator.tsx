@@ -67,17 +67,15 @@ export default function DriverConnectivityIndicator() {
   return (
     <button
       type="button"
+      className="driver-connectivity-indicator"
       onClick={retrySync}
+      aria-live="polite"
       title={
         status.detail
           ? `${label} — ${status.detail}. Tap to retry sync.`
           : `${label}. Tap to retry sync.`
       }
       style={{
-        position: "fixed",
-        top: 14,
-        right: 14,
-        zIndex: 40,
         display: "inline-flex",
         alignItems: "center",
         gap: 7,
@@ -90,6 +88,11 @@ export default function DriverConnectivityIndicator() {
         border: `1px solid ${tone.color}33`,
         cursor: "pointer",
         boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
+        maxWidth: "min(46vw, 260px)",
+        whiteSpace: "nowrap",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        flexShrink: 0,
       }}
     >
       <span
@@ -104,7 +107,12 @@ export default function DriverConnectivityIndicator() {
       />
       {label}
       {status.detail && (
-        <span style={{ fontWeight: 400, opacity: 0.85 }}>· {status.detail}</span>
+        <span
+          className="driver-connectivity-detail"
+          style={{ fontWeight: 400, opacity: 0.85 }}
+        >
+          · {status.detail}
+        </span>
       )}
     </button>
   );

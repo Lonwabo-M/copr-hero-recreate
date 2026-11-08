@@ -45,6 +45,7 @@ export const customerNavigation: NavItem[] = [
 // Driver-only pages. The Driver App never advertises customer, Operations or
 // Admin entries; those are different realms/applications.
 export const driverNavigation: NavItem[] = [
+  { label: "Home", route: "/driver" },
   { label: "Delivery Offers", route: "/driver/offers" },
   { label: "Active Delivery", route: "/driver/active-delivery" },
   { label: "Delivery History", route: "/driver/history" },

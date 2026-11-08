@@ -6,8 +6,9 @@ import { useConvexConnectionBridge, useSyncEngine } from "@/hooks/use-offline";
 // The Driver App experience. Reuses the Lasha design system unchanged; only
 // the navigation scope differs (driver entries only). Driver Active Delivery,
 // POD submission and continuous GPS tracking live in this area. A small
-// connectivity/sync indicator overlays the shell (fixed, dismiss-free) so the
-// driver always knows whether GPS is buffered or syncing. The offline
+// connectivity/sync indicator sits in the header cluster (never over the page
+// or profile control) so the driver always knows whether GPS is buffered or
+// syncing. The offline
 // resilience lifecycle (Convex connection bridge + buffered-GPS sync engine)
 // starts here once per mount — components below only consume state.
 
@@ -21,8 +22,11 @@ export default function DriverShell(props: {
   useSyncEngine();
 
   return (
-    <AppShell area="driver" activeItem={props.activeItem}>
-      <DriverConnectivityIndicator />
+    <AppShell
+      area="driver"
+      activeItem={props.activeItem}
+      headerAccessory={<DriverConnectivityIndicator />}
+    >
       {props.children}
     </AppShell>
   );

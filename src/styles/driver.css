@@ -270,6 +270,34 @@
   color: var(--text-secondary);
 }
 
+.driver-contact-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.driver-contact-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--primary);
+  color: var(--primary);
+  background: var(--primary-light);
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.driver-contact-link:active {
+  opacity: 0.8;
+}
+
 .driver-nav-btn {
   display: inline-flex;
   align-items: center;
@@ -660,6 +688,30 @@
   cursor: pointer;
 }
 
+/* ─── Driver forms ───────────────────────────────────────────────────────── */
+
+.driver-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.driver-form-grid > label {
+  min-width: 0;
+}
+
+.driver-form-grid input[type="file"] {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  font-size: 12px;
+}
+
+.driver-form-grid .dash-search {
+  width: 100%;
+  box-sizing: border-box;
+}
+
 /* ─── Driver profile ─────────────────────────────────────────────────── */
 
 .driver-profile-input {
@@ -685,7 +737,37 @@
   color: var(--text-muted);
 }
 
+/* ─── Header connectivity pill ───────────────────────────────────────────── */
+
+.driver-connectivity-indicator {
+  font-family: "Inter", sans-serif;
+}
+
+.driver-connectivity-indicator:active {
+  opacity: 0.85;
+}
+
 /* ─── Responsive ─────────────────────────────────────────────────────────── */
+
+@media (max-width: 560px) {
+  .driver-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .driver-connectivity-detail {
+    display: none;
+  }
+
+  .driver-connectivity-indicator {
+    max-width: 128px;
+    padding: 6px 10px;
+  }
+
+  .dash-topnav-profile {
+    width: 46px;
+    height: 44px;
+  }
+}
 
 @media (max-width: 720px) {
   .driver-container {

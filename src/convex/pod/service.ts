@@ -5,7 +5,7 @@
  * All POD operations are server-side authorized and idempotent.
  */
 
-import { mutation, query, action, internalMutation, QueryCtx, MutationCtx } from "../_generated/server";
+import { mutation, query, internalMutation, QueryCtx, MutationCtx } from "../_generated/server";
 import { v } from "convex/values";
 import { Id, Doc } from "../_generated/dataModel";
 import { DELIVERY_STATUS, ROLES } from "../schema";
@@ -25,6 +25,15 @@ const ALLOWED_MIME_TYPES = [
   "image/webp",
   "application/pdf",
 ];
+
+/** Maximum evidence files per POD. Mirrors the Driver App picker cap. */
+const MAX_FILES_PER_POD = 5;
+
+const TERMINAL_DELIVERY_STATUSES = new Set([
+  DELIVERY_STATUS.DELIVERED,
+  DELIVERY_STATUS.FAILED,
+  DELIVERY_STATUS.CANCELLED,
+]);
 
 // ─── Queries ──────────────────────────────────────────────────────────────────
 
@@ -157,8 +166,9 @@ export const createPOD = mutation({
     const delivery = await ctx.db.get(args.deliveryId);
     if (!delivery) throw new Error("Delivery not found");
 
-    // Validate authorization
-    if (!canCreatePOD(user, delivery)) {
+    // Validate authorization (company admins are scoped to their own company;
+    // they must not be able to create PODs on another business's delivery).
+    if (!(await canManagePOD(ctx, user, delivery))) {
       throw new Error("Access denied: cannot create POD for this delivery");
     }
 
@@ -192,6 +202,11 @@ export const createPOD = mutation({
       throw new Error("Failure reason is required for failed deliveries");
     }
 
+    const recipientName = args.recipientName.trim();
+    if (!recipientName) {
+      throw new Error("Recipient name is required for proof of delivery");
+    }
+
     const now = Date.now();
 
     // Create POD
@@ -200,9 +215,9 @@ export const createPOD = mutation({
       orderId: delivery.orderId,
       submittedBy: userId,
       outcome: args.outcome,
-      recipientName: args.recipientName,
-      recipientPhone: args.recipientPhone,
-      deliveryNotes: args.deliveryNotes,
+      recipientName: recipientName.slice(0, 200),
+      recipientPhone: args.recipientPhone?.trim().slice(0, 40),
+      deliveryNotes: args.deliveryNotes?.trim().slice(0, 1000),
       latitude: args.latitude,
       longitude: args.longitude,
       locationAccuracy: args.locationAccuracy,
@@ -210,7 +225,7 @@ export const createPOD = mutation({
       createdAt: now,
       updatedAt: now,
       failureReason: args.failureReason,
-      failureNotes: args.failureNotes,
+      failureNotes: args.failureNotes?.trim().slice(0, 1000),
       idempotencyKey,
     });
 
@@ -221,7 +236,7 @@ export const createPOD = mutation({
       action: AUDIT_ACTIONS.POD_CREATED,
       deliveryId: args.deliveryId,
       entityId: podId,
-      metadata: JSON.stringify({ outcome: args.outcome, recipientName: args.recipientName }),
+      metadata: JSON.stringify({ outcome: args.outcome, recipientName: recipientName.slice(0, 200) }),
     });
 
     return { podId, alreadyExists: false };
@@ -256,29 +271,69 @@ export const addPODEvidence = mutation({
     if (!delivery) throw new Error("Delivery not found");
 
     // Validate authorization
-    if (!canAddPODEvidence(user, delivery, pod)) {
+    if (!(await canManagePOD(ctx, user, delivery))) {
       throw new Error("Access denied: cannot add evidence to this POD");
     }
 
-    // Validate file
-    if (args.fileSize > MAX_FILE_SIZE) {
+    // Evidence is immutable once the delivery is terminal. Without this gate a
+    // driver could keep attaching files to a completed/failed/cancelled POD.
+    if (TERMINAL_DELIVERY_STATUSES.has(delivery.status as any)) {
+      throw new Error("Cannot add evidence to a completed delivery");
+    }
+
+    // Validate file against the ACTUAL stored object, not client-supplied
+    // size/type claims. The client used to be trusted for both, which allowed
+    // an enormous or non-image file to be recorded as valid evidence.
+    const storageId = args.fileId as Id<"_storage">;
+    const metadata = await ctx.storage.getMetadata(storageId);
+    if (!metadata) {
+      throw new Error("Uploaded file was not found — please upload it again");
+    }
+
+    const fileSize = metadata.size;
+    const mimeType = metadata.contentType ?? "";
+    if (typeof fileSize !== "number" || fileSize <= 0) {
+      throw new Error("Uploaded file is empty or has no size");
+    }
+    if (fileSize > MAX_FILE_SIZE) {
       throw new Error(`File size exceeds maximum of ${MAX_FILE_SIZE / 1024 / 1024}MB`);
     }
-
-    if (!ALLOWED_MIME_TYPES.includes(args.mimeType)) {
-      throw new Error(`File type ${args.mimeType} is not allowed`);
+    if (!ALLOWED_MIME_TYPES.includes(mimeType)) {
+      throw new Error(`File type ${mimeType || "unknown"} is not allowed`);
+    }
+    if (args.fileType !== "document" && !mimeType.startsWith("image/")) {
+      throw new Error("Photos and signatures must be image files");
     }
 
-    // Create file record
+    const existingFiles = await ctx.db
+      .query("pod_files")
+      .withIndex("by_pod", (q) => q.eq("podId", args.podId))
+      .collect();
+    // Make retries safe: a driver whose submission failed after the first
+    // file was stored must be able to retry the same POD without the earlier
+    // evidence blocking every subsequent attempt.
+    const existingFile = existingFiles.find(
+      (file) => file.fileId === args.fileId
+    );
+    if (existingFile) {
+      return { fileId: existingFile._id };
+    }
+    if (existingFiles.length >= MAX_FILES_PER_POD) {
+      throw new Error(`A proof of delivery can have at most ${MAX_FILES_PER_POD} files`);
+    }
+
+    const fileName = args.fileName.trim().slice(0, 200) || "evidence";
+
+    // Create file record using the storage metadata as the source of truth.
     const fileId = await ctx.db.insert("pod_files", {
       podId: args.podId,
       deliveryId: pod.deliveryId,
       fileId: args.fileId,
       fileType: args.fileType,
-      fileName: args.fileName,
-      fileSize: args.fileSize,
-      mimeType: args.mimeType,
-      description: args.description,
+      fileName,
+      fileSize,
+      mimeType,
+      description: args.description?.trim().slice(0, 500),
       uploadedBy: userId,
       createdAt: Date.now(),
     });
@@ -295,7 +350,7 @@ export const addPODEvidence = mutation({
       action: AUDIT_ACTIONS.POD_EVIDENCE_ADDED,
       deliveryId: pod.deliveryId,
       entityId: args.podId,
-      metadata: JSON.stringify({ fileType: args.fileType, fileName: args.fileName }),
+      metadata: JSON.stringify({ fileType: args.fileType, fileName, fileSize, mimeType }),
     });
 
     return { fileId };
@@ -328,18 +383,13 @@ export const completeDeliveryWithPOD = mutation({
     if (!delivery) throw new Error("Delivery not found");
 
     // Validate authorization
-    if (!canCompleteDelivery(user, delivery)) {
+    if (!(await canManagePOD(ctx, user, delivery))) {
       throw new Error("Access denied: cannot complete this delivery");
     }
 
-    // Validate delivery state
-    if (delivery.status !== DELIVERY_STATUS.AT_DROPOFF) {
-      throw new Error(
-        `Cannot complete delivery: delivery is in "${delivery.status}" state, expected "at_dropoff"`
-      );
-    }
-
-    // Idempotency check
+    // Idempotency check BEFORE the state check: retrying after a committed
+    // completion (lost response) must return the existing POD, not fail
+    // because the delivery is no longer at_dropoff.
     const idempotencyKey = `pod-complete-${args.deliveryId}`;
     const existingPOD = await ctx.db
       .query("proof_of_delivery")
@@ -350,6 +400,56 @@ export const completeDeliveryWithPOD = mutation({
       return { podId: existingPOD._id, deliveryId: args.deliveryId, alreadyExists: true };
     }
 
+    // Validate delivery state
+    if (delivery.status !== DELIVERY_STATUS.AT_DROPOFF) {
+      throw new Error(
+        `Cannot complete delivery: delivery is in "${delivery.status}" state, expected "at_dropoff"`
+      );
+    }
+
+    const recipientName = args.recipientName.trim();
+    if (!recipientName) {
+      throw new Error("Recipient name is required for proof of delivery");
+    }
+
+    // Validate every evidence id against the ACTUAL storage object. This path
+    // inserts pod_files directly (bypassing addPODEvidence), so without these
+    // checks a client could attach arbitrary storage ids or unvalidated files.
+    const evidenceIds = [
+      ...(args.signatureFileId ? [args.signatureFileId] : []),
+      ...(args.photoFileIds ?? []),
+    ];
+    if (evidenceIds.length > MAX_FILES_PER_POD) {
+      throw new Error(`A proof of delivery can have at most ${MAX_FILES_PER_POD} files`);
+    }
+    if (new Set(evidenceIds).size !== evidenceIds.length) {
+      throw new Error("The same proof file cannot be attached twice");
+    }
+    const evidenceMetadata = new Map<
+      string,
+      { size: number; contentType: string | null }
+    >();
+    for (const storageId of evidenceIds) {
+      const metadata = await ctx.storage.getMetadata(storageId as Id<"_storage">);
+      if (!metadata) {
+        throw new Error("An uploaded proof file was not found — please upload it again");
+      }
+      const contentType = metadata.contentType ?? "";
+      if (metadata.size <= 0 || metadata.size > MAX_FILE_SIZE) {
+        throw new Error(`Proof files must be non-empty and smaller than ${MAX_FILE_SIZE / 1024 / 1024}MB`);
+      }
+      if (!ALLOWED_MIME_TYPES.includes(contentType)) {
+        throw new Error(`File type ${contentType || "unknown"} is not allowed`);
+      }
+      if (!contentType.startsWith("image/")) {
+        throw new Error("Signature and photo evidence must be image files");
+      }
+      evidenceMetadata.set(storageId, {
+        size: metadata.size,
+        contentType,
+      });
+    }
+
     const now = Date.now();
 
     // Create POD
@@ -358,9 +458,9 @@ export const completeDeliveryWithPOD = mutation({
       orderId: delivery.orderId,
       submittedBy: userId,
       outcome: "delivered",
-      recipientName: args.recipientName,
-      recipientPhone: args.recipientPhone,
-      deliveryNotes: args.deliveryNotes,
+      recipientName: recipientName.slice(0, 200),
+      recipientPhone: args.recipientPhone?.trim().slice(0, 40),
+      deliveryNotes: args.deliveryNotes?.trim().slice(0, 1000),
       latitude: args.latitude,
       longitude: args.longitude,
       locationAccuracy: args.locationAccuracy,
@@ -372,14 +472,15 @@ export const completeDeliveryWithPOD = mutation({
 
     // Add signature file if provided
     if (args.signatureFileId) {
+      const meta = evidenceMetadata.get(args.signatureFileId)!;
       await ctx.db.insert("pod_files", {
         podId,
         deliveryId: args.deliveryId,
         fileId: args.signatureFileId,
         fileType: "signature",
-        fileName: "signature.png",
-        fileSize: 0,
-        mimeType: "image/png",
+        fileName: "signature",
+        fileSize: meta.size,
+        mimeType: meta.contentType ?? "image/png",
         uploadedBy: userId,
         createdAt: now,
       });
@@ -388,14 +489,15 @@ export const completeDeliveryWithPOD = mutation({
     // Add photo files if provided
     if (args.photoFileIds) {
       for (const photoId of args.photoFileIds) {
+        const meta = evidenceMetadata.get(photoId)!;
         await ctx.db.insert("pod_files", {
           podId,
           deliveryId: args.deliveryId,
           fileId: photoId,
           fileType: "photo",
-          fileName: "delivery-photo.jpg",
-          fileSize: 0,
-          mimeType: "image/jpeg",
+          fileName: "delivery-photo",
+          fileSize: meta.size,
+          mimeType: meta.contentType ?? "image/jpeg",
           uploadedBy: userId,
           createdAt: now,
         });
@@ -425,7 +527,7 @@ export const completeDeliveryWithPOD = mutation({
       metadata: JSON.stringify({
         action: "delivery_completed",
         podId,
-        recipientName: args.recipientName,
+        recipientName: recipientName.slice(0, 200),
       }),
     });
 
@@ -436,7 +538,7 @@ export const completeDeliveryWithPOD = mutation({
       action: AUDIT_ACTIONS.POD_COMPLETED,
       deliveryId: args.deliveryId,
       entityId: podId,
-      metadata: JSON.stringify({ recipientName: args.recipientName, hasSignature: !!args.signatureFileId, photoCount: args.photoFileIds?.length ?? 0 }),
+      metadata: JSON.stringify({ recipientName: recipientName.slice(0, 200), hasSignature: !!args.signatureFileId, photoCount: args.photoFileIds?.length ?? 0 }),
     });
 
     // Create the driver settlement (POD validation → completion → settlement).
@@ -451,6 +553,19 @@ export const completeDeliveryWithPOD = mutation({
         orderId: delivery.orderId,
         driverId: delivery.courierId,
       });
+
+      // This completion path must maintain the same driver performance metrics
+      // as state_machine.completeDelivery; otherwise the Operations roster and
+      // dispatch scoring under-report trips for POD-completed deliveries.
+      const courierProfile = await ctx.db
+        .query("driver_profiles")
+        .withIndex("by_user", (q) => q.eq("userId", delivery.courierId!))
+        .unique();
+      if (courierProfile) {
+        await ctx.db.patch(courierProfile._id, {
+          totalTrips: (courierProfile.totalTrips ?? 0) + 1,
+        });
+      }
     }
 
     // Notify the customer their delivery is complete (authoritative sender
@@ -500,8 +615,21 @@ export const recordFailedDelivery = mutation({
     if (!delivery) throw new Error("Delivery not found");
 
     // Validate authorization
-    if (!canRecordFailure(user, delivery)) {
+    if (!(await canManagePOD(ctx, user, delivery))) {
       throw new Error("Access denied: cannot record failure for this delivery");
+    }
+
+    // Idempotency check BEFORE the state check: if the first request committed
+    // and only the response was lost, a retry must return the existing failure
+    // rather than reporting that a failed delivery cannot be failed.
+    const idempotencyKey = `pod-fail-${args.deliveryId}`;
+    const existingPOD = await ctx.db
+      .query("proof_of_delivery")
+      .withIndex("by_idempotency", (q) => q.eq("idempotencyKey", idempotencyKey))
+      .first();
+
+    if (existingPOD) {
+      return { podId: existingPOD._id, alreadyExists: true };
     }
 
     // Validate delivery state
@@ -518,15 +646,44 @@ export const recordFailedDelivery = mutation({
       );
     }
 
-    // Idempotency check
-    const idempotencyKey = `pod-fail-${args.deliveryId}`;
-    const existingPOD = await ctx.db
-      .query("proof_of_delivery")
-      .withIndex("by_idempotency", (q) => q.eq("idempotencyKey", idempotencyKey))
-      .first();
-
-    if (existingPOD) {
-      return { podId: existingPOD._id, alreadyExists: true };
+    // Validate any failure photos against real storage metadata. This mutation
+    // accepts file IDs from the client, so it must not let a caller attach
+    // arbitrary IDs or fabricate file sizes/MIME types.
+    const failurePhotoIds = args.photoFileIds ?? [];
+    if (failurePhotoIds.length > MAX_FILES_PER_POD) {
+      throw new Error(
+        `Too many failure photos (max ${MAX_FILES_PER_POD})`
+      );
+    }
+    if (new Set(failurePhotoIds).size !== failurePhotoIds.length) {
+      throw new Error("Duplicate failure photo files are not allowed");
+    }
+    const failurePhotos: {
+      fileId: string;
+      fileSize: number;
+      mimeType: string;
+    }[] = [];
+    for (const photoId of failurePhotoIds) {
+      const metadata = await ctx.storage.getMetadata(
+        photoId as Id<"_storage">
+      );
+      if (!metadata || metadata.size === 0) {
+        throw new Error("Failure photo file is missing or empty");
+      }
+      if (metadata.size > MAX_FILE_SIZE) {
+        throw new Error(
+          `Failure photo exceeds the ${MAX_FILE_SIZE / (1024 * 1024)}MB limit`
+        );
+      }
+      const contentType = metadata.contentType;
+      if (!contentType?.startsWith("image/")) {
+        throw new Error("Failure photos must be images");
+      }
+      failurePhotos.push({
+        fileId: photoId,
+        fileSize: metadata.size,
+        mimeType: contentType,
+      });
     }
 
     const now = Date.now();
@@ -537,33 +694,31 @@ export const recordFailedDelivery = mutation({
       orderId: delivery.orderId,
       submittedBy: userId,
       outcome: "failed",
-      recipientName: args.recipientName ?? "N/A",
-      deliveryNotes: args.failureNotes,
+      recipientName: (args.recipientName?.trim() || "N/A").slice(0, 200),
+      deliveryNotes: args.failureNotes?.trim().slice(0, 1000),
       latitude: args.latitude,
       longitude: args.longitude,
       deliveredAt: now,
       createdAt: now,
       updatedAt: now,
       failureReason: args.failureReason,
-      failureNotes: args.failureNotes,
+      failureNotes: args.failureNotes?.trim().slice(0, 1000),
       idempotencyKey,
     });
 
-    // Add photo files if provided
-    if (args.photoFileIds) {
-      for (const photoId of args.photoFileIds) {
-        await ctx.db.insert("pod_files", {
-          podId,
-          deliveryId: args.deliveryId,
-          fileId: photoId,
-          fileType: "photo",
-          fileName: "failure-photo.jpg",
-          fileSize: 0,
-          mimeType: "image/jpeg",
-          uploadedBy: userId,
-          createdAt: now,
-        });
-      }
+    // Add validated photo files
+    for (const photo of failurePhotos) {
+      await ctx.db.insert("pod_files", {
+        podId,
+        deliveryId: args.deliveryId,
+        fileId: photo.fileId,
+        fileType: "photo",
+        fileName: "failure-photo",
+        fileSize: photo.fileSize,
+        mimeType: photo.mimeType,
+        uploadedBy: userId,
+        createdAt: now,
+      });
     }
 
     // Transition delivery to FAILED
@@ -581,7 +736,7 @@ export const recordFailedDelivery = mutation({
     // Record tracking event
     await ctx.db.insert("tracking_events", {
       deliveryId: args.deliveryId,
-      type: "delivered",
+      type: "failed",
       lat: args.latitude,
       lng: args.longitude,
       timestamp: now,
@@ -602,6 +757,21 @@ export const recordFailedDelivery = mutation({
       metadata: JSON.stringify({ failureReason: args.failureReason, failureNotes: args.failureNotes }),
     });
 
+    // A failed delivery is customer-facing news. The state-machine failure
+    // path already notifies the sender; this POD path used to change the
+    // order/delivery status silently, leaving the customer waiting.
+    const order = await ctx.db.get(delivery.orderId);
+    if (order?.senderId) {
+      await ctx.runMutation(internal.notifications.service.sendDeliveryNotification, {
+        deliveryId: args.deliveryId,
+        eventType: "delivery_failed",
+        recipientUserIds: [order.senderId],
+        templateData: {
+          reason: args.failureNotes?.trim() || args.failureReason.replace(/_/g, " "),
+        },
+      });
+    }
+
     return { podId, alreadyExists: false };
   },
 });
@@ -610,11 +780,26 @@ export const recordFailedDelivery = mutation({
 
 /**
  * Generate upload URL for POD files.
- * React should call this to get a URL, then upload directly to Convex File Storage.
+ *
+ * This was previously an unauthenticated action: any anonymous caller could
+ * mint Convex file-storage upload URLs and use the deployment as free storage.
+ * It is now a mutation so the caller can be authenticated and authorized
+ * before a URL is issued (same pattern as driver KYC uploads).
  */
-export const generateUploadUrl = action({
+export const generateUploadUrl = mutation({
   args: {},
   handler: async (ctx) => {
+    const user = await getCurrentAuthUser(ctx);
+    if (!user) throw new Error("Authentication required");
+    const allowedRoles: readonly string[] = [
+      ROLES.DRIVER,
+      ROLES.OPERATIONS,
+      ROLES.COMPANY_ADMIN,
+      ROLES.SUPER_ADMIN,
+    ];
+    if (!user.role || !allowedRoles.includes(user.role)) {
+      throw new Error("Access denied: cannot upload proof of delivery");
+    }
     return await ctx.storage.generateUploadUrl();
   },
 });
@@ -710,64 +895,32 @@ async function canAccessPOD(
   return false;
 }
 
-function canCreatePOD(user: AuthUser, delivery: Doc<"deliveries">): boolean {
-  // Driver can create POD for assigned deliveries
-  if (user.role === ROLES.DRIVER && delivery.courierId === user.userId) {
-    return true;
-  }
-
-  // Operations and admin can create POD
-  if (
-    user.role === ROLES.OPERATIONS ||
-    user.role === ROLES.COMPANY_ADMIN ||
-    user.role === ROLES.SUPER_ADMIN
-  ) {
-    return true;
-  }
-
-  return false;
-}
-
-function canAddPODEvidence(
+/**
+ * POD creation/evidence/completion authorization.
+ *
+ * This is deliberately the same ownership rule as canAccessPOD: drivers only
+ * their assigned delivery, operations/super_admin any delivery, and company
+ * admins ONLY deliveries belonging to their own company (fail closed when the
+ * admin has no company association). The previous synchronous helper let any
+ * company admin create/complete a POD for another company's delivery.
+ */
+async function canManagePOD(
+  ctx: QueryCtx | MutationCtx,
   user: AuthUser,
   delivery: Doc<"deliveries">,
-  pod: Doc<"proof_of_delivery">
-): boolean {
-  // Same rules as createPOD
-  return canCreatePOD(user, delivery);
-}
-
-function canCompleteDelivery(user: AuthUser, delivery: Doc<"deliveries">): boolean {
-  // Driver can complete their assigned delivery
-  if (user.role === ROLES.DRIVER && delivery.courierId === user.userId) {
+): Promise<boolean> {
+  if (user.role === ROLES.SUPER_ADMIN || user.role === ROLES.OPERATIONS) {
     return true;
   }
 
-  // Operations and admin can complete
-  if (
-    user.role === ROLES.OPERATIONS ||
-    user.role === ROLES.COMPANY_ADMIN ||
-    user.role === ROLES.SUPER_ADMIN
-  ) {
-    return true;
+  if (user.role === ROLES.DRIVER) {
+    return delivery.courierId === user.userId;
   }
 
-  return false;
-}
-
-function canRecordFailure(user: AuthUser, delivery: Doc<"deliveries">): boolean {
-  // Driver can record failure for assigned delivery
-  if (user.role === ROLES.DRIVER && delivery.courierId === user.userId) {
-    return true;
-  }
-
-  // Operations and admin can record failure
-  if (
-    user.role === ROLES.OPERATIONS ||
-    user.role === ROLES.COMPANY_ADMIN ||
-    user.role === ROLES.SUPER_ADMIN
-  ) {
-    return true;
+  if (user.role === ROLES.COMPANY_ADMIN) {
+    if (!user.businessId) return false;
+    const order = await ctx.db.get(delivery.orderId);
+    return !!order && order.businessId === user.businessId;
   }
 
   return false;

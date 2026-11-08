@@ -1,4 +1,5 @@
-import { useParams } from "react-router";
+import { Component, type ReactNode } from "react";
+import { Link, useNavigate, useParams } from "react-router";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import DriverShell from "@/components/shells/DriverShell";
@@ -50,8 +51,8 @@ function formatDateTime(ts?: number | null): string {
   });
 }
 
-export default function DriverDeliveryDetail() {
-  const { deliveryId } = useParams<{ deliveryId: string }>();
+function DeliveryDetailContent({ deliveryId }: { deliveryId?: string }) {
+  const navigate = useNavigate();
 
   // Existing authorized queries — "skip" until we have a route param.
   const delivery = useQuery(
@@ -73,17 +74,16 @@ export default function DriverDeliveryDetail() {
     tracking === undefined;
 
   return (
-    <DriverShell activeItem="Delivery History">
-      <main className="driver-main dash-workspace">
-        <div className="driver-container">
-          {/* Back */}
-          <button
-            className="driver-history-back"
-            onClick={() => window.history.back()}
-          >
-            <ArrowLeft size={14} />
-            Back to history
-          </button>
+    <main className="driver-main dash-workspace">
+      <div className="driver-container">
+        {/* Back */}
+        <button
+          className="driver-history-back"
+          onClick={() => navigate("/driver/history")}
+        >
+          <ArrowLeft size={14} />
+          Back to history
+        </button>
 
           {/* Loading */}
           {loading ? (
@@ -121,10 +121,21 @@ export default function DriverDeliveryDetail() {
                     <span className="driver-location-tag">Pickup</span>
                   </div>
                   <div className="driver-location-address">
-                    {delivery.pickupLat !== undefined
-                      ? `${delivery.pickupLat.toFixed(5)}, ${delivery.pickupLng?.toFixed(5)}`
-                      : "—"}
+                    {delivery.details?.pickupAddress ??
+                      (delivery.pickupLat !== undefined
+                        ? `${delivery.pickupLat.toFixed(5)}, ${delivery.pickupLng?.toFixed(5)}`
+                        : "—")}
                   </div>
+                  {delivery.details?.pickupCity && (
+                    <div className="driver-location-meta">
+                      {delivery.details.pickupCity}
+                    </div>
+                  )}
+                  {delivery.details?.senderName && (
+                    <div className="driver-contact-row">
+                      Pickup contact: {delivery.details.senderName}
+                    </div>
+                  )}
                 </div>
                 <div className="driver-location-card">
                   <div className="driver-location-head">
@@ -132,10 +143,21 @@ export default function DriverDeliveryDetail() {
                     <span className="driver-location-tag dropoff">Dropoff</span>
                   </div>
                   <div className="driver-location-address">
-                    {delivery.dropoffLat !== undefined
-                      ? `${delivery.dropoffLat.toFixed(5)}, ${delivery.dropoffLng?.toFixed(5)}`
-                      : "—"}
+                    {delivery.details?.dropoffAddress ??
+                      (delivery.dropoffLat !== undefined
+                        ? `${delivery.dropoffLat.toFixed(5)}, ${delivery.dropoffLng?.toFixed(5)}`
+                        : "—")}
                   </div>
+                  {delivery.details?.dropoffCity && (
+                    <div className="driver-location-meta">
+                      {delivery.details.dropoffCity}
+                    </div>
+                  )}
+                  {delivery.details?.recipientName && (
+                    <div className="driver-contact-row">
+                      Recipient: {delivery.details.recipientName}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -146,6 +168,20 @@ export default function DriverDeliveryDetail() {
                 <DetailRow label="Accepted" value={formatDateTime(delivery.acceptedAt)} />
                 <DetailRow label="Started" value={formatDateTime(delivery.startedAt)} />
                 <DetailRow label="Completed" value={formatDateTime(delivery.completedAt)} />
+                {delivery.details?.packageSize && (
+                  <DetailRow
+                    label="Package"
+                    value={[
+                      delivery.details.packageSize,
+                      delivery.details.parcelType,
+                      delivery.details.weight != null
+                        ? `${delivery.details.weight} kg`
+                        : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  />
+                )}
                 {delivery.status === DELIVERY_STATUS.CANCELLED && (
                   <DetailRow
                     label="Rejected"
@@ -239,8 +275,60 @@ export default function DriverDeliveryDetail() {
               )}
             </>
           )}
-        </div>
-      </main>
+      </div>
+    </main>
+  );
+}
+
+/**
+ * Route-scoped error boundary. Convex queries throw for a missing delivery or
+ * an access violation; without a boundary that throw unmounts the whole app.
+ * The fallback stays inside the Driver shell so the driver can recover without
+ * losing navigation or the header.
+ */
+class DeliveryDetailBoundary extends Component<
+  { children: ReactNode },
+  { failed: boolean }
+> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  render() {
+    if (this.state.failed) {
+      return (
+        <main className="driver-main dash-workspace">
+          <div className="driver-container">
+            <Link className="driver-history-back" to="/driver/history">
+              <ArrowLeft size={14} />
+              Back to history
+            </Link>
+            <div className="driver-panel">
+              <AlertTriangle size={24} style={{ color: "#b91c1c", margin: "0 auto" }} />
+              <div className="driver-panel-title">Delivery unavailable</div>
+              <div className="driver-panel-desc">
+                This delivery does not exist or is not assigned to you. If you
+                just completed it, it may take a moment to appear in your history.
+              </div>
+            </div>
+          </div>
+        </main>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+export default function DriverDeliveryDetail() {
+  const { deliveryId } = useParams<{ deliveryId: string }>();
+
+  return (
+    <DriverShell activeItem="Delivery History">
+      <DeliveryDetailBoundary>
+        <DeliveryDetailContent deliveryId={deliveryId} />
+      </DeliveryDetailBoundary>
     </DriverShell>
   );
 }

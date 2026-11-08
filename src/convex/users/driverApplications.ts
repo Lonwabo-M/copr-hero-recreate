@@ -76,10 +76,13 @@ async function assertDocument(
 ): Promise<string | null> {
   const meta = await ctx.storage.getMetadata(storageId);
   if (!meta) return `${label} upload was not found — please upload it again`;
-  if (typeof meta.size === "number" && meta.size > MAX_DOCUMENT_BYTES) {
+  if (typeof meta.size !== "number" || meta.size <= 0) {
+    return `${label} upload is empty — please upload the file again`;
+  }
+  if (meta.size > MAX_DOCUMENT_BYTES) {
     return `${label} must be smaller than 10 MB`;
   }
-  if (meta.contentType && !ALLOWED_DOCUMENT_TYPES.includes(meta.contentType)) {
+  if (!meta.contentType || !ALLOWED_DOCUMENT_TYPES.includes(meta.contentType)) {
     return `${label} must be a photo (JPG, PNG, WebP, HEIC) or a PDF`;
   }
   return null;
@@ -223,6 +226,28 @@ export const submitMyDriverApplication = mutation({
         reviewedAt: undefined,
         createdAt: now,
       });
+      // Keep the account identity in sync on resubmission too. The initial
+      // capture did this, but a rejected application that was edited (e.g. a
+      // corrected surname or cell number) previously left the user record — and
+      // therefore the admin review card / roster / waybills — on the old data.
+      const displayName = `${normalized.firstName} ${normalized.surname}`;
+      await ctx.db.patch(userId, {
+        name: displayName,
+        phone: normalized.cellNumber,
+      });
+
+      await ctx.runMutation(internal.audit.service.recordGenericEvent, {
+        actorId: userId,
+        actorRole: ROLES.DRIVER,
+        category: "driver",
+        action: "driver.application_resubmitted",
+        entityType: "driver_applications",
+        entityId: existing._id,
+        before: JSON.stringify({ status: "rejected" }),
+        after: JSON.stringify({ status: "pending" }),
+        metadata: "Driver application resubmitted (Driver App)",
+      });
+
       return { applicationId: existing._id, resubmitted: true };
     }
 

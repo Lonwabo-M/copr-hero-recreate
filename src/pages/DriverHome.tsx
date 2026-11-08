@@ -1,4 +1,5 @@
 import { useQuery } from "convex/react";
+import { useNavigate } from "react-router";
 import { Loader2, Bell, Clock, XCircle, FileText } from "lucide-react";
 import { api } from "@/convex/_generated/api";
 import DriverShell from "@/components/shells/DriverShell";
@@ -14,18 +15,9 @@ const isExpired = (expiresAt: number) => expiresAt < Date.now();
 // delivery count and account identity, with entry points to the pages that
 // actually exist in the Driver App today.
 
-const ACTIVE_STATUSES = [
-  "assigned",
-  "driver_accepted",
-  "en_route_to_pickup",
-  "at_pickup",
-  "picked_up",
-  "in_transit",
-  "at_dropoff",
-];
-
 export default function DriverHome() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const current = useQuery(api.tracking.queries.getMyCurrentDelivery, {});
   const history = useQuery(api.deliveries.state_machine.getMyDeliveries, { limit: 50 });
   const offers = useQuery(api.dispatch.engine.getMyDispatchOffers, {});
@@ -48,8 +40,21 @@ export default function DriverHome() {
   const completedCount =
     history?.filter((d) => d.status === "delivered").length ?? 0;
 
+  // Dispatch only flows to approved drivers, so the offers entry point must be
+  // honest about that rather than opening an empty "offers" screen.
+  const applicationApproved = application?.status === "approved";
+  const offersCtaLabel = applicationApproved
+    ? "View Delivery Offers"
+    : application === undefined
+      ? "Checking application…"
+      : application === null
+        ? "Apply to receive offers"
+        : application.status === "pending"
+          ? "Available after approval"
+          : "Resolve application first";
+
   return (
-    <DriverShell activeItem="Active Delivery">
+    <DriverShell activeItem="Home">
       <main className="driver-main dash-workspace" style={{ paddingBottom: 24 }}>
         <div className="driver-container">
           <div className="driver-header">
@@ -80,9 +85,8 @@ export default function DriverHome() {
                     width: "100%",
                     cursor: "pointer",
                     background: "#fff",
-                    border: "1px solid #E8E8E8",
                   }}
-                  onClick={() => window.location.assign("/driver/apply")}
+                  onClick={() => navigate("/driver/apply")}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                     {application.status === "pending" ? (
@@ -116,9 +120,8 @@ export default function DriverHome() {
                     width: "100%",
                     cursor: "pointer",
                     background: "#fff",
-                    border: "1px solid #E8E8E8",
                   }}
-                  onClick={() => window.location.assign("/driver/apply")}
+                  onClick={() => navigate("/driver/apply")}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                     <FileText size={18} color="#0794B5" />
@@ -127,7 +130,7 @@ export default function DriverHome() {
                         Complete your driver application
                       </div>
                       <div style={{ fontSize: 12.5, color: "#666", marginTop: 2 }}>
-                        Capture your license and vehicle details to start receiving offers.
+                        Capture your licence and vehicle details to start receiving offers.
                       </div>
                     </div>
                   </div>
@@ -155,9 +158,11 @@ export default function DriverHome() {
                 )}
                 <button
                   className="driver-primary-btn"
-                  onClick={() => window.location.assign("/driver/offers")}
+                  onClick={() => navigate("/driver/offers")}
+                  disabled={!applicationApproved}
+                  style={{ opacity: applicationApproved ? 1 : 0.55, cursor: applicationApproved ? "pointer" : "not-allowed" }}
                 >
-                  View Delivery Offers
+                  {offersCtaLabel}
                 </button>
               </div>
 
@@ -182,7 +187,7 @@ export default function DriverHome() {
                 )}
                 <button
                   className="driver-primary-btn"
-                  onClick={() => window.location.assign("/driver/active-delivery")}
+                  onClick={() => navigate("/driver/active-delivery")}
                 >
                   Open Active Delivery
                 </button>
@@ -239,7 +244,7 @@ export default function DriverHome() {
                     <div style={{ fontSize: 22, fontWeight: 700, color: "#0794b5" }}>
                       {completedCount}
                     </div>
-                    <div style={{ fontSize: 12, color: "#666" }}>Completed deliveries</div>
+                    <div style={{ fontSize: 12, color: "#666" }}>Completed (latest 50)</div>
                   </div>
                   <div>
                     <div style={{ fontSize: 22, fontWeight: 700, color: "#202020" }}>

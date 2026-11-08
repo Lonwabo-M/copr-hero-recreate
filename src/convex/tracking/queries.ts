@@ -274,10 +274,13 @@ export const getMyCurrentDelivery = query({
       lastUpdate: driver.lastLocationUpdate,
     } : null;
 
-    // Get order
+    // Get order and the pickup contact (the sender). The assigned driver needs
+    // the full address plus a way to call pickup/recipient while carrying the
+    // parcel; the lookup is authorized by the driver-scoped delivery above.
     const order = await ctx.db.get(activeDelivery.orderId);
     const pickupAddress = order ? await ctx.db.get(order.pickupAddressId) : null;
     const dropoffAddress = order ? await ctx.db.get(order.dropoffAddressId) : null;
+    const sender = order ? await ctx.db.get(order.senderId) : null;
 
     return {
       delivery: {
@@ -293,11 +296,21 @@ export const getMyCurrentDelivery = query({
         pickupAddress: pickupAddress ? {
           street: pickupAddress.street,
           city: pickupAddress.city,
+          state: pickupAddress.state ?? null,
+          zip: pickupAddress.zip,
         } : null,
         dropoffAddress: dropoffAddress ? {
           street: dropoffAddress.street,
           city: dropoffAddress.city,
+          state: dropoffAddress.state ?? null,
+          zip: dropoffAddress.zip,
         } : null,
+        senderName: sender?.name ?? null,
+        senderPhone: sender?.phone ?? null,
+        recipientName: order?.recipientName ?? null,
+        recipientPhone: order?.recipientPhone ?? null,
+        weightKg: order?.weight ?? null,
+        parcelType: order?.parcelType ?? null,
       },
       driverLocation,
     };

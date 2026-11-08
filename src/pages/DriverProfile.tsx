@@ -104,6 +104,15 @@ export default function DriverProfile() {
 
   const dirty = name !== (user?.name ?? "") || phone !== (user?.phone ?? "");
   const isDriver = user?.role === ROLES.DRIVER;
+  const createdAt = (user as { _creationTime?: unknown } | null)?._creationTime;
+  const memberSince =
+    typeof createdAt === "number"
+      ? new Date(createdAt).toLocaleDateString("en-ZA", {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+        })
+      : "—";
 
   const loading = user === undefined;
 
@@ -262,11 +271,7 @@ export default function DriverProfile() {
                   <div className="driver-timeline-item">
                     <span className="driver-timeline-time">Member since</span>
                     <span className="driver-timeline-text">
-                      {new Date((user as any)._creationTime).toLocaleDateString("en-ZA", {
-                        day: "2-digit",
-                        month: "short",
-                        year: "numeric",
-                      })}
+                      {memberSince}
                     </span>
                   </div>
                   {!isDriver && (

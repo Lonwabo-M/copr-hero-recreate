@@ -31,6 +31,10 @@ interface AppShellProps {
   /** Optional area qualifier rendered beside the logo (e.g. "Lasha Admin").
    *  The plain "Lasha" text is gone — the mark IS the brand. */
   brandLabel?: string;
+  /** Optional status control rendered in the top-right header cluster. The
+   *  Driver App puts its connectivity pill here so it cannot overlap the
+   *  profile button or the page header. */
+  headerAccessory?: React.ReactNode;
 }
 
 const LOGOUT_LABEL = "Log out";
@@ -40,6 +44,7 @@ export default function AppShell({
   children,
   activeItem,
   brandLabel,
+  headerAccessory,
 }: AppShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { signOut } = useAuthActions();
@@ -86,6 +91,10 @@ export default function AppShell({
     navigate(item.route);
   };
 
+  // The header profile control previously did nothing. In the Driver App it
+  // is the fastest route to the driver's own account and documents.
+  const profileRoute = area === "driver" ? "/driver/profile" : null;
+
   const handleLogout = () => {
     // Offline resilience hygiene: queued operational data (buffered GPS,
     // cached deliveries) is session-scoped and must never survive logout —
@@ -128,10 +137,12 @@ export default function AppShell({
         </div>
 
         <div className="dash-topnav-right">
+          {headerAccessory}
           <button
             className="dash-topnav-profile"
-            aria-label={AREA_LABELS[area]}
-            title={AREA_LABELS[area]}
+            aria-label={profileRoute ? "Open driver profile" : AREA_LABELS[area]}
+            title={profileRoute ? "Open driver profile" : AREA_LABELS[area]}
+            onClick={profileRoute ? () => navigate(profileRoute) : undefined}
           >
             <svg
               width="20"

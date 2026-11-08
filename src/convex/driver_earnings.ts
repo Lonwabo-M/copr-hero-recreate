@@ -66,18 +66,35 @@ export const getDriverEarnings = query({
     const limit = Math.max(1, Math.min(args.limit ?? 30, 100));
 
     // Authoritative settlements for the authenticated driver (server-side scope).
-    let rows = await ctx.db
+    // Read the driver's own set before applying the UI filters. The previous
+    // implementation applied `.take(limit + 1)` BEFORE the cursor lookup, so
+    // page 3 could never find its cursor and silently repeated page 1.
+    const allRows = await ctx.db
       .query("settlements")
       .withIndex("by_driver", (q) => q.eq("driverId", driverId))
-      .order("desc")
-      .take(limit + 1);
+      .collect();
 
-    if (args.cursor) {
-      const idx = rows.findIndex((r) => r._id === (args.cursor as any));
-      if (idx >= 0) rows = rows.slice(idx + 1);
-    }
+    const matchesStatus = (status: string): boolean => {
+      switch (args.status) {
+        case "payable":
+          return status === "pending" || status === "processing";
+        case "completed":
+          return status === "completed";
+        case "failed":
+          return status === "failed" || status === "disputed";
+        default:
+          return true;
+      }
+    };
 
-    // Server-side date-range filter on settlement createdAt.
+    // Newest first, then the selected status/date filters. The filters were
+    // previously ignored by the list (only the summary used them), so the
+    // Payable / Settled / Not payable tabs returned every settlement.
+    let rows = allRows
+      .slice()
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .filter((r) => matchesStatus(r.status));
+
     if (args.from !== undefined) {
       rows = rows.filter((r) => r.createdAt >= args.from!);
     }
@@ -85,8 +102,17 @@ export const getDriverEarnings = query({
       rows = rows.filter((r) => r.createdAt < args.to!);
     }
 
-    const hasMore = rows.length > limit;
-    const rowsPage = hasMore ? rows.slice(0, limit) : rows;
+    // Cursor pagination: resume after the row matching the cursor id. If the
+    // cursor is no longer in the filtered window (e.g. deleted data), return
+    // an empty page rather than showing duplicates from the first page.
+    let startIndex = 0;
+    if (args.cursor) {
+      const idx = rows.findIndex((r) => r._id === (args.cursor as any));
+      startIndex = idx >= 0 ? idx + 1 : rows.length;
+    }
+
+    const rowsPage = rows.slice(startIndex, startIndex + limit);
+    const hasMore = startIndex + rowsPage.length < rows.length;
 
     type EarningRow = {
       settlementId: string;
@@ -209,43 +235,13 @@ export const getDriverEarnings = query({
       });
     }
 
-    const allPayable = rowsOut.filter(
-      (r) => r.settlementStatus === "pending" || r.settlementStatus === "processing",
-    );
-    const allCompleted = rowsOut.filter((r) => r.settlementStatus === "completed");
-    const allFailed = rowsOut.filter(
-      (r) => r.settlementStatus === "failed" || r.settlementStatus === "disputed",
-    );
-
-    const earnedFromCompleted = allCompleted.reduce(
-      (sum, r) => sum + r.settlementDriverEarnings,
-      0,
-    );
-    const pendingPayable = allPayable.reduce(
-      (sum, r) => sum + r.settlementDriverEarnings,
-      0,
-    );
-    const eligibleForPayout = rowsOut
-      .filter((r) => r.payoutEligible)
-      .reduce((sum, r) => sum + r.settlementDriverEarnings, 0);
-
     return {
       items: rowsOut,
-      nextCursor: hasMore && rowsOut.length > 0
-        ? (rowsOut[rowsOut.length - 1].settlementId ?? null)
-        : null,
+      nextCursor:
+        hasMore && rowsOut.length > 0
+          ? (rowsOut[rowsOut.length - 1].settlementId ?? null)
+          : null,
       hasMore,
-      summary: {
-        earnedFromCompleted,
-        pendingPayable,
-        eligibleForPayout,
-        // External payout has never been run — do NOT invent a "paid" total.
-        paidOut: 0,
-        paidOutNote: "No external payouts recorded",
-        deliveredCount: allCompleted.length,
-        payableCount: allPayable.length,
-        failedCount: allFailed.length,
-      },
     };
   },
 });
@@ -300,7 +296,14 @@ export const getSettlementDriverEligibility = query({
 
     const matches = evalSettlement !== null && evalSettlement._id === settlement._id;
 
-    const result = (label: string, eligible_: boolean) => ({
+    // `reason` is passed in so early returns cannot hit the temporal dead zone
+    // of a later `const reason` (which made completed/failed/unmatched
+    // settlements throw instead of returning a driver-safe label).
+    const result = (
+      label: string,
+      eligible_: boolean,
+      reason: string,
+    ) => ({
       ok: true,
       eligible: eligible_,
       label,
@@ -308,18 +311,18 @@ export const getSettlementDriverEligibility = query({
     });
 
     if (!matches) {
-      return result("Not yet eligible", false);
+      return result("Not yet eligible", false, "Financial review required");
     }
 
     // Status label mapping (driver-safe, meaning-preserving).
     if (settlement.status === "completed") {
-      return result("Already settled", false);
+      return result("Already settled", false, "Settlement completed");
     }
     if (settlement.status === "failed" || settlement.status === "disputed") {
-      return result("Not payable", false);
+      return result("Not payable", false, "Settlement not payable");
     }
     if (!ELIGIBLE_SETTLEMENT_STATUSES.has(settlement.status)) {
-      return result("Not payable", false);
+      return result("Not payable", false, "Settlement is not payable");
     }
 
     const customerPaid = paid;
@@ -342,7 +345,11 @@ export const getSettlementDriverEligibility = query({
       && delivery?.status === "delivered";
 
     // Passed all Model B checks.
-    return result(eligible ? "Eligible" : "Not yet eligible", eligible);
+    return result(
+      eligible ? "Eligible" : "Not yet eligible",
+      eligible,
+      reason,
+    );
   },
 });
 
@@ -365,6 +372,8 @@ export const getDriverEarningsSummary = query({
         v.literal("failed"),
       ),
     ),
+    from: v.optional(v.number()),
+    to: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const user = await getCurrentAuthUser(ctx);
@@ -378,10 +387,27 @@ export const getDriverEarningsSummary = query({
       .withIndex("by_driver", (q) => q.eq("driverId", user.userId))
       .collect();
 
-    const filter =
-      args.status && args.status !== "all"
-        ? rows.filter((s) => s.status === args.status)
-        : rows;
+    let filter = rows;
+    if (args.status && args.status !== "all") {
+      filter = filter.filter((s) => {
+        switch (args.status) {
+          case "payable":
+            return s.status === "pending" || s.status === "processing";
+          case "completed":
+            return s.status === "completed";
+          case "failed":
+            return s.status === "failed" || s.status === "disputed";
+          default:
+            return true;
+        }
+      });
+    }
+    if (args.from !== undefined) {
+      filter = filter.filter((s) => s.createdAt >= args.from!);
+    }
+    if (args.to !== undefined) {
+      filter = filter.filter((s) => s.createdAt < args.to!);
+    }
 
     const completed = filter.filter((s) => s.status === "completed");
     const payable = filter.filter(
