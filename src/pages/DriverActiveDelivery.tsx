@@ -37,12 +37,11 @@ import {
   ExternalLink,
   ShieldCheck,
   Camera,
-  FileText,
   ClipboardCheck,
   PenLine,
-  Upload,
   Check,
   Phone,
+  LocateFixed,
 } from "lucide-react";
 import {
   DELIVERY_STATUS,
@@ -63,9 +62,18 @@ import {
   WifiOff,
   CloudUpload,
 } from "lucide-react";
+import SignaturePad from "@/components/pod/SignaturePad";
+import PODSummary from "@/components/pod/PODSummary";
+import {
+  POD_ACCEPT,
+  POD_MAX_PHOTOS,
+  validatePODPhoto,
+  validatePODSubmission,
+} from "@/lib/pod";
 import "@/styles/dashboard.css";
 import "@/styles/pages.css";
 import "@/styles/driver.css";
+import "@/styles/pod.css";
 
 // ─── Workflow configuration (mirrors the server state machine) ───────────────
 
@@ -91,7 +99,8 @@ const STATUS_ACTION: Partial<Record<Status, { label: string; operation: string }
   [DELIVERY_STATUS.AT_PICKUP]: { label: "Confirm Package Pickup", operation: "pickupPackage" },
   [DELIVERY_STATUS.PICKED_UP]: { label: "Start Delivery Trip", operation: "startTrip" },
   [DELIVERY_STATUS.IN_TRANSIT]: { label: "I've Arrived at Dropoff", operation: "arriveAtDropoff" },
-  [DELIVERY_STATUS.AT_DROPOFF]: { label: "Complete Delivery", operation: "completeDelivery" },
+  // AT_DROPOFF has no standalone completion action: the POD form below is the
+  // only path to completion, and the server requires evidence for it.
 };
 
 /** Statuses in which continuous location tracking runs. Mirrors the
@@ -142,6 +151,36 @@ const FAILURE_REASONS = [
 
 type FailureReason = (typeof FAILURE_REASONS)[number]["value"];
 
+interface PODLocation {
+  lat: number;
+  lng: number;
+  accuracy?: number;
+}
+
+/**
+ * Ask the browser for a one-off handover fix. Location is supplemental
+ * evidence: denial or timeout never blocks a valid POD submission.
+ */
+function requestPODLocation(): Promise<PODLocation | null> {
+  if (typeof navigator === "undefined" || !navigator.geolocation) {
+    return Promise.resolve(null);
+  }
+  return new Promise((resolve) => {
+    navigator.geolocation.getCurrentPosition(
+      (position) =>
+        resolve({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+          accuracy: Number.isFinite(position.coords.accuracy)
+            ? position.coords.accuracy
+            : undefined,
+        }),
+      () => resolve(null),
+      { enableHighAccuracy: true, timeout: 6_000, maximumAge: 30_000 },
+    );
+  });
+}
+
 export default function DriverActiveDelivery() {
   const [error, setError] = useState<string | null>(null);
   const [actionPending, setActionPending] = useState<string | null>(null);
@@ -165,14 +204,33 @@ export default function DriverActiveDelivery() {
   const pickupPackage = useMutation(api.deliveries.state_machine.pickupPackage);
   const startTrip = useMutation(api.deliveries.state_machine.startTrip);
   const arriveAtDropoff = useMutation(api.deliveries.state_machine.arriveAtDropoff);
-  const completeDelivery = useMutation(api.deliveries.state_machine.completeDelivery);
   const rejectAssignment = useMutation(api.deliveries.state_machine.rejectAssignment);
 
-  // POD mutations (existing POD backend)
-  const createPOD = useMutation(api.pod.service.createPOD);
-  const addPODEvidence = useMutation(api.pod.service.addPODEvidence);
+  // POD mutations. Completion is atomic: evidence records, delivery transition,
+  // notification, audit, and settlement commit together server-side.
+  const completeDeliveryWithPOD = useMutation(api.pod.service.completeDeliveryWithPOD);
   const generateUploadUrl = useMutation(api.pod.service.generateUploadUrl);
   const recordFailedDelivery = useMutation(api.pod.service.recordFailedDelivery);
+
+  const uploadPODBody = useCallback(
+    async (body: Blob, fileName: string, contentType: string): Promise<string> => {
+      const uploadUrl = await generateUploadUrl();
+      const result = await fetch(uploadUrl, {
+        method: "POST",
+        headers: { "Content-Type": contentType },
+        body,
+      });
+      if (!result.ok) {
+        throw new Error(`Upload failed for ${fileName}`);
+      }
+      const { storageId } = (await result.json()) as { storageId?: string };
+      if (!storageId) {
+        throw new Error(`Upload did not return a storage id for ${fileName}`);
+      }
+      return storageId;
+    },
+    [generateUploadUrl],
+  );
 
   const mutations: Record<string, (args: { deliveryId: any }) => Promise<unknown>> = useMemo(
     () => ({
@@ -182,7 +240,6 @@ export default function DriverActiveDelivery() {
       pickupPackage,
       startTrip,
       arriveAtDropoff,
-      completeDelivery,
     }),
     [
       acceptAssignment,
@@ -191,7 +248,6 @@ export default function DriverActiveDelivery() {
       pickupPackage,
       startTrip,
       arriveAtDropoff,
-      completeDelivery,
     ]
   );
 
@@ -204,6 +260,8 @@ export default function DriverActiveDelivery() {
   const [showFailureForm, setShowFailureForm] = useState(false);
   const [failureReason, setFailureReason] = useState<FailureReason>("recipient_unavailable");
   const [failureNotes, setFailureNotes] = useState("");
+  const [failureFiles, setFailureFiles] = useState<File[]>([]);
+  const failureUploadsRef = useRef<Array<{ file: File; storageId: string }>>([]);
   const [failurePending, setFailurePending] = useState(false);
   const [failureSuccess, setFailureSuccess] = useState(false);
 
@@ -312,11 +370,27 @@ export default function DriverActiveDelivery() {
     }
     setFailurePending(true);
     try {
+      const photoFileIds: string[] = [];
+      for (const file of failureFiles) {
+        let uploaded = failureUploadsRef.current.find(
+          (entry) => entry.file === file,
+        );
+        if (!uploaded) {
+          const storageId = await uploadPODBody(file, file.name, file.type);
+          uploaded = { file, storageId };
+          failureUploadsRef.current.push(uploaded);
+        }
+        photoFileIds.push(uploaded.storageId);
+      }
+
       await recordFailedDelivery({
         deliveryId,
         failureReason,
         failureNotes: failureNotes.trim() || undefined,
+        photoFileIds: photoFileIds.length > 0 ? photoFileIds : undefined,
       });
+      failureUploadsRef.current = [];
+      setFailureFiles([]);
       setShowFailureForm(false);
       setFailureNotes("");
       setFailureSuccess(true);
@@ -326,26 +400,34 @@ export default function DriverActiveDelivery() {
     } finally {
       setFailurePending(false);
     }
-  }, [deliveryId, failureReason, failureNotes, recordFailedDelivery, isOnline]);
+  }, [deliveryId, failureReason, failureNotes, failureFiles, uploadPODBody, recordFailedDelivery, isOnline]);
 
-  // ─── POD submission ────────────────────────────────────────────────────
-  // Flow (all server-validated, existing POD backend):
-  //   1. generateUploadUrl → Convex File Storage upload URL
-  //   2. POST file directly to storage (credentials never touch React)
-  //   3. createPOD → idempotent POD record (authorization + state checked)
-  //   4. addPODEvidence per file → server re-validates size/MIME/type
-  //   5. completeDelivery → server requires the POD to exist (authoritative)
+  // ─── POD capture and atomic submission ─────────────────────────────────
+  // Architecture: the browser uploads immutable evidence objects to Convex
+  // storage, then calls one atomic mutation that validates every storage id,
+  // creates the POD + file records, transitions the delivery, and emits the
+  // audit/tracking/settlement side effects. No partial POD can become visible.
 
   const [podRecipient, setPodRecipient] = useState("");
+  const [podRecipientPhone, setPodRecipientPhone] = useState("");
   const [podNotes, setPodNotes] = useState("");
+  const [podSignature, setPodSignature] = useState<string | null>(null);
   const [podFiles, setPodFiles] = useState<File[]>([]);
-  // Uploaded storage IDs + attachment progress survive a retry so a failure
-  // halfway through evidence attachment does not re-upload and duplicate files.
-  const podUploadsRef = useRef<
-    { file: File; storageId: string; name: string; size: number; mime: string; attached: boolean }[]
-  >([]);
+  const [podLocation, setPodLocation] = useState<PODLocation | null>(null);
+  const [podLocationState, setPodLocationState] = useState<
+    "idle" | "capturing" | "captured" | "unavailable"
+  >("idle");
+
+  // Uploaded objects survive a failed completion so a retry does not duplicate
+  // storage. Keys are the exact local evidence (data URL or File object).
+  const podUploadsRef = useRef<{
+    signatureDataUrl: string | null;
+    signatureStorageId: string | null;
+    photos: Array<{ file: File; storageId: string }>;
+  }>({ signatureDataUrl: null, signatureStorageId: null, photos: [] });
+
   const [podPhase, setPodPhase] = useState<
-    null | "uploading" | "creating" | "evidence" | "completing"
+    null | "locating" | "uploading" | "completing"
   >(null);
   const [podSuccess, setPodSuccess] = useState(false);
   const podBusy = podPhase !== null;
@@ -353,29 +435,94 @@ export default function DriverActiveDelivery() {
   const showPODForm =
     status === DELIVERY_STATUS.AT_DROPOFF && !podSuccess && !showFailureForm;
 
+  // Prefill known order details once per delivery, but keep them editable: the
+  // person accepting the parcel may differ from the name captured at booking.
+  const podPrefillRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!delivery || podPrefillRef.current === delivery.id) return;
+    podPrefillRef.current = delivery.id;
+    setPodRecipient((previous) => previous || delivery.recipientName || "");
+    setPodRecipientPhone((previous) => previous || delivery.recipientPhone || "");
+  }, [delivery]);
+
+  const locatePOD = useCallback(async () => {
+    setPodLocationState("capturing");
+    const location = await requestPODLocation();
+    if (!location) {
+      setPodLocationState("unavailable");
+      return null;
+    }
+    setPodLocation(location);
+    setPodLocationState("captured");
+    return location;
+  }, []);
+
   const handleFileSelect = (files: FileList | null) => {
     if (!files) return;
-    // Client-side pre-check for UX; server re-validates authoritatively.
-    const MAX = 10 * 1024 * 1024;
-    const allowed = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
-    const valid: File[] = [];
-    for (const f of Array.from(files)) {
-      if (f.size > MAX) {
-        setError(`${f.name} exceeds the 10MB limit`);
-        continue;
-      }
-      if (!allowed.includes(f.type)) {
-        setError(`${f.name} is not a supported file type (JPEG, PNG, WebP, PDF)`);
-        continue;
-      }
-      valid.push(f);
+    const remaining = POD_MAX_PHOTOS - podFiles.length;
+    if (remaining <= 0) {
+      setError(`A POD can include at most ${POD_MAX_PHOTOS} photos plus a signature.`);
+      return;
     }
-    if (valid.length > 0) {
-      setError(null);
-      // The picker changes the file set, so any uploads from a previous
-      // incomplete attempt no longer line up with it.
-      podUploadsRef.current = [];
-      setPodFiles((prev) => [...prev, ...valid].slice(0, 5));
+
+    const valid: File[] = [];
+    let firstError: string | null = null;
+    for (const file of Array.from(files)) {
+      const validationError = validatePODPhoto(file);
+      if (validationError) {
+        firstError ??= validationError;
+        continue;
+      }
+      valid.push(file);
+    }
+
+    if (valid.length > remaining) {
+      firstError ??= `Only ${remaining} more photo${remaining === 1 ? "" : "s"} can be added.`;
+    }
+    const accepted = valid.slice(0, remaining);
+    if (accepted.length > 0) {
+      setError(firstError);
+      podUploadsRef.current.photos = [];
+      setPodFiles((previous) => [...previous, ...accepted]);
+    } else if (firstError) {
+      setError(firstError);
+    }
+  };
+
+  const handleSignatureChange = (dataUrl: string | null) => {
+    setPodSignature(dataUrl);
+    // A changed signature must be uploaded again; photos are unaffected.
+    podUploadsRef.current.signatureDataUrl = null;
+    podUploadsRef.current.signatureStorageId = null;
+  };
+
+  const handleFailureFileSelect = (files: FileList | null) => {
+    if (!files) return;
+    const remaining = 5 - failureFiles.length;
+    if (remaining <= 0) {
+      setError("A failed-delivery record can include at most 5 photos.");
+      return;
+    }
+    const valid: File[] = [];
+    let firstError: string | null = null;
+    for (const file of Array.from(files)) {
+      const validationError = validatePODPhoto(file);
+      if (validationError) {
+        firstError ??= validationError;
+        continue;
+      }
+      valid.push(file);
+    }
+    if (valid.length > remaining) {
+      firstError ??= `Only ${remaining} more photo${remaining === 1 ? "" : "s"} can be added.`;
+    }
+    const accepted = valid.slice(0, remaining);
+    if (accepted.length > 0) {
+      setError(firstError);
+      failureUploadsRef.current = [];
+      setFailureFiles((previous) => [...previous, ...accepted]);
+    } else if (firstError) {
+      setError(firstError);
     }
   };
 
@@ -383,14 +530,18 @@ export default function DriverActiveDelivery() {
     if (!deliveryId) return;
     setError(null);
 
-    if (!podRecipient.trim()) {
-      setError("Recipient name is required");
+    const validationError = validatePODSubmission({
+      recipientName: podRecipient,
+      hasSignature: podSignature !== null,
+      photoCount: podFiles.length,
+    });
+    if (validationError) {
+      setError(validationError);
       return;
     }
 
     // POD submission is never claimable offline: completion must be confirmed
-    // by Convex (upload → POD record → evidence → completeDelivery, all
-    // server-validated). This handler only ever runs with connectivity.
+    // by Convex after upload and server-side evidence validation.
     if (!isOnline) {
       setError(
         "You're offline. Proof-of-delivery submission needs a connection — your location is still being saved and will sync automatically."
@@ -399,86 +550,101 @@ export default function DriverActiveDelivery() {
     }
 
     try {
-      // 1–2. Upload each file to Convex File Storage. If this is a retry after
-      // a partial failure, reuse the storage IDs already obtained instead of
-      // uploading the same evidence again.
-      const filesUnchanged =
-        podUploadsRef.current.length === podFiles.length &&
-        podFiles.every((file, i) => podUploadsRef.current[i]?.file === file);
-      if (!filesUnchanged) {
-        podUploadsRef.current = [];
-        setPodPhase("uploading");
-        for (const file of podFiles) {
-          const uploadUrl = await generateUploadUrl();
-          const result = await fetch(uploadUrl, {
-            method: "POST",
-            headers: { "Content-Type": file.type },
-            body: file,
-          });
-          if (!result.ok) {
-            throw new Error(`Upload failed for ${file.name}`);
-          }
-          const { storageId } = (await result.json()) as { storageId: string };
-          podUploadsRef.current.push({
-            file,
-            storageId,
-            name: file.name,
-            size: file.size,
-            mime: file.type,
-            attached: false,
-          });
-        }
+      // Location is best-effort and never blocks a handover.
+      let location = podLocation;
+      if (!location) {
+        setPodPhase("locating");
+        location = await locatePOD();
       }
 
-      // 3. Create the idempotent POD record
-      setPodPhase("creating");
-      const { podId } = await createPOD({
+      // Upload the signature once and reuse it if completion retries.
+      let signatureStorageId: string | null = null;
+      if (podSignature) {
+        setPodPhase("uploading");
+        if (
+          podUploadsRef.current.signatureDataUrl !== podSignature ||
+          !podUploadsRef.current.signatureStorageId
+        ) {
+          const blob = await (await fetch(podSignature)).blob();
+          const uploaded = await uploadPODBody(
+            blob,
+            "recipient-signature.png",
+            "image/png",
+          );
+          podUploadsRef.current.signatureDataUrl = podSignature;
+          podUploadsRef.current.signatureStorageId = uploaded;
+        }
+        signatureStorageId = podUploadsRef.current.signatureStorageId;
+      }
+
+      // Upload photos only when they are not already in the retry cache.
+      setPodPhase("uploading");
+      const photoFileIds: string[] = [];
+      for (const file of podFiles) {
+        let uploaded = podUploadsRef.current.photos.find(
+          (entry) => entry.file === file,
+        );
+        if (!uploaded) {
+          const storageId = await uploadPODBody(file, file.name, file.type);
+          uploaded = { file, storageId };
+          podUploadsRef.current.photos.push(uploaded);
+        }
+        photoFileIds.push(uploaded.storageId);
+      }
+
+      // One transaction creates the POD, links evidence, transitions status,
+      // records tracking/audit, settles the driver, and notifies the customer.
+      setPodPhase("completing");
+      await completeDeliveryWithPOD({
         deliveryId,
-        outcome: "delivered",
         recipientName: podRecipient.trim(),
+        recipientPhone: podRecipientPhone.trim() || undefined,
         deliveryNotes: podNotes.trim() || undefined,
+        signatureFileId: signatureStorageId ?? undefined,
+        photoFileIds: photoFileIds.length > 0 ? photoFileIds : undefined,
+        latitude: location?.lat,
+        longitude: location?.lng,
+        locationAccuracy: location?.accuracy,
       });
 
-      // 4. Attach evidence (server re-validates size/MIME and treats an
-      // already-attached storage ID as idempotent).
-      if (podUploadsRef.current.length > 0) {
-        setPodPhase("evidence");
-        for (const meta of podUploadsRef.current) {
-          if (meta.attached) continue;
-          await addPODEvidence({
-            podId,
-            fileId: meta.storageId,
-            fileType: meta.mime === "application/pdf" ? "document" : "photo",
-            fileName: meta.name,
-            fileSize: meta.size,
-            mimeType: meta.mime,
-          });
-          meta.attached = true;
-        }
-      }
-
-      // 5. Complete the delivery — server verifies the POD exists
-      setPodPhase("completing");
-      await completeDelivery({ deliveryId });
-
-      podUploadsRef.current = [];
+      podUploadsRef.current = {
+        signatureDataUrl: null,
+        signatureStorageId: null,
+        photos: [],
+      };
       setPodSuccess(true);
+      setPodSignature(null);
       setPodFiles([]);
       setPodRecipient("");
+      setPodRecipientPhone("");
       setPodNotes("");
+      setPodLocation(null);
+      setPodLocationState("idle");
       setTimeout(() => setPodSuccess(false), 6000);
     } catch (err) {
       setError(err instanceof Error ? err.message : "POD submission failed");
     } finally {
       setPodPhase(null);
     }
-  }, [deliveryId, podRecipient, podNotes, podFiles, generateUploadUrl, createPOD, addPODEvidence, completeDelivery, isOnline]);
+  }, [
+    deliveryId,
+    podRecipient,
+    podRecipientPhone,
+    podSignature,
+    podNotes,
+    podFiles,
+    podLocation,
+    locatePOD,
+    uploadPODBody,
+    completeDeliveryWithPOD,
+    isOnline,
+  ]);
 
   // Recipient name + notes + selected files are safe to PREPARE offline
   // (they already live in local component state); the submission button
   // stays disabled offline and nothing is claimed as submitted until the
-  // server confirms each step. No offline file persistence is added — the
-  // existing flow uploads directly to Convex File Storage and a temporary
+  // server confirms the atomic completion. No offline file persistence is
+  // added — proof is uploaded directly to Convex File Storage and a temporary
   // disconnection at dropoff does not justify an offline evidence store.
 
   // ─── Terminal-state buffer cleanup ─────────────────────────────────────
@@ -680,8 +846,8 @@ export default function DriverActiveDelivery() {
                       </span>
                     </div>
                     <p className="driver-action-hint">
-                      Record the handover, then complete the delivery. Proof of delivery is required
-                      by the system before completion.
+                      Capture the handover, then submit once. The server creates the POD and
+                      completes the delivery only after it validates the evidence.
                     </p>
 
                     <div style={{ display: "grid", gap: 12, marginBottom: 14 }}>
@@ -697,6 +863,25 @@ export default function DriverActiveDelivery() {
                           placeholder="Who received the package?"
                           value={podRecipient}
                           onChange={(e) => setPodRecipient(e.target.value)}
+                          maxLength={200}
+                          autoComplete="name"
+                          disabled={podBusy}
+                        />
+                      </div>
+                      <div>
+                        <label className="driver-detail-label" htmlFor="pod-recipient-phone">
+                          Recipient phone
+                        </label>
+                        <input
+                          id="pod-recipient-phone"
+                          type="tel"
+                          className="settings-input"
+                          style={{ width: "100%" }}
+                          placeholder="Optional contact number"
+                          value={podRecipientPhone}
+                          onChange={(e) => setPodRecipientPhone(e.target.value)}
+                          maxLength={40}
+                          autoComplete="tel"
                           disabled={podBusy}
                         />
                       </div>
@@ -704,20 +889,26 @@ export default function DriverActiveDelivery() {
                         <label className="driver-detail-label" htmlFor="pod-notes">
                           Delivery notes
                         </label>
-                        <input
+                        <textarea
                           id="pod-notes"
-                          type="text"
                           className="settings-input"
-                          style={{ width: "100%" }}
+                          style={{ width: "100%", minHeight: 72, resize: "vertical" }}
                           placeholder="Optional notes (e.g. left with reception)"
                           value={podNotes}
                           onChange={(e) => setPodNotes(e.target.value)}
+                          maxLength={1000}
                           disabled={podBusy}
                         />
                       </div>
                     </div>
 
-                    {/* File capture / upload */}
+                    <SignaturePad
+                      key={deliveryId ?? "pod-signature"}
+                      onChange={handleSignatureChange}
+                      disabled={podBusy}
+                    />
+
+                    {/* Photo capture / upload */}
                     <label
                       style={{
                         display: "flex",
@@ -726,18 +917,22 @@ export default function DriverActiveDelivery() {
                         padding: "12px 16px",
                         border: "1px dashed var(--border)",
                         borderRadius: 10,
-                        cursor: podBusy ? "not-allowed" : "pointer",
+                        cursor:
+                          podBusy || podFiles.length >= POD_MAX_PHOTOS
+                            ? "not-allowed"
+                            : "pointer",
                         color: "var(--text-secondary)",
                         fontSize: 13,
                         marginBottom: 12,
-                        opacity: podBusy ? 0.6 : 1,
+                        opacity:
+                          podBusy || podFiles.length >= POD_MAX_PHOTOS ? 0.6 : 1,
                       }}
                     >
                       <Camera size={16} />
-                      Add photo or document (max 5 files, 10MB each)
+                      Add delivery photo ({podFiles.length}/{POD_MAX_PHOTOS}, 10MB each)
                       <input
                         type="file"
-                        accept="image/jpeg,image/png,image/webp,application/pdf"
+                        accept={POD_ACCEPT}
                         multiple
                         capture="environment"
                         style={{ display: "none" }}
@@ -745,9 +940,39 @@ export default function DriverActiveDelivery() {
                           handleFileSelect(e.target.files);
                           e.target.value = "";
                         }}
-                        disabled={podBusy}
+                        disabled={podBusy || podFiles.length >= POD_MAX_PHOTOS}
                       />
                     </label>
+
+                    {/* Best-effort handover location */}
+                    <div className="driver-pod-location">
+                      <div>
+                        <span className="driver-pod-location-label">
+                          <LocateFixed size={13} /> Handover location
+                        </span>
+                        <span className="driver-pod-location-value">
+                          {podLocation
+                            ? `${podLocation.lat.toFixed(5)}, ${podLocation.lng.toFixed(5)}${
+                                podLocation.accuracy != null
+                                  ? ` · ±${Math.round(podLocation.accuracy)}m`
+                                  : ""
+                              }`
+                            : podLocationState === "capturing"
+                              ? "Getting your location…"
+                              : podLocationState === "unavailable"
+                                ? "Unavailable — submission can continue without it"
+                                : "Not captured yet"}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        className="driver-secondary-btn"
+                        onClick={() => void locatePOD()}
+                        disabled={podBusy || podLocationState === "capturing"}
+                      >
+                        {podLocationState === "capturing" ? "Locating…" : "Use my location"}
+                      </button>
+                    </div>
 
                     {podFiles.length > 0 && (
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
@@ -766,13 +991,14 @@ export default function DriverActiveDelivery() {
                               padding: "4px 8px",
                             }}
                           >
-                            {f.type === "application/pdf" ? <FileText size={12} /> : <Camera size={12} />}
+                            <Camera size={12} />
                             {f.name.length > 22 ? `${f.name.slice(0, 20)}…` : f.name}
                             {!podBusy && (
                               <button
+                                type="button"
                                 style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: "var(--text-muted)" }}
                                 onClick={() => {
-                                  podUploadsRef.current = [];
+                                  podUploadsRef.current.photos = [];
                                   setPodFiles((prev) => prev.filter((_, j) => j !== i));
                                 }}
                                 aria-label={`Remove ${f.name}`}
@@ -796,15 +1022,13 @@ export default function DriverActiveDelivery() {
                         ) : (
                           <CheckCircle2 size={16} />
                         )}
-                        {podPhase === "uploading"
-                          ? "Uploading proof..."
-                          : podPhase === "creating"
-                          ? "Recording POD..."
-                          : podPhase === "evidence"
-                          ? "Attaching files..."
-                          : podPhase === "completing"
-                          ? "Completing delivery..."
-                          : "Submit POD & Complete"}
+                        {podPhase === "locating"
+                          ? "Capturing location..."
+                          : podPhase === "uploading"
+                            ? "Uploading proof..."
+                            : podPhase === "completing"
+                              ? "Completing delivery..."
+                              : "Submit POD & Complete"}
                       </button>
                     </div>
                   </div>
@@ -868,6 +1092,80 @@ export default function DriverActiveDelivery() {
                           disabled={failurePending}
                         />
 
+                        <label
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                            padding: "10px 12px",
+                            border: "1px dashed var(--border)",
+                            borderRadius: 9,
+                            cursor:
+                              failurePending || failureFiles.length >= 5
+                                ? "not-allowed"
+                                : "pointer",
+                            color: "var(--text-secondary)",
+                            fontSize: 12,
+                            marginBottom: 10,
+                            opacity:
+                              failurePending || failureFiles.length >= 5 ? 0.6 : 1,
+                          }}
+                        >
+                          <Camera size={14} />
+                          Add failure photo (optional, {failureFiles.length}/5)
+                          <input
+                            type="file"
+                            accept={POD_ACCEPT}
+                            multiple
+                            capture="environment"
+                            style={{ display: "none" }}
+                            onChange={(e) => {
+                              handleFailureFileSelect(e.target.files);
+                              e.target.value = "";
+                            }}
+                            disabled={failurePending || failureFiles.length >= 5}
+                          />
+                        </label>
+
+                        {failureFiles.length > 0 && (
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
+                            {failureFiles.map((file, index) => (
+                              <span
+                                key={`${file.name}-${index}`}
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 6,
+                                  fontSize: 11.5,
+                                  color: "var(--text-primary)",
+                                  background: "var(--surface-muted)",
+                                  border: "1px solid var(--border-light)",
+                                  borderRadius: 6,
+                                  padding: "4px 8px",
+                                }}
+                              >
+                                <Camera size={12} />
+                                {file.name.length > 22 ? `${file.name.slice(0, 20)}…` : file.name}
+                                {!failurePending && (
+                                  <button
+                                    type="button"
+                                    style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: "var(--text-muted)" }}
+                                    onClick={() => {
+                                      failureUploadsRef.current = [];
+                                      setFailureFiles((previous) =>
+                                        previous.filter((_, i) => i !== index),
+                                      );
+                                    }}
+                                    aria-label={`Remove ${file.name}`}
+                                  >
+                                    ×
+                                  </button>
+                                )}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+
                         <div className="driver-action-row">
                           <button
                             type="button"
@@ -909,29 +1207,14 @@ export default function DriverActiveDelivery() {
                   </div>
                 )}
 
-                {/* Previously submitted POD info */}
+                {/* Previously submitted POD, including viewable evidence. */}
                 {existingPOD && !podSuccess && (
-                  <div className="driver-timeline" style={{ marginBottom: 16 }}>
-                    <div className="driver-timeline-title">
-                      <PenLine size={13} style={{ display: "inline", marginRight: 6 }} />
-                      Proof of delivery on record
-                    </div>
-                    <div className="driver-timeline-item">
-                      <span className="driver-timeline-time">
-                        {new Date(existingPOD.createdAt).toLocaleString("en-ZA", {
-                          day: "2-digit",
-                          month: "short",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </span>
-                      <span className="driver-timeline-text">
-                        {existingPOD.outcome === "delivered"
-                          ? `Delivered to ${existingPOD.recipientName}`
-                          : `Outcome: ${existingPOD.outcome}`}
-                        {existingPOD.files?.length > 0 && ` · ${existingPOD.files.length} file(s) attached`}
-                      </span>
-                    </div>
+                  <div style={{ marginBottom: 16 }}>
+                    <PODSummary
+                      pod={existingPOD}
+                      title="Proof of delivery on record"
+                      showCoordinates
+                    />
                   </div>
                 )}
 

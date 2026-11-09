@@ -90,12 +90,15 @@ milestone. A detailed timeline section lists real `tracking_events`
 
 ## POD
 
-After a delivery reaches `delivered`, the page reads
+After a delivery reaches `delivered` (or `failed`), the page reads
 `pod.service.getPODForDelivery` under the **existing** POD authorization
-(unchanged submission path; customers can only read PODs for their own
-deliveries). Shown: outcome, recipient name, delivery time, and evidence-file
-count. Full evidence files and internal POD diagnostics are not rendered.
-If a POD does not exist yet the page shows "Not yet available".
+(customers can only read PODs for their own deliveries). The shared POD summary
+shows outcome, recipient, timestamp, notes/failure details, signature preview,
+photo gallery, and document links. Evidence URLs are resolved server-side only
+after ownership is verified; raw storage IDs and internal diagnostics are not
+rendered. Customers see the fact and accuracy of a captured handover location,
+not its coordinates. If a POD does not exist, the page shows an honest empty
+state instead of inventing evidence.
 
 ## Files
 

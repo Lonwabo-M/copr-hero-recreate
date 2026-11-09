@@ -61,7 +61,7 @@ const DRIVER_STATUS_ACTION: Partial<Record<string, { label: string; operation: s
   [DELIVERY_STATUS.AT_PICKUP]: { label: "Confirm Package Pickup", operation: "pickupPackage" },
   [DELIVERY_STATUS.PICKED_UP]: { label: "Start Delivery Trip", operation: "startTrip" },
   [DELIVERY_STATUS.IN_TRANSIT]: { label: "I've Arrived at Dropoff", operation: "arriveAtDropoff" },
-  [DELIVERY_STATUS.AT_DROPOFF]: { label: "Complete Delivery", operation: "completeDelivery" },
+  [DELIVERY_STATUS.AT_DROPOFF]: { label: "Submit POD & Complete", operation: "completeDeliveryWithPOD" },
 };
 
 // UI operation name → state-machine mutation export (must exist on the server)
@@ -72,7 +72,7 @@ const DRIVER_OPERATIONS: Record<string, string> = {
   pickupPackage: "pickupPackage",
   startTrip: "startTrip",
   arriveAtDropoff: "arriveAtDropoff",
-  completeDelivery: "completeDelivery",
+  completeDeliveryWithPOD: "completeDeliveryWithPOD",
   rejectAssignment: "rejectAssignment",
 };
 

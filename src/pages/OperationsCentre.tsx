@@ -5,6 +5,7 @@ import { api } from "@/convex/_generated/api";
 import type { Doc, Id } from "@/convex/_generated/dataModel";
 import OperationsShell from "@/components/shells/OperationsShell";
 import WaybillButton from "@/components/operations/WaybillButton";
+import PODSummary from "@/components/pod/PODSummary";
 import OpsLeafletMap from "@/components/operations/OpsLeafletMap";
 import { RoleGate, APP_AREAS } from "@/components/shells/RoleGate";
 import {
@@ -245,7 +246,6 @@ function OperationsCentreInner() {
   const [selectedDeliveryId, setSelectedDeliveryId] = useState<string | null>(null);
   const [dispatchTargetId, setDispatchTargetId] = useState<string | null>(null);
   const [reassigningId, setReassigningId] = useState<string | null>(null);
-  const [completingId, setCompletingId] = useState<string | null>(null);
   const [handlingId, setHandlingId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
@@ -307,24 +307,10 @@ function OperationsCentreInner() {
     }
   }
 
-  async function handleCompleteWithPOD(deliveryId: string, recipientName: string) {
-    setActionError(null);
-    setActionNotice(null);
-    setCompletingId(deliveryId);
-    try {
-      await completeDeliveryWithPOD({
-        deliveryId: deliveryId as any,
-        recipientName,
-      });
-      setActionNotice("Delivery marked as delivered and the recipient name recorded.");
-    } catch (error) {
-      setActionError(
-        actionErrorMessage(error, "The delivery could not be completed. Please try again."),
-      );
-    } finally {
-      setCompletingId(null);
-    }
-  }
+  // Completion is deliberately NOT an operations action. A POD must be
+  // captured by the assigned driver (or through a future evidence-capture
+  // surface); operations can reassign, fail, or cancel, but cannot fabricate
+  // a handover record on the driver's behalf.
 
   // ── Core reactive queries ──────────────────────────────────────────────────
 
@@ -367,9 +353,6 @@ function OperationsCentreInner() {
   );
   const failDelivery = useMutation(
     api.deliveries.state_machine.failDelivery,
-  );
-  const completeDeliveryWithPOD = useMutation(
-    api.pod.service.completeDeliveryWithPOD,
   );
 
   // ── Derived views ──────────────────────────────────────────────────────────
@@ -553,12 +536,10 @@ function OperationsCentreInner() {
             <ExceptionsTab
               exceptions={exceptions}
               reassigningId={reassigningId}
-              completingId={completingId}
               handlingId={handlingId}
               actionError={actionError}
               actionNotice={actionNotice}
               onReassign={handleReassign}
-              onCompleteWithPOD={handleCompleteWithPOD}
               onFail={handleFail}
               onCancel={handleCancel}
             />
@@ -1652,25 +1633,8 @@ function DeliveryPODSection({ deliveryId }: { deliveryId: string }) {
       ) : pod === null ? (
         <div className="ops-detail-value ops-small ops-muted">No POD on record</div>
       ) : (
-        <div className="ops-detail-value ops-small">
-          <div>Outcome: {pod.outcome ?? "—"}</div>
-          <div>Submitted: {formatDateTime(pod.deliveredAt)}</div>
-          {pod.recipientName ? (
-            <div className="ops-small ops-muted">Recipient: {pod.recipientName}</div>
-          ) : null}
-          {pod.failureReason ? (
-            <div className="ops-small" style={{ color: "#C62828" }}>
-              Failure reason: {pod.failureReason}
-            </div>
-          ) : null}
-          {pod.files && pod.files.length > 0 && (
-            <div className="ops-small ops-muted">{pod.files.length} evidence file(s)</div>
-          )}
-          {pod.recipientSignatureId && (
-            <div className="ops-small">
-              Signature on file
-            </div>
-          )}
+        <div className="ops-detail-value">
+          <PODSummary pod={pod} showCoordinates />
         </div>
       )}
     </div>
@@ -1834,23 +1798,19 @@ function DriversTab({
 function ExceptionsTab({
   exceptions,
   reassigningId,
-  completingId,
   handlingId,
   actionError,
   actionNotice,
   onReassign,
-  onCompleteWithPOD,
   onFail,
   onCancel,
 }: {
   exceptions: Array<{ kind: string; delivery: OpsDeliveryRow; driverLoc?: DriverLocationEntry; message: string }>;
   reassigningId: string | null;
-  completingId: string | null;
   handlingId: string | null;
   actionError: string | null;
   actionNotice: string | null;
   onReassign: (id: string) => void;
-  onCompleteWithPOD: (id: string, recipientName: string) => void;
   onFail: (id: string, reason: string) => void;
   onCancel: (id: string, reason: string) => void;
 }) {
@@ -1937,35 +1897,9 @@ function ExceptionsTab({
                   </button>
                 )}
                 {e.delivery.status === DELIVERY_STATUS.AT_DROPOFF && (
-                  <button
-                    type="button"
-                    className="ops-btn ops-btn-sm"
-                    disabled={
-                      completingId === e.delivery._id ||
-                      reassigningId === e.delivery._id ||
-                      handlingId === e.delivery._id
-                    }
-                    onClick={() => {
-                      if (
-                        !window.confirm(
-                          "Mark this delivery as delivered? Only do this after the parcel is with the recipient. The completion is recorded against your account.",
-                        )
-                      ) {
-                        return;
-                      }
-                      const recipientName = window.prompt(
-                        "Recipient's full name (recorded on the proof of delivery):",
-                      );
-                      if (!recipientName?.trim()) return;
-                      onCompleteWithPOD(e.delivery._id, recipientName.trim().slice(0, 200));
-                    }}
-                  >
-                    {completingId === e.delivery._id ? (
-                      <><RefreshCw size={14} className="animate-spin" />Completing…</>
-                    ) : (
-                      <><CheckSquare size={14} />Mark delivered…</>
-                    )}
-                  </button>
+                  <span className="ops-small ops-muted" style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                    <Clock size={13} /> Awaiting driver POD
+                  </span>
                 )}
                 {(() => {
                   const failable = [
@@ -1980,7 +1914,6 @@ function ExceptionsTab({
                       className="ops-btn ops-btn-sm"
                       disabled={
                         handlingId === e.delivery._id ||
-                        completingId === e.delivery._id ||
                         reassigningId === e.delivery._id
                       }
                       onClick={() => {
@@ -2005,7 +1938,6 @@ function ExceptionsTab({
                     className="ops-btn ops-btn-sm"
                     disabled={
                       handlingId === e.delivery._id ||
-                      completingId === e.delivery._id ||
                       reassigningId === e.delivery._id
                     }
                     onClick={() => {

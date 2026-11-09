@@ -2,399 +2,284 @@
 
 ## Overview
 
-Lasha implements a server-side Proof of Delivery (POD) system using Convex. POD captures evidence that a delivery was completed (or failed) and associates it with the delivery record.
+Proof of Delivery (POD) is the immutable handover record for a delivery. It
+answers three questions with server-verified data:
 
-**Key principles:**
-- All POD operations are server-side authorized
-- POD is the evidence associated with a delivery
-- Delivery is the business object
-- POD supports both successful and failed delivery outcomes
-- Files are stored in Convex File Storage
-- Operations are idempotent
+1. **Who received the parcel?** Recipient name and optional phone.
+2. **What evidence proves it?** At least one recipient signature or delivery
+   photo, stored in Convex File Storage.
+3. **Where and when did it happen?** Server timestamp plus optional, validated
+   handover coordinates.
 
----
+POD is a separate domain from delivery state. The delivery state machine owns
+the transition to `delivered`; the POD domain owns the evidence that authorizes
+that transition.
 
-## Architecture
+### Design principles
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                    React UI                              │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────┐│
-│  │ Capture      │  │ Upload      │  │ View POD        ││
-│  │ Signature    │  │ Photos      │  │                 ││
-│  └──────┬──────┘  └──────┬──────┘  └────────┬────────┘│
-│         │                │                   │          │
-│  ┌──────┴────────────────┴───────────────────┴────────┐│
-│  │              POD Service Layer                      ││
-│  └──────────────────────┬─────────────────────────────┘│
-└─────────────────────────┼───────────────────────────────┘
-                          │
-┌─────────────────────────┼───────────────────────────────┐
-│                    Convex                               │
-│  ┌──────────────────────┴─────────────────────────────┐│
-│  │           POD Domain (server-side)                  ││
-│  │  • createPOD                                        ││
-│  │  • addPODEvidence                                   ││
-│  │  • completeDeliveryWithPOD                          ││
-│  │  • recordFailedDelivery                             ││
-│  │  • generateUploadUrl                                ││
-│  └──────────────────────┬─────────────────────────────┘│
-│                         │                               │
-│  ┌──────────────────────┴─────────────────────────────┐│
-│  │         Convex File Storage                         ││
-│  │  • Photos                                          ││
-│  │  • Signatures                                      ││
-│  │  • Documents                                       ││
-│  └────────────────────────────────────────────────────┘│
-└─────────────────────────────────────────────────────────┘
-```
+- The server is authoritative. The browser cannot mark a delivery delivered,
+  invent file metadata, or attach an empty POD.
+- Completion is atomic. Evidence records, delivery/order status, tracking,
+  audit, settlement, and customer notification commit in one Convex mutation.
+- Evidence is immutable once the delivery is terminal.
+- Evidence URLs are issued only through an authorized POD query.
+- Operations can review evidence, but cannot fabricate a handover on the
+  driver's behalf from the Operations Centre.
 
 ---
 
-## Data Model
+## End-to-end flow
 
-### Proof of Delivery
+```
+Driver at dropoff (AT_DROPOFF)
+  │
+  ├─ Capture recipient name (required)
+  ├─ Capture recipient phone / notes (optional)
+  ├─ Capture signature (canvas → PNG) and/or photos
+  ├─ Capture browser location (optional, best effort)
+  │
+  ├─ POST each blob to Convex File Storage
+  │     generateUploadUrl() → upload URL → storageId
+  │
+  └─ completeDeliveryWithPOD({
+       deliveryId, recipientName, recipientPhone, deliveryNotes,
+       signatureFileId?, photoFileIds?, latitude?, longitude?, locationAccuracy?
+     })
+        │
+        ├─ authenticate + authorize assigned driver
+        ├─ verify state is AT_DROPOFF
+        ├─ verify at least one evidence file
+        ├─ verify every storageId against actual size/MIME metadata
+        ├─ validate coordinate ranges and accuracy
+        ├─ insert proof_of_delivery + pod_files
+        ├─ set recipientSignatureId when a signature exists
+        ├─ patch delivery DELIVERED, order delivered
+        ├─ insert tracking event + audit event
+        ├─ create driver settlement + trip counter
+        └─ notify the order sender
+             │
+             ▼
+Authorized POD query returns record + storage URLs
+  ├─ Customer tracking page
+  ├─ Driver active/history page
+  └─ Operations delivery detail
+```
+
+A lost response is safe to retry: the deterministic key
+`pod-complete-${deliveryId}` returns the existing POD instead of creating a
+second one. Uploaded storage objects are cached client-side across retries so a
+failed completion does not re-upload the same evidence.
+
+### Components
+
+| Layer | File | Responsibility |
+|---|---|---|
+| Driver capture | `src/pages/DriverActiveDelivery.tsx` | Recipient fields, signature/photo capture, location, upload, atomic submit |
+| Signature canvas | `src/components/pod/SignaturePad.tsx` | Pointer/touch drawing, clear, PNG output |
+| Client rules | `src/lib/pod.ts` | File type/size/count validation and display labels |
+| Shared viewer | `src/components/pod/PODSummary.tsx` | Recipient, notes, location, signature/photo/document previews |
+| POD domain | `src/convex/pod/service.ts` | Authorized queries, atomic completion, failure recording, evidence validation |
+| Completion gate | `src/convex/deliveries/state_machine.ts` | Legacy completion path requires a POD **and** at least one evidence file |
+| Styles | `src/styles/pod.css` | Responsive POD card, gallery, signature surface |
+
+---
+
+## Data model
+
+### `proof_of_delivery`
 
 ```typescript
-proof_of_delivery: {
-  deliveryId: v.id("deliveries"),
-  orderId: v.id("orders"),
-  submittedBy: v.id("users"),
-  
-  // Delivery outcome
+{
+  deliveryId: Id<"deliveries">,
+  orderId: Id<"orders">,
+  submittedBy: Id<"users">,
   outcome: "delivered" | "partial" | "failed",
-  
-  // Recipient information
   recipientName: string,
   recipientPhone?: string,
-  recipientSignatureId?: string,
-  
-  // Delivery notes
+  recipientSignatureId?: string,   // storage id; pod_files is authoritative
   deliveryNotes?: string,
-  
-  // Location evidence
   latitude?: number,
   longitude?: number,
   locationAccuracy?: number,
-  
-  // Timestamps
   deliveredAt: number,
   createdAt: number,
   updatedAt: number,
-  
-  // Failure information
-  failureReason?: string,
+  failureReason?: FailureReason,   // required for outcome "failed"
   failureNotes?: string,
-  
-  // Idempotency
   idempotencyKey: string,
 }
 ```
 
-### POD Files
+Indexes: `by_delivery`, `by_order`, `by_submitter`, `by_outcome`,
+`by_idempotency`.
+
+### `pod_files`
 
 ```typescript
-pod_files: {
-  podId: v.id("proof_of_delivery"),
-  deliveryId: v.id("deliveries"),
-  fileId: string,          // Convex File Storage ID
+{
+  podId: Id<"proof_of_delivery">,
+  deliveryId: Id<"deliveries">,
+  fileId: string,                  // Convex storage id
   fileType: "photo" | "signature" | "document",
   fileName: string,
-  fileSize: number,
-  mimeType: string,
+  fileSize: number,                // resolved from storage metadata
+  mimeType: string,                // resolved from storage metadata
   description?: string,
-  uploadedBy: v.id("users"),
+  uploadedBy: Id<"users">,
   createdAt: number,
 }
 ```
 
----
+Indexes: `by_pod`, `by_delivery`, `by_type`.
 
-## POD Lifecycle
-
-### Successful Delivery
-
-```
-Driver arrives at dropoff (AT_DROPOFF)
-    ↓
-Driver captures POD:
-  • Recipient name
-  • Signature (optional)
-  • Photos (optional)
-  • Delivery notes (optional)
-  • GPS location (optional)
-    ↓
-completeDeliveryWithPOD()
-    ↓
-1. Validate authorization
-2. Validate delivery state
-3. Check idempotency
-4. Create POD record
-5. Store files
-6. Transition delivery to DELIVERED
-7. Update order status
-8. Record tracking event
-    ↓
-Delivery completed with evidence
-```
-
-### Failed Delivery
-
-```
-Driver encounters issue
-    ↓
-Driver records failure:
-  • Failure reason
-  • Failure notes
-  • Photos (optional)
-  • GPS location (optional)
-    ↓
-recordFailedDelivery()
-    ↓
-1. Validate authorization
-2. Validate delivery state
-3. Check idempotency
-4. Create POD record (outcome: failed)
-5. Store files
-6. Transition delivery to FAILED
-7. Update order status
-8. Record tracking event
-    ↓
-Delivery marked as failed with evidence
-```
+> Client-supplied `fileSize` and `mimeType` are never trusted. The server reads
+> `ctx.storage.getMetadata()` and records those authoritative values.
 
 ---
 
-## API Reference
+## Evidence rules
+
+| Rule | Value |
+|---|---|
+| Maximum files per POD | 5 total (including signature) |
+| Maximum photos | 4 when a signature is present |
+| Maximum file size | 10 MB |
+| Accepted successful-handover images | JPEG, PNG, WebP |
+| Signature format | PNG, generated by the canvas |
+| Successful handover evidence | At least one signature or photo |
+| Failure photos | Up to 5 images, optional |
+| Signature count | At most one per POD |
+| Accepted coordinates | lat −90…90, lng −180…180, accuracy 0…100,000 m |
+| Location requirement | Optional; denial never blocks a valid handover |
+
+Legacy `createPOD` + `addPODEvidence` calls remain available for staged
+records, but the state-machine completion gate rejects a POD with zero evidence
+files. The driver UI uses only the atomic completion call.
+
+---
+
+## Authorization
+
+`canAccessPOD` resolves ownership through `orderId`; it never trusts a
+client-supplied user or business identity.
+
+| Action | Customer | Driver | Operations | Company / Super Admin |
+|---|---|---|---|---|
+| View POD | own orders | assigned delivery | any | company-scoped / any |
+| Submit signature/photos | ❌ | assigned delivery | ❌ | ❌ |
+| Complete via POD UI | ❌ | assigned delivery | ❌ | ❌ |
+| Record failed delivery | ❌ | assigned delivery | API only | API only |
+| Review evidence in Operations | ❌ | ❌ | ✅ | ✅ |
+
+Operations deliberately has no “Mark delivered” control. It can reassign, fail,
+or cancel, but a handover record must originate from the delivery workflow. The
+server-side `completeDeliveryWithPOD` authorization remains available for
+trusted automation; it still requires validated evidence.
+
+Evidence URLs are resolved by `loadPODFiles()` only after the query has passed
+`canAccessPOD`. The browser never receives raw storage IDs as a download path
+and never constructs an evidence URL.
+
+---
+
+## API reference
 
 ### Queries
 
 | Query | Description | Auth |
-|-------|-------------|------|
-| `getPODForDelivery` | Get POD for a delivery | owner/driver/ops |
-| `getPOD` | Get POD by ID | owner/driver/ops |
-| `getMyPODs` | Get user's PODs | submitter |
+|---|---|---|
+| `getPODForDelivery` | Latest POD + evidence URLs for a delivery | `canAccessPOD` |
+| `getPOD` | POD by id + evidence URLs | `canAccessPOD` |
+| `getMyPODs` | PODs submitted by the session user | submitter |
 
 ### Mutations
 
 | Mutation | Description | Auth |
-|----------|-------------|------|
-| `createPOD` | Create POD record | driver/ops |
-| `addPODEvidence` | Add file to POD | driver/ops |
-| `completeDeliveryWithPOD` | Complete delivery with POD | driver/ops |
-| `recordFailedDelivery` | Record failed delivery | driver/ops |
+|---|---|---|
+| `completeDeliveryWithPOD` | Atomic POD + DELIVERED transition | `canManagePOD`, AT_DROPOFF, evidence required |
+| `recordFailedDelivery` | Failure POD + FAILED transition | `canManagePOD`, failable state |
+| `createPOD` | Staged POD record (legacy) | `canManagePOD`, non-terminal state |
+| `addPODEvidence` | Add one validated file (legacy) | `canManagePOD`, non-terminal state |
+| `generateUploadUrl` | Mint a Convex storage upload URL | driver / operations / admin |
 
-### Actions
+`completeDeliveryWithPOD` performs, in order:
 
-| Action | Description |
-|--------|-------------|
-| `generateUploadUrl` | Get upload URL for files |
+1. authenticate and resolve the actor from the session;
+2. verify delivery access (`canManagePOD`);
+3. return an existing POD for the deterministic completion key;
+4. require `AT_DROPOFF`;
+5. require a non-empty recipient name;
+6. require at least one evidence id and reject duplicates;
+7. validate every storage object’s size, MIME type, and image requirement;
+8. validate optional coordinates;
+9. insert POD + evidence, transitioning the delivery/order;
+10. record tracking + audit, create settlement, update trip count;
+11. notify the customer.
 
----
-
-## File Storage Flow
-
-### 1. Get Upload URL
-
-```typescript
-const uploadUrl = await generateUploadUrl();
-```
-
-### 2. Upload File
-
-```typescript
-const response = await fetch(uploadUrl, {
-  method: "POST",
-  headers: { "Content-Type": fileType },
-  body: fileBlob,
-});
-
-const { storageId } = await response.json();
-```
-
-### 3. Associate with POD
-
-```typescript
-await addPODEvidence({
-  podId,
-  fileId: storageId,
-  fileType: "photo",
-  fileName: file.name,
-  fileSize: file.size,
-  mimeType: file.type,
-});
-```
+If any step throws, the Convex transaction rolls back. A delivery cannot appear
+`delivered` with a partial POD or missing settlement.
 
 ---
 
-## Authorization Model
+## Failure flow
 
-| Action | Customer | Driver | Operations | Super Admin |
-|--------|----------|--------|------------|-------------|
-| View POD | ✅ (own) | ✅ (assigned) | ✅ | ✅ |
-| Create POD | ❌ | ✅ (assigned) | ✅ | ✅ |
-| Add Evidence | ❌ | ✅ (assigned) | ✅ | ✅ |
-| Complete Delivery | ❌ | ✅ (assigned) | ✅ | ✅ |
-| Record Failure | ❌ | ✅ (assigned) | ✅ | ✅ |
+1. Driver selects a failure reason and optional notes.
+2. Driver can attach up to five optional photos (validated the same way).
+3. `recordFailedDelivery` creates a POD with `outcome: "failed"`.
+4. Delivery moves to `failed`; order moves to `cancelled`.
+5. Tracking/audit events are recorded and the customer is notified with a
+   customer-safe reason.
+6. Customer tracking, driver history, and operations detail show the failure
+   POD and any evidence.
 
----
-
-## Supported Evidence
-
-### Photos
-
-- Maximum 10MB per file
-- Allowed types: JPEG, PNG, WebP
-- Multiple photos per POD
-- Metadata: fileName, fileSize, mimeType
-
-### Signatures
-
-- Stored as image files
-- One signature per POD
-- Captured via signature pad component
-
-### Documents
-
-- PDF files
-- Delivery notes as text
+Failure reasons: `recipient_unavailable`, `incorrect_address`,
+`refused_delivery`, `damaged_goods`, `missing_goods`, `vehicle_problem`,
+`safety_issue`, `other`.
 
 ---
 
-## Failure Workflow
+## Customer, driver, and operations views
 
-### Failure Reasons
+All three use the same `PODSummary` component with the same authorized query
+result:
 
-| Reason | Description |
-|--------|-------------|
-| `recipient_unavailable` | Nobody to receive |
-| `incorrect_address` | Wrong address |
-| `refused_delivery` | Recipient refused |
-| `damaged_goods` | Package damaged |
-| `missing_goods` | Items missing |
-| `vehicle_problem` | Vehicle issue |
-| `safety_issue` | Safety concern |
-| `other` | Other reason |
+- outcome badge (`Delivered`, `Partially delivered`, `Not delivered`);
+- recipient name and optional phone;
+- recorded timestamp;
+- handover location (coordinates only for driver/operations; customers see
+  “Captured at the delivery point” plus accuracy);
+- delivery notes / failure details;
+- signature preview;
+- photo gallery with open/download links;
+- document links (legacy PODs);
+- an explicit empty-evidence warning if an older record has no files.
 
-### Failure Process
-
-1. Driver selects failure reason
-2. Adds notes and photos
-3. System creates POD with outcome: "failed"
-4. Delivery transitions to FAILED
-5. Order status updated to "cancelled"
+The customer page shows the POD for `delivered` and `failed` attempts. A
+`cancelled` delivery has no POD section.
 
 ---
 
-## Idempotency
+## Testing
 
-All POD operations use idempotency keys:
+| Command | Coverage |
+|---|---|
+| `bunx tsx src/lib/pod.test.ts` | Client evidence rules, labels, limits |
+| `bunx tsx src/convex/testing/pod-workflow.test.ts` | Evidence gate, atomic driver call, signature link, URL authorization, no operations bypass |
+| `bunx tsx src/convex/testing/driver-workflow.test.ts` | Driver state/action alignment |
+| `bunx tsx src/pages/driverHistory.test.ts` | Driver POD read authorization |
+| `bunx tsx src/convex/testing/settlement.test.ts` | Settlement side effect remains wired |
+| `bun tsc -b --noEmit` | Full TypeScript contract |
 
-```typescript
-// POD creation
-idempotencyKey: `pod-${deliveryId}-${userId}`
-
-// Delivery completion
-idempotencyKey: `pod-complete-${deliveryId}`
-
-// Failure recording
-idempotencyKey: `pod-fail-${deliveryId}`
-```
-
-Duplicate requests return the existing POD without creating duplicates.
+No browser automation or authenticated staging session is available in this
+environment, so the flows are verified at the source/contract level and with
+TypeScript, not with end-to-end visual clicks.
 
 ---
 
-## Security Considerations
+## Future work
 
-1. **Authorization** - All operations verify user role and delivery assignment
-2. **File Validation** - File type and size limits enforced
-3. **IDOR Prevention** - Delivery access verified server-side
-4. **Idempotency** - Duplicate submissions prevented
-5. **Immutability** - Historical POD data preserved
-
----
-
-## React Integration
-
-### Use POD Hook
-
-```typescript
-import { useQuery, useMutation } from "convex/react";
-import { api } from "@/convex/_generated/api";
-
-function DeliveryPOD({ deliveryId }) {
-  const pod = useQuery(api.pod.service.getPODForDelivery, { deliveryId });
-  const completeDelivery = useMutation(api.pod.service.completeDeliveryWithPOD);
-  
-  const handleComplete = async (data) => {
-    await completeDelivery({
-      deliveryId,
-      recipientName: data.recipientName,
-      signatureFileId: data.signatureId,
-      photoFileIds: data.photoIds,
-    });
-  };
-  
-  return (
-    <div>
-      {pod ? (
-        <PODDetails pod={pod} />
-      ) : (
-        <PODCapture onComplete={handleComplete} />
-      )}
-    </div>
-  );
-}
-```
-
-### File Upload
-
-```typescript
-import { useAction } from "convex/react";
-
-function FileUpload() {
-  const generateUploadUrl = useAction(api.pod.service.generateUploadUrl);
-  
-  const uploadFile = async (file) => {
-    const uploadUrl = await generateUploadUrl();
-    
-    const response = await fetch(uploadUrl, {
-      method: "POST",
-      headers: { "Content-Type": file.type },
-      body: file,
-    });
-    
-    const { storageId } = await response.json();
-    return storageId;
-  };
-  
-  return <input type="file" onChange={(e) => uploadFile(e.target.files[0])} />;
-}
-```
-
----
-
-## File Structure
-
-```
-src/convex/
-├── pod/
-│   ├── service.ts          # POD mutations and queries
-│   └── pod.test.ts         # Tests
-└── schema.ts               # Enhanced with POD tables
-
-docs/
-└── proof-of-delivery.md    # This document
-```
-
----
-
-## Future Enhancements
-
-1. **Batch POD** - Complete multiple deliveries at once
-2. **POD Templates** - Custom forms per delivery type
-3. **Digital Signatures** - Cryptographic verification
-4. **POD Sharing** - Share proof with customers
-5. **POD Analytics** - Delivery success rates
-6. **Automated POD** - IoT-based delivery confirmation
+1. Cryptographic signature verification / signing certificates.
+2. Operations proxy capture for exceptional cases, with a distinct audit trail.
+3. Evidence retention policy, legal hold, and redaction controls.
+4. Batch handover for multi-parcel deliveries.
+5. Customer-facing evidence download as a combined PDF.

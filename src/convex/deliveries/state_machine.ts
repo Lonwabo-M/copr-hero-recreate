@@ -1309,6 +1309,19 @@ export const completeDelivery = mutation({
       );
     }
 
+    // 5d. A POD record alone is not proof. Require at least one immutable
+    // evidence file (signature or photo) so the legacy two-step path cannot
+    // complete a delivery with an empty POD shell.
+    const podEvidence = await ctx.db
+      .query("pod_files")
+      .withIndex("by_pod", (q) => q.eq("podId", existingPOD._id))
+      .collect();
+    if (podEvidence.length === 0) {
+      throw new Error(
+        "Proof of delivery must include at least one signature or delivery photo. Attach evidence before completing."
+      );
+    }
+
     // 6. Perform transition
     const now = Date.now();
     await ctx.db.patch(args.deliveryId, {

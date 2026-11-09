@@ -3,13 +3,13 @@ import { Link, useNavigate, useParams } from "react-router";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import DriverShell from "@/components/shells/DriverShell";
+import PODSummary from "@/components/pod/PODSummary";
 import {
   Loader2,
   Package,
   MapPin,
   AlertTriangle,
   ArrowLeft,
-  PenLine,
   Clock,
 } from "lucide-react";
 import { DELIVERY_STATUS } from "@/convex/schema";
@@ -201,10 +201,7 @@ function DeliveryDetailContent({ deliveryId }: { deliveryId?: string }) {
                 </div>
               ) : pod === null ? (
                 <div className="driver-timeline" style={{ marginBottom: 16 }}>
-                  <div className="driver-timeline-title">
-                    <PenLine size={13} style={{ display: "inline", marginRight: 6 }} />
-                    Proof of delivery
-                  </div>
+                  <div className="driver-timeline-title">Proof of delivery</div>
                   <div className="driver-timeline-item">
                     <span className="driver-timeline-time">—</span>
                     <span className="driver-timeline-text">
@@ -213,23 +210,12 @@ function DeliveryDetailContent({ deliveryId }: { deliveryId?: string }) {
                   </div>
                 </div>
               ) : (
-                <div className="driver-timeline" style={{ marginBottom: 16 }}>
-                  <div className="driver-timeline-title">
-                    <PenLine size={13} style={{ display: "inline", marginRight: 6 }} />
-                    Proof of delivery on record
-                  </div>
-                  <DetailRow label="Outcome" value={pod.outcome} />
-                  <DetailRow label="Recipient" value={pod.recipientName} />
-                  <DetailRow label="Submitted" value={formatDateTime(pod.createdAt)} />
-                  {pod.deliveryNotes && (
-                    <DetailRow label="Notes" value={pod.deliveryNotes} />
-                  )}
-                  {pod.files?.length > 0 && (
-                    <DetailRow
-                      label="Files"
-                      value={`${pod.files.length} file(s) attached`}
-                    />
-                  )}
+                <div style={{ marginBottom: 16 }}>
+                  <PODSummary
+                    pod={pod}
+                    title="Proof of delivery on record"
+                    showCoordinates
+                  />
                 </div>
               )}
 

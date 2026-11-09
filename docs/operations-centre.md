@@ -90,9 +90,14 @@ never invents state transitions and there is no generic
 | Reassign delivery (re-dispatch) | `dispatch/engine.reassignDelivery` | Dispatch tab (status `REASSIGNMENT_REQUIRED`) and Exceptions tab (`reassignment_required`) |
 | Fail delivery | `deliveries/state_machine.failDelivery` | Exceptions tab (mid-flight statuses only) |
 | Cancel delivery | `deliveries/state_machine.cancelDelivery` | Exceptions tab (`ASSIGNED`) |
-| Complete delivery via POD | `pod/service.completeDeliveryWithPOD` | Exceptions tab (`AT_DROPOFF`) |
+| Review POD evidence | `pod/service.getPODForDelivery` (read-only) | Live / delivery detail panel |
 
 Notes:
+
+- Completion is intentionally **not** an operations action. A handover record
+  must come from the assigned driver's POD flow with validated evidence.
+  Operations can reassign, fail, or cancel, and can review the resulting POD.
+  At `AT_DROPOFF` the Exceptions tab shows “Awaiting driver POD”.
 
 - Reassign moves a stuck/exception delivery back through dispatch (clears the
   assignment, sets `REASSIGNMENT_REQUIRED` → re-offers). Dispatch sends
@@ -148,10 +153,11 @@ Frontend and backend layers:
    (e.g. `getActiveDeliveries` → `OPERATIONS`, `SUPER_ADMIN` only;
    `getAvailableDriverLocations` → also `COMPANY_ADMIN`;
    `getOperationalDeliveryHistory` → operations only).
-3. **Mutations**: `dispatchDelivery`, `reassignDelivery`, `failDelivery`,
-   `cancelDelivery`, `completeDeliveryWithPOD` each validate role + delivery
-   state server-side and remain authoritative. `COMPANY_ADMIN` scoping is
-   enforced inside `dispatchDelivery` for company-owned deliveries.
+3. **Mutations**: `dispatchDelivery`, `reassignDelivery`, `failDelivery`, and
+   `cancelDelivery` each validate role + delivery state server-side and remain
+   authoritative. `COMPANY_ADMIN` scoping is enforced inside `dispatchDelivery`
+   for company-owned deliveries. `completeDeliveryWithPOD` remains an API-level
+   trusted automation path, but is not exposed in this UI.
 
 The frontend does not bypass, mask, or duplicate any of these checks; it only
 hides actions the current role cannot perform and logs server rejections.
@@ -189,11 +195,11 @@ The Operations Centre does **not** include:
 - payout eligibility or settlement processing
 - reconciliation views
 
-The detail panel shows POD state (outcome, recipient, failure reason, evidence
-file count, signature presence) for operational verification only — it never
-exposes settlement internals, payment credentials, or provider secrets.
-Customer personal information is limited to what logistics operations require
-(e.g. recipient name on a POD record).
+The detail panel shows the POD record and evidence gallery (outcome, recipient,
+timestamps, notes, failure reason, signature and photo previews) for
+operational verification only — it never exposes settlement internals, payment
+credentials, or provider secrets. Evidence URLs are returned by the authorized
+POD query after delivery-level access checks.
 
 ---
 

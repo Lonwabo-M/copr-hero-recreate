@@ -28,6 +28,7 @@ import { useParams, Link } from "react-router";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import CustomerShell from "@/components/shells/CustomerShell";
+import PODSummary from "@/components/pod/PODSummary";
 import { TrackingHeader, RouteMap, FreshnessChip, freshness, buildSteps, milestonesFromEvents, formatEventTime } from "@/components/tracking/TrackingProgress";
 import { DELIVERY_STATUS } from "@/convex/schema";
 import {
@@ -42,7 +43,6 @@ import {
   Calendar,
   Ruler,
   Check,
-  FileCheck2,
   CreditCard,
 } from "lucide-react";
 import { useState } from "react";
@@ -431,8 +431,8 @@ export default function DeliveryTracking() {
                 </div>
               )}
 
-              {/* POD after successful delivery — existing authorization applies */}
-              {status === DELIVERY_STATUS.DELIVERED && (
+              {/* POD after a delivered/failed attempt — existing authorization applies */}
+              {(status === DELIVERY_STATUS.DELIVERED || status === DELIVERY_STATUS.FAILED) && (
                 pod === undefined ? (
                   <div className="track-last-updated">
                     <div className="track-updated-icon is-neutral"><Loader2 size={18} className="animate-spin" /></div>
@@ -446,23 +446,15 @@ export default function DeliveryTracking() {
                     <div className="track-updated-icon is-neutral"><Clock size={18} /></div>
                     <div>
                       <p className="track-updated-label">Proof of delivery</p>
-                      <p className="track-updated-time">Not yet available</p>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="track-last-updated">
-                    <div className="track-updated-icon"><FileCheck2 size={18} /></div>
-                    <div>
-                      <p className="track-updated-label">Proof of delivery</p>
                       <p className="track-updated-time">
-                        {pod.outcome === "delivered" ? "Delivered" : pod.outcome}
-                        {pod.recipientName ? ` · Received by ${pod.recipientName}` : ""}
-                        {" · "}
-                        {formatEventTime(pod.deliveredAt)}
-                        {pod.files && pod.files.length > 0 ? ` · ${pod.files.length} evidence file(s) on file` : ""}
+                        {status === DELIVERY_STATUS.FAILED
+                          ? "No proof record was filed for this attempt"
+                          : "Not yet available"}
                       </p>
                     </div>
                   </div>
+                ) : (
+                  <PODSummary pod={pod} />
                 )
               )}
             </div>

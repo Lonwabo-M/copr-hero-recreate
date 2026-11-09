@@ -35,6 +35,79 @@ const TERMINAL_DELIVERY_STATUSES = new Set([
   DELIVERY_STATUS.CANCELLED,
 ]);
 
+/**
+ * Validate optional handover coordinates. Latitude/longitude must be supplied
+ * together, stay inside the valid geographic range, and use a sane accuracy.
+ * Absence is allowed: a device may deny location permission, and that must not
+ * block a valid handover.
+ */
+function validatePODLocation(
+  latitude?: number,
+  longitude?: number,
+  accuracy?: number,
+): void {
+  if (latitude === undefined && longitude === undefined) {
+    if (accuracy !== undefined) {
+      throw new Error("Location accuracy requires a latitude and longitude");
+    }
+    return;
+  }
+  if (latitude === undefined || longitude === undefined) {
+    throw new Error("Latitude and longitude must be supplied together");
+  }
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    throw new Error("Location coordinates must be finite numbers");
+  }
+  if (latitude < -90 || latitude > 90) {
+    throw new Error("Latitude must be between -90 and 90");
+  }
+  if (longitude < -180 || longitude > 180) {
+    throw new Error("Longitude must be between -180 and 180");
+  }
+  if (
+    accuracy !== undefined &&
+    (!Number.isFinite(accuracy) || accuracy < 0 || accuracy > 100_000)
+  ) {
+    throw new Error("Location accuracy must be between 0 and 100000 metres");
+  }
+}
+
+/**
+ * Load evidence with short-lived, authorized storage URLs. The POD query has
+ * already checked delivery ownership before this helper is called; storage IDs
+ * themselves are never returned as the customer-facing download path.
+ */
+async function loadPODFiles(
+  ctx: QueryCtx,
+  podId: Id<"proof_of_delivery">,
+) {
+  const files = await ctx.db
+    .query("pod_files")
+    .withIndex("by_pod", (q) => q.eq("podId", podId))
+    .collect();
+
+  const withUrls = await Promise.all(
+    files.map(async (file) => {
+      let url: string | null = null;
+      try {
+        url = await ctx.storage.getUrl(file.fileId as Id<"_storage">);
+      } catch {
+        // An orphaned storage object must not make the whole POD unreadable.
+        // The UI shows the file as unavailable instead.
+        url = null;
+      }
+      return { ...file, url };
+    }),
+  );
+
+  const rank: Record<string, number> = { signature: 0, photo: 1, document: 2 };
+  return withUrls.sort(
+    (a, b) =>
+      (rank[a.fileType] ?? 3) - (rank[b.fileType] ?? 3) ||
+      a.createdAt - b.createdAt,
+  );
+}
+
 // ─── Queries ──────────────────────────────────────────────────────────────────
 
 /**
@@ -64,12 +137,7 @@ export const getPODForDelivery = query({
 
     if (!pod) return null;
 
-    // Get associated files
-    const files = await ctx.db
-      .query("pod_files")
-      .withIndex("by_pod", (q) => q.eq("podId", pod._id))
-      .collect();
-
+    const files = await loadPODFiles(ctx, pod._id);
     return { ...pod, files };
   },
 });
@@ -94,12 +162,7 @@ export const getPOD = query({
       throw new Error("Access denied");
     }
 
-    // Get files
-    const files = await ctx.db
-      .query("pod_files")
-      .withIndex("by_pod", (q) => q.eq("podId", pod._id))
-      .collect();
-
+    const files = await loadPODFiles(ctx, pod._id);
     return { ...pod, files };
   },
 });
@@ -206,6 +269,7 @@ export const createPOD = mutation({
     if (!recipientName) {
       throw new Error("Recipient name is required for proof of delivery");
     }
+    validatePODLocation(args.latitude, args.longitude, args.locationAccuracy);
 
     const now = Date.now();
 
@@ -316,6 +380,14 @@ export const addPODEvidence = mutation({
       (file) => file.fileId === args.fileId
     );
     if (existingFile) {
+      // A retry of an already-linked signature should also repair the
+      // denormalized pointer on legacy POD records.
+      if (args.fileType === "signature" && pod.recipientSignatureId !== args.fileId) {
+        await ctx.db.patch(args.podId, {
+          recipientSignatureId: args.fileId,
+          updatedAt: Date.now(),
+        });
+      }
       return { fileId: existingFile._id };
     }
     if (existingFiles.length >= MAX_FILES_PER_POD) {
@@ -323,6 +395,15 @@ export const addPODEvidence = mutation({
     }
 
     const fileName = args.fileName.trim().slice(0, 200) || "evidence";
+
+    if (args.fileType === "signature") {
+      const existingSignature = existingFiles.find(
+        (file) => file.fileType === "signature",
+      );
+      if (existingSignature && existingSignature.fileId !== args.fileId) {
+        throw new Error("A proof of delivery can only have one signature");
+      }
+    }
 
     // Create file record using the storage metadata as the source of truth.
     const fileId = await ctx.db.insert("pod_files", {
@@ -338,9 +419,13 @@ export const addPODEvidence = mutation({
       createdAt: Date.now(),
     });
 
-    // Update POD timestamp
+    // Keep the denormalized signature pointer in sync. Older PODs may have the
+    // signature only in pod_files, so readers always resolve by fileType too.
     await ctx.db.patch(args.podId, {
       updatedAt: Date.now(),
+      ...(args.fileType === "signature"
+        ? { recipientSignatureId: args.fileId }
+        : {}),
     });
 
     // Record audit event
@@ -425,6 +510,12 @@ export const completeDeliveryWithPOD = mutation({
     if (new Set(evidenceIds).size !== evidenceIds.length) {
       throw new Error("The same proof file cannot be attached twice");
     }
+    if (evidenceIds.length === 0) {
+      throw new Error(
+        "At least one recipient signature or delivery photo is required for proof of delivery",
+      );
+    }
+    validatePODLocation(args.latitude, args.longitude, args.locationAccuracy);
     const evidenceMetadata = new Map<
       string,
       { size: number; contentType: string | null }
@@ -460,6 +551,7 @@ export const completeDeliveryWithPOD = mutation({
       outcome: "delivered",
       recipientName: recipientName.slice(0, 200),
       recipientPhone: args.recipientPhone?.trim().slice(0, 40),
+      recipientSignatureId: args.signatureFileId,
       deliveryNotes: args.deliveryNotes?.trim().slice(0, 1000),
       latitude: args.latitude,
       longitude: args.longitude,
@@ -646,6 +738,8 @@ export const recordFailedDelivery = mutation({
       );
     }
 
+    validatePODLocation(args.latitude, args.longitude);
+
     // Validate any failure photos against real storage metadata. This mutation
     // accepts file IDs from the client, so it must not let a caller attach
     // arbitrary IDs or fabricate file sizes/MIME types.
@@ -695,7 +789,6 @@ export const recordFailedDelivery = mutation({
       submittedBy: userId,
       outcome: "failed",
       recipientName: (args.recipientName?.trim() || "N/A").slice(0, 200),
-      deliveryNotes: args.failureNotes?.trim().slice(0, 1000),
       latitude: args.latitude,
       longitude: args.longitude,
       deliveredAt: now,

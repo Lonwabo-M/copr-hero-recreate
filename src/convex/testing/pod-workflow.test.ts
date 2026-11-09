@@ -2,18 +2,46 @@
  * Lasha POD Submission Workflow Tests
  *
  * Verifies the POD-gated delivery completion contract:
- * - completeDelivery requires an existing POD record (server-authoritative)
+ * - completeDelivery requires an existing POD record AND evidence
+ * - atomic completion validates storage metadata and persists the signature
  * - POD backend authorization model rejects cross-driver and unauthorized access
  * - POD file validation rules (size, MIME types)
- * - Driver UI only shows the POD form in the correct delivery state
+ * - Driver UI uses one atomic completion call; operations cannot fabricate POD
+ * - Customer/driver/operations evidence viewers receive authorized URLs
  *
  * Run with: bunx tsx src/convex/testing/pod-workflow.test.ts
  */
 
+import { readFileSync } from "node:fs";
 import {
   DELIVERY_STATUS,
   ROLES,
 } from "../schema";
+
+const podServiceSource = readFileSync(
+  new URL("../pod/service.ts", import.meta.url),
+  "utf8",
+);
+const stateMachineSource = readFileSync(
+  new URL("../deliveries/state_machine.ts", import.meta.url),
+  "utf8",
+);
+const driverPageSource = readFileSync(
+  new URL("../../pages/DriverActiveDelivery.tsx", import.meta.url),
+  "utf8",
+);
+const operationsPageSource = readFileSync(
+  new URL("../../pages/OperationsCentre.tsx", import.meta.url),
+  "utf8",
+);
+const podSummarySource = readFileSync(
+  new URL("../../components/pod/PODSummary.tsx", import.meta.url),
+  "utf8",
+);
+const signaturePadSource = readFileSync(
+  new URL("../../components/pod/SignaturePad.tsx", import.meta.url),
+  "utf8",
+);
 
 // ─── Test Harness ────────────────────────────────────────────────────────────
 
@@ -178,16 +206,60 @@ test("POD form appears only in AT_DROPOFF state", () => {
   expect(showPODForm(DELIVERY_STATUS.DELIVERED)).toBe(false);
 });
 
-test("driver UI submit flow order matches server expectations", () => {
-  // 1. upload files → 2. createPOD → 3. addPODEvidence → 4. completeDelivery
-  // createPOD state validation accepts AT_DROPOFF deliveries (server-verified)
-  const createPODValidStates = [
-    DELIVERY_STATUS.AT_DROPOFF,
-    DELIVERY_STATUS.IN_TRANSIT,
-    DELIVERY_STATUS.AT_PICKUP,
-    DELIVERY_STATUS.PICKED_UP,
-  ];
-  expect(createPODValidStates.includes(DELIVERY_STATUS.AT_DROPOFF)).toBe(true);
+test("driver UI uses one atomic POD completion call", () => {
+  expect(driverPageSource.includes("completeDeliveryWithPOD")).toBe(true);
+  expect(driverPageSource.includes("createPOD")).toBe(false);
+  expect(driverPageSource.includes("addPODEvidence")).toBe(false);
+  expect(driverPageSource.includes("state_machine.completeDelivery")).toBe(false);
+});
+
+test("server rejects atomic completion with no evidence", () => {
+  expect(
+    podServiceSource.includes("At least one recipient signature or delivery photo is required"),
+  ).toBe(true);
+});
+
+test("atomic completion persists the signature pointer and validates every file", () => {
+  expect(podServiceSource.includes("recipientSignatureId: args.signatureFileId")).toBe(true);
+  expect(podServiceSource.includes("ctx.storage.getMetadata")).toBe(true);
+  expect(podServiceSource.includes("ALLOWED_MIME_TYPES.includes(contentType)")).toBe(true);
+});
+
+test("server validates handover coordinates without making them mandatory", () => {
+  expect(podServiceSource.includes("function validatePODLocation")).toBe(true);
+  expect(podServiceSource.includes("Latitude must be between -90 and 90")).toBe(true);
+  expect(podServiceSource.includes("validatePODLocation(args.latitude, args.longitude, args.locationAccuracy)")).toBe(true);
+});
+
+test("failed-delivery flow can attach validated photo evidence", () => {
+  const failureBlock = driverPageSource.slice(
+    driverPageSource.indexOf("handleFailureSubmit"),
+    driverPageSource.indexOf("// ─── POD capture"),
+  );
+  expect(failureBlock.includes("photoFileIds")).toBe(true);
+  expect(failureBlock.includes("uploadPODBody")).toBe(true);
+});
+
+test("legacy completion path also requires at least one evidence file", () => {
+  expect(stateMachineSource.includes('query("pod_files")')).toBe(true);
+  expect(stateMachineSource.includes("podEvidence.length === 0")).toBe(true);
+  expect(stateMachineSource.includes("must include at least one signature")).toBe(true);
+});
+
+test("authorized POD queries resolve storage URLs for the viewer", () => {
+  expect(podServiceSource.includes("ctx.storage.getUrl")).toBe(true);
+  expect(podServiceSource.includes("loadPODFiles")).toBe(true);
+  expect(podSummarySource.includes("file.url") || podSummarySource.includes("photo.url")).toBe(true);
+});
+
+test("signature capture produces a PNG image", () => {
+  expect(signaturePadSource.includes('toDataURL("image/png")')).toBe(true);
+  expect(signaturePadSource.includes("onPointerDown")).toBe(true);
+});
+
+test("operations cannot fabricate a handover completion", () => {
+  expect(operationsPageSource.includes("completeDeliveryWithPOD")).toBe(false);
+  expect(operationsPageSource.includes("Awaiting driver POD")).toBe(true);
 });
 
 test("recipient name is mandatory in the UI and on the server", () => {
