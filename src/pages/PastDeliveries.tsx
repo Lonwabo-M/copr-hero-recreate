@@ -1,6 +1,8 @@
 import { useQuery } from "convex/react";
+import { Link } from "react-router";
 import { api } from "@/convex/_generated/api";
 import CustomerShell from "@/components/shells/CustomerShell";
+import { orderStatusFromDelivery, orderStatusTone } from "@/lib/orderStatus";
 import { Loader2, Package } from "lucide-react";
 import "@/styles/dashboard.css";
 import "@/styles/pages.css";
@@ -46,30 +48,42 @@ export default function PastDeliveries() {
               <div className="empty-state-desc">Your completed and cancelled deliveries will appear here.</div>
             </div>
           ) : (
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Tracking #</th>
-                  <th>Date</th>
-                  <th>Driver</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pastDeliveries.map((d: any) => (
-                  <tr key={d._id}>
-                    <td style={{ fontWeight: 600 }}>{d.trackingNumber}</td>
-                    <td>{formatDate(d.completedAt)}</td>
-                    <td>{d.driverName}</td>
-                    <td>
-                      <span className={`status-badge ${d.status}`}>
-                        {d.status.charAt(0).toUpperCase() + d.status.slice(1).replace(/_/g, " ")}
-                      </span>
-                    </td>
+            <div className="table-scroll">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Tracking #</th>
+                    <th scope="col">Date</th>
+                    <th scope="col">Driver</th>
+                    <th scope="col">Status</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {pastDeliveries.map((d: any) => {
+                    const status = orderStatusFromDelivery(d.status);
+                    return (
+                      <tr key={d._id}>
+                        <td style={{ fontWeight: 600 }}>
+                          <Link
+                            to={`/deliveries/${d._id}`}
+                            style={{ color: "#087f9c", textDecoration: "none" }}
+                          >
+                            {d.trackingNumber}
+                          </Link>
+                        </td>
+                        <td>{formatDate(d.completedAt)}</td>
+                        <td>{d.driverName && d.driverName !== "N/A" ? d.driverName : "—"}</td>
+                        <td>
+                          <span className={`status-badge ${orderStatusTone(status)}`}>
+                            {status}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
       </div>

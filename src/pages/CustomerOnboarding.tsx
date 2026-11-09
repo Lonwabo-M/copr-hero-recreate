@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link, Navigate, useNavigate } from "react-router";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { ArrowRight, ArrowLeft, Loader2, Check, MapPin } from "lucide-react";
@@ -249,9 +249,10 @@ export default function CustomerOnboarding() {
   }
 
   if (status === null) {
-    // Session failure — send to sign-in rather than faking the flow.
-    navigate("/auth?returnTo=%2Fonboarding%2Fcustomer", { replace: true });
-    return null;
+    // Session failure — send to sign-in rather than faking the flow. Use a
+    // declarative redirect; calling navigate() during render is a side effect
+    // React can run twice and warns about.
+    return <Navigate to="/auth?returnTo=%2Fonboarding%2Fcustomer" replace />;
   }
 
   const progressPercent = ((step + 1) / STEPS.length) * 100;
@@ -403,7 +404,7 @@ export default function CustomerOnboarding() {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+                gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 280px), 1fr))",
                 gap: "20px 24px",
               }}
             >
@@ -446,7 +447,7 @@ export default function CustomerOnboarding() {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+                gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 280px), 1fr))",
                 gap: "20px 24px",
               }}
             >
@@ -491,7 +492,7 @@ export default function CustomerOnboarding() {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+                gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 280px), 1fr))",
                 gap: "20px 24px",
               }}
             >

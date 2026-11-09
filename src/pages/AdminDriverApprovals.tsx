@@ -162,6 +162,9 @@ function ApplicationCard({
   const allChecked = Object.values(checks).every(Boolean);
   const canApprove =
     documentsPresent && allChecked && verificationNotes.trim().length >= 10;
+  // A rejection without a reason leaves the driver with no way to correct the
+  // application. The server accepts an optional note, so the UI requires one.
+  const canReject = notes.trim().length >= 5;
 
   const statusPill =
     app.status === "approved"
@@ -356,7 +359,7 @@ function ApplicationCard({
             Check each item against the documents and an independent screening source. Approval
             is refused until every check is recorded.
           </p>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 230px), 1fr))", gap: 8 }}>
             {(
               [
                 ["idDocumentChecked", "ID document matches the captured identity"],
@@ -396,6 +399,7 @@ function ApplicationCard({
       {app.status === "pending" && (
         <div style={{ display: "flex", gap: 10, marginTop: 14, alignItems: "center", flexWrap: "wrap" }}>
           <button
+            type="button"
             className="lasha-btn-primary"
             style={{ height: 40, padding: "0 18px", display: "inline-flex", alignItems: "center", gap: 8, border: "none", cursor: canApprove ? "pointer" : "not-allowed", opacity: canApprove ? 1 : 0.55 }}
             disabled={decisionPending || !canApprove}
@@ -407,6 +411,7 @@ function ApplicationCard({
           </button>
           {!rejecting ? (
             <button
+              type="button"
               style={{
                 height: 40,
                 padding: "0 16px",
@@ -432,11 +437,14 @@ function ApplicationCard({
               <input
                 className="dash-search"
                 style={{ height: 40, paddingLeft: 12 }}
-                placeholder="Reason for rejection (optional)"
+                placeholder="Reason for rejection (required — the driver sees this)"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
+                maxLength={500}
+                aria-label="Reason for rejection"
               />
               <button
+                type="button"
                 style={{
                   height: 40,
                   padding: "0 14px",
@@ -447,13 +455,16 @@ function ApplicationCard({
                   fontFamily: "Inter, sans-serif",
                   fontSize: 13,
                   fontWeight: 600,
-                  cursor: "pointer",
+                  cursor: canReject ? "pointer" : "not-allowed",
+                  opacity: canReject ? 1 : 0.55,
                   display: "inline-flex",
                   alignItems: "center",
                   gap: 6,
                 }}
+                disabled={decisionPending || !canReject}
+                title={canReject ? undefined : "Record why the application is rejected"}
                 onClick={() => {
-                  onReject(app._id, notes);
+                  onReject(app._id, notes.trim());
                   setRejecting(false);
                 }}
               >
@@ -509,7 +520,7 @@ export default function DriverApprovals() {
 
   return (
     <AdminShell activeItem="Driver Approvals">
-      <main className="ops-main">
+      <main className="ops-main ops-admin-main">
         <div className="ops-admin-head">
           <h1 className="ops-admin-portal">Admin Portal</h1>
           <span className="ops-admin-section">Driver Approvals</span>
@@ -540,9 +551,11 @@ export default function DriverApprovals() {
         <div className="ops-tabs" style={{ marginBottom: 18 }}>
           {STATUS_TABS.map((tab) => (
             <button
+              type="button"
               key={tab.id}
               className={`ops-tab ${statusTab === tab.id ? "active" : ""}`}
               onClick={() => setStatusTab(tab.id)}
+              aria-pressed={statusTab === tab.id}
             >
               <span>{tab.label}</span>
             </button>
@@ -550,7 +563,7 @@ export default function DriverApprovals() {
         </div>
 
         {error && (
-          <div style={{ marginBottom: 14, fontSize: 13, fontWeight: 600, color: "#C62828" }}>
+          <div role="alert" style={{ marginBottom: 14, fontSize: 13, fontWeight: 600, color: "#C62828" }}>
             {error}
           </div>
         )}

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { escapeHtml } from "@/lib/escapeHtml";
 
 // ─── Leaflet operational map (Google Maps placeholder) ───────────────────────
 // Renders the SAME data the previous inline SVG tactical map did — driver
@@ -171,8 +172,14 @@ export default function OpsLeafletMap({
         }),
         title: dr.name || "Driver",
       });
+      // Leaflet treats tooltip content as HTML. Driver names are editable by
+      // the driver, so they must be escaped before entering that string.
+      const tooltipName = escapeHtml(dr.name || "Driver");
+      const tooltipTracking = dr.trackingNumber
+        ? ` · ${escapeHtml(dr.trackingNumber)}`
+        : "";
       m.bindTooltip(
-        `<strong>${dr.name || "Driver"}</strong>${dr.trackingNumber ? ` · ${dr.trackingNumber}` : ""}${dr.stale ? " · stale signal" : ""}`,
+        `<strong>${tooltipName}</strong>${tooltipTracking}${dr.stale ? " · stale signal" : ""}`,
         { direction: "top", offset: [0, -8] },
       );
       if (dr.deliveryId) {

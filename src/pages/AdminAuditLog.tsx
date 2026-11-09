@@ -75,7 +75,7 @@ export default function AdminAuditLog() {
 
   return (
     <AdminShell activeItem="Audit Log">
-      <main className="ops-main">
+      <main className="ops-main ops-admin-main">
         <div className="ops-admin-head">
           <h1 className="ops-admin-portal">Admin Portal</h1>
           <span className="ops-admin-section">Audit Log</span>
@@ -112,15 +112,18 @@ export default function AdminAuditLog() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search action, entity, actor…"
+              aria-label="Search audit events"
               style={{ width: "100%", padding: "9px 12px 9px 34px" }}
             />
           </div>
           <div className="ops-tabs">
             {CATEGORIES.map((c) => (
               <button
+                type="button"
                 key={c.id || "all"}
                 className={`ops-tab ${category === c.id ? "active" : ""}`}
                 onClick={() => setCategory(c.id)}
+                aria-pressed={category === c.id}
               >
                 <span>{c.label}</span>
               </button>
@@ -143,11 +146,11 @@ export default function AdminAuditLog() {
             <table className="ops-table">
               <thead>
                 <tr>
-                  <th>Time</th>
-                  <th>Category</th>
-                  <th>Action</th>
-                  <th>Entity</th>
-                  <th>Actor</th>
+                  <th scope="col">Time</th>
+                  <th scope="col">Category</th>
+                  <th scope="col">Action</th>
+                  <th scope="col">Entity</th>
+                  <th scope="col">Actor</th>
                 </tr>
               </thead>
               <tbody>

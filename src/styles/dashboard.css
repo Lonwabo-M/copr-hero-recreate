@@ -152,8 +152,13 @@
   transition: background 0.18s ease;
 }
 
-.dash-topnav-profile:hover {
+.dash-topnav-profile:hover:not(:disabled) {
   background: #b0e4ee;
+}
+
+.dash-topnav-profile:disabled {
+  cursor: default;
+  opacity: 0.62;
 }
 
 .dash-topnav-profile svg {

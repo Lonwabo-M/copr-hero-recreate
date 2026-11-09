@@ -313,7 +313,7 @@ export default function Disputes() {
                 gap: 16,
               }}
             >
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 220px), 1fr))", gap: 14 }}>
                 <div>
                   <label style={labelStyle} htmlFor="dispute-delivery">
                     Delivery

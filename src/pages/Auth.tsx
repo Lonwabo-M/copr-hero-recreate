@@ -874,7 +874,7 @@ export default function AuthPage({ redirectAfterAuth = "/post-auth" }: AuthProps
         }}
       >
         <img
-          src="https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=1200&q=80"
+          src="/assets/van-fleet.jpg"
           alt=""
           className="absolute inset-0 w-full h-full object-cover"
           style={{ filter: "brightness(0.2) saturate(0.5)" }}

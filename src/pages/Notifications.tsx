@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { useNavigate } from "react-router";
 import { api } from "@/convex/_generated/api";
@@ -19,20 +20,33 @@ export default function Notifications() {
   const notifications = useQuery(api.notifications.service.getMyNotifications, {});
   const markAsRead = useMutation(api.notifications.service.markAsRead);
   const markAllAsRead = useMutation(api.notifications.service.markAllAsRead);
+  const [markError, setMarkError] = useState<string | null>(null);
+  const [markingAll, setMarkingAll] = useState(false);
+  const [markingId, setMarkingId] = useState<string | null>(null);
 
   const handleMarkAllRead = async () => {
+    setMarkError(null);
+    setMarkingAll(true);
     try {
       await markAllAsRead();
-    } catch (error) {
-      console.error("Failed to mark all as read:", error);
+    } catch {
+      setMarkError("We could not mark every notification as read. Please try again.");
+    } finally {
+      setMarkingAll(false);
     }
   };
 
   const handleMarkRead = async (notificationId: string) => {
+    setMarkError(null);
+    setMarkingId(notificationId);
     try {
       await markAsRead({ notificationId: notificationId as any });
-    } catch (error) {
-      console.error("Failed to mark as read:", error);
+      return true;
+    } catch {
+      setMarkError("We could not update that notification. Please try again.");
+      return false;
+    } finally {
+      setMarkingId(null);
     }
   };
 
@@ -40,8 +54,8 @@ export default function Notifications() {
   // for that delivery (entityId is the delivery id written server-side at
   // creation). Payment/system notifications stay in place — no payment detail
   // route exists to target.
-  const handleNotificationOpen = (n: { _id: string; type: string; isRead: boolean; entityId?: string | null }) => {
-    if (!n.isRead) void handleMarkRead(n._id);
+  const handleNotificationOpen = async (n: { _id: string; type: string; isRead: boolean; entityId?: string | null }) => {
+    if (!n.isRead) await handleMarkRead(n._id);
     if (n.type === "delivery" && n.entityId) {
       navigate(`/deliveries/${n.entityId}`);
     }
@@ -71,7 +85,9 @@ export default function Notifications() {
             <p className="page-subtitle">Stay updated on your deliveries and account activity</p>
             {notifications && notifications.length > 0 && (
               <button
-                onClick={handleMarkAllRead}
+                type="button"
+                onClick={() => void handleMarkAllRead()}
+                disabled={markingAll}
                 style={{
                   marginTop: 8,
                   padding: "6px 12px",
@@ -80,13 +96,32 @@ export default function Notifications() {
                   background: "none",
                   border: "1px solid #0794B5",
                   borderRadius: 6,
-                  cursor: "pointer",
+                  cursor: markingAll ? "wait" : "pointer",
+                  opacity: markingAll ? 0.6 : 1,
                 }}
               >
-                Mark all as read
+                {markingAll ? "Marking…" : "Mark all as read"}
               </button>
             )}
           </div>
+
+          {markError && (
+            <div
+              role="alert"
+              style={{
+                padding: "10px 14px",
+                marginBottom: 16,
+                borderRadius: 8,
+                background: "rgba(220, 38, 38, 0.08)",
+                border: "1px solid rgba(220, 38, 38, 0.3)",
+                color: "#b91c1c",
+                fontSize: 13,
+                fontWeight: 500,
+              }}
+            >
+              {markError}
+            </div>
+          )}
 
           {notifications === undefined ? (
             <div style={{ display: "flex", justifyContent: "center", padding: 60 }}>
@@ -103,11 +138,13 @@ export default function Notifications() {
               {notifications.map((n) => {
                 const Icon = iconMap[n.type] ?? Bell;
                 return (
-                  <div
+                  <button
+                    type="button"
                     key={n._id}
                     className={`notification-item ${!n.isRead ? "unread" : ""}`}
-                    onClick={() => handleNotificationOpen(n)}
-                    style={{ cursor: "pointer" }}
+                    onClick={() => void handleNotificationOpen(n)}
+                    disabled={markingId === n._id}
+                    aria-label={`${n.isRead ? "" : "Unread: "}${n.title}. ${getTimeAgo(n.createdAt)}`}
                   >
                     <div className={`notification-icon ${n.type}`}><Icon size={20} /></div>
                     <div className="notification-content">
@@ -115,7 +152,7 @@ export default function Notifications() {
                       <div className="notification-desc">{n.description}</div>
                     </div>
                     <div className="notification-time">{getTimeAgo(n.createdAt)}</div>
-                  </div>
+                  </button>
                 );
               })}
             </div>

@@ -80,7 +80,8 @@
   color: #856404;
 }
 
-.status-badge.completed {
+.status-badge.completed,
+.status-badge.delivered {
   background: #e6f9f0;
   color: #0a7c42;
 }
@@ -90,9 +91,15 @@
   color: #0794b5;
 }
 
-.status-badge.cancelled {
+.status-badge.cancelled,
+.status-badge.failed {
   background: #fde8e8;
   color: #c62828;
+}
+
+.table-scroll {
+  width: 100%;
+  overflow-x: auto;
 }
 
 /* Card grid */
@@ -197,10 +204,24 @@
   display: flex;
   align-items: flex-start;
   gap: 14px;
+  width: 100%;
   padding: 18px 20px;
+  border: 0;
   background: #fff;
+  font-family: inherit;
+  text-align: left;
   cursor: pointer;
   transition: background 0.15s;
+}
+
+.notification-item:focus-visible {
+  outline: 2px solid #0794b5;
+  outline-offset: -2px;
+}
+
+.notification-item:disabled {
+  cursor: wait;
+  opacity: 0.7;
 }
 
 .notification-item:hover {
@@ -230,6 +251,17 @@
 .notification-desc { font-size: 13px; color: #666; line-height: 1.5; }
 .notification-time { font-size: 12px; color: #999; white-space: nowrap; margin-top: 2px; }
 
+@media (max-width: 640px) {
+  .notification-item {
+    flex-wrap: wrap;
+  }
+
+  .notification-time {
+    width: 100%;
+    margin: 2px 0 0 54px;
+  }
+}
+
 /* Help items */
 .help-grid {
   display: grid;
@@ -242,7 +274,7 @@
   border: 1px solid #e8e8e8;
   border-radius: 10px;
   padding: 24px;
-  cursor: pointer;
+  cursor: default;
   transition: border-color 0.15s;
 }
 
@@ -266,13 +298,14 @@
   font-size: 15px;
   font-weight: 600;
   color: #202020;
-  margin-bottom: 6px;
+  margin: 0 0 6px;
 }
 
 .help-card-desc {
   font-size: 13px;
   color: #666;
   line-height: 1.5;
+  margin: 0;
 }
 
 /* Legal sections */

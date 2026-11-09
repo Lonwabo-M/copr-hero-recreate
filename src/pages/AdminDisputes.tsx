@@ -189,7 +189,7 @@ export default function AdminDisputes() {
   if (!allowed) {
     return (
       <OperationsShell activeItem="Disputes">
-        <main className="ops-main">
+        <main className="ops-main ops-admin-main">
           <div className="empty-state">
             <div className="empty-state-icon">
               <ShieldCheck size={24} />
@@ -207,7 +207,7 @@ export default function AdminDisputes() {
 
   return (
     <OperationsShell activeItem="Disputes">
-      <main className="ops-main">
+      <main className="ops-main ops-admin-main">
         <div className="ops-admin-head">
           <h1 className="ops-admin-portal">Operations Centre</h1>
           <span className="ops-admin-section">Disputes</span>
@@ -261,8 +261,10 @@ export default function AdminDisputes() {
           <div className="ops-tabs">
             {TABS.map((tab) => (
               <button
+                type="button"
                 key={tab.id || "all"}
                 className={`ops-tab ${statusFilter === tab.id ? "active" : ""}`}
+                aria-pressed={statusFilter === tab.id}
                 onClick={() => {
                   setStatusFilter(tab.id);
                   setOpenId(null);
@@ -303,14 +305,14 @@ export default function AdminDisputes() {
             <table className="ops-table">
               <thead>
                 <tr>
-                  <th>Reference</th>
-                  <th>Claim</th>
-                  <th>Customer</th>
-                  <th>Delivery</th>
-                  <th>Driver</th>
-                  <th>Target</th>
-                  <th>Status</th>
-                  <th />
+                  <th scope="col">Reference</th>
+                  <th scope="col">Claim</th>
+                  <th scope="col">Customer</th>
+                  <th scope="col">Delivery</th>
+                  <th scope="col">Driver</th>
+                  <th scope="col">Target</th>
+                  <th scope="col">Status</th>
+                  <th scope="col"><span className="sr-only">Actions</span></th>
                 </tr>
               </thead>
               <tbody>
@@ -366,6 +368,7 @@ export default function AdminDisputes() {
                     </td>
                     <td>
                       <button
+                        type="button"
                         className="ops-btn ops-btn-secondary"
                         style={{ fontSize: 12, padding: "5px 10px" }}
                         onClick={() => {

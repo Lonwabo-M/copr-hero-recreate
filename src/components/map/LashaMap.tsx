@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { escapeHtml } from "@/lib/escapeHtml";
 
 // ─── LashaMap ────────────────────────────────────────────────────────────────
 // One reusable map surface for the whole platform (Operations "Live Map",
@@ -124,7 +125,11 @@ export default function LashaMap({
         fillColor: color,
         fillOpacity: 1,
       });
-      if (point.label) marker.bindTooltip(point.label, { direction: "top" });
+      // Labels can contain addresses supplied during a delivery request;
+      // Leaflet renders tooltip strings as HTML, so escape them first.
+      if (point.label) {
+        marker.bindTooltip(escapeHtml(point.label), { direction: "top" });
+      }
       marker.addTo(layer);
     }
 

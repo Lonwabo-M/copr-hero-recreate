@@ -1,4 +1,4 @@
-const filters = ["All", "Pending", "In Transit", "Delivered"] as const;
+const filters = ["All", "Pending", "In Transit", "Delivered", "Cancelled", "Failed"] as const;
 
 interface OrderFiltersProps {
   activeFilter: string;
@@ -10,9 +10,11 @@ export default function OrderFilters({ activeFilter, onFilterChange }: OrderFilt
     <div className="dash-filters">
       {filters.map((filter) => (
         <button
+          type="button"
           key={filter}
           className={`dash-filter ${activeFilter === filter ? "active" : ""}`}
           onClick={() => onFilterChange(filter)}
+          aria-pressed={activeFilter === filter}
         >
           {filter}
         </button>

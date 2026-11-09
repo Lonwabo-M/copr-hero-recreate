@@ -40,7 +40,7 @@ export default function AdminPlatformHealth() {
   if (metrics === undefined) {
     return (
       <AdminShell activeItem="Platform Health">
-        <main className="ops-main">
+        <main className="ops-main ops-admin-main">
           <div className="ops-admin-head">
             <h1 className="ops-admin-portal">Admin Portal</h1>
             <span className="ops-admin-section">Platform Health</span>
@@ -123,7 +123,7 @@ export default function AdminPlatformHealth() {
 
   return (
     <AdminShell activeItem="Platform Health">
-      <main className="ops-main">
+      <main className="ops-main ops-admin-main">
         <div className="ops-admin-head">
           <h1 className="ops-admin-portal">Admin Portal</h1>
           <span className="ops-admin-section">Platform Health</span>
@@ -161,7 +161,7 @@ export default function AdminPlatformHealth() {
         </div>
 
         {/* Metric groups */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 14 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 300px), 1fr))", gap: 14 }}>
           {groups.map((g) => (
             <div key={g.title} className="ops-stat-card" style={{ padding: 18, cursor: "default" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>

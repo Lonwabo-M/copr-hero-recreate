@@ -57,6 +57,27 @@
   border-bottom: 1px solid var(--border-light);
 }
 
+/* Admin pages previously placed their body directly inside .ops-main, which
+   has no horizontal padding and clips vertical overflow. Give them the same
+   content gutter as the Operations Centre while keeping the portal header
+   full-bleed. */
+.ops-admin-main {
+  padding-left: 32px;
+  padding-right: 32px;
+  overflow-y: auto;
+}
+
+.ops-admin-main > .ops-admin-head {
+  margin-left: -32px;
+  margin-right: -32px;
+}
+
+.ops-admin-main .ops-tabs {
+  padding-left: 0;
+  padding-right: 0;
+  border-bottom: 0;
+}
+
 .ops-admin-portal {
   font-size: 30px;
   font-weight: 750;
@@ -1095,6 +1116,19 @@
 
   .ops-content {
     padding: 16px 16px 40px;
+  }
+
+  .ops-admin-main {
+    padding-left: 16px;
+    padding-right: 16px;
+    padding-bottom: 40px;
+  }
+
+  .ops-admin-main > .ops-admin-head {
+    margin-left: -16px;
+    margin-right: -16px;
+    padding-left: 16px;
+    padding-right: 16px;
   }
 
   .ops-stats-grid {

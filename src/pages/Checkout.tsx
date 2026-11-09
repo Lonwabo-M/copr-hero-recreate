@@ -164,9 +164,11 @@ export default function Checkout() {
           );
         }
       })
-      .catch((e: unknown) => {
+      .catch(() => {
         if (cancelled) return;
-        setError(e instanceof Error ? e.message : "Payment verification failed");
+        setError(
+          "We couldn't verify that payment. If you were charged, contact support before trying again.",
+        );
       })
       .finally(() => {
         if (cancelled) return;
@@ -192,8 +194,8 @@ export default function Checkout() {
           : msg.includes("email")
             ? "Your account needs a verified email address before paying."
             : msg.includes("Could not find public function")
-              ? "This payment option is not available on the current backend yet. Please use card checkout."
-              : msg || "We couldn't start your payment. Please try again.",
+              ? "This payment option is not available yet. Please use card checkout."
+              : "We couldn't start your payment. Please try again.",
     );
   };
 

@@ -82,6 +82,15 @@ export default function AdminPrivacyRequests() {
   const applyStatus = async (next: "in_progress" | "completed" | "refused") => {
     if (!selected) return;
     setError("");
+    if (
+      (next === "completed" || next === "refused") &&
+      note.trim().length < 5
+    ) {
+      setError(
+        "Add a resolution note before closing the request — it is the record of what the requester was told.",
+      );
+      return;
+    }
     setBusy(true);
     try {
       await updateStatus({
@@ -101,7 +110,7 @@ export default function AdminPrivacyRequests() {
   if (!allowed) {
     return (
       <OperationsShell activeItem="Privacy Requests">
-        <main className="ops-main">
+        <main className="ops-main ops-admin-main">
           <div className="empty-state">
             <div className="empty-state-icon">
               <ShieldCheck size={24} />
@@ -120,7 +129,7 @@ export default function AdminPrivacyRequests() {
 
   return (
     <OperationsShell activeItem="Privacy Requests">
-      <main className="ops-main">
+      <main className="ops-main ops-admin-main">
         <div className="ops-admin-head">
           <h1 className="ops-admin-portal">Operations Centre</h1>
           <span className="ops-admin-section">Privacy Requests</span>
@@ -160,8 +169,10 @@ export default function AdminPrivacyRequests() {
           <div className="ops-tabs">
             {TABS.map((tab) => (
               <button
+                type="button"
                 key={tab.id || "all"}
                 className={`ops-tab ${status === tab.id ? "active" : ""}`}
+                aria-pressed={status === tab.id}
                 onClick={() => {
                   setStatus(tab.id);
                   setOpenId(null);
@@ -202,13 +213,13 @@ export default function AdminPrivacyRequests() {
             <table className="ops-table">
               <thead>
                 <tr>
-                  <th>Reference</th>
-                  <th>Request</th>
-                  <th>Person</th>
-                  <th>Received</th>
-                  <th>Deadline</th>
-                  <th>Status</th>
-                  <th />
+                  <th scope="col">Reference</th>
+                  <th scope="col">Request</th>
+                  <th scope="col">Person</th>
+                  <th scope="col">Received</th>
+                  <th scope="col">Deadline</th>
+                  <th scope="col">Status</th>
+                  <th scope="col"><span className="sr-only">Actions</span></th>
                 </tr>
               </thead>
               <tbody>
@@ -247,6 +258,7 @@ export default function AdminPrivacyRequests() {
                     </td>
                     <td>
                       <button
+                        type="button"
                         className="ops-btn ops-btn-secondary"
                         style={{ fontSize: 12, padding: "5px 10px" }}
                         onClick={() => {
@@ -314,7 +326,7 @@ export default function AdminPrivacyRequests() {
               htmlFor="resolution-note"
               style={{ display: "block", fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "#8a8a8a", margin: "16px 0 6px" }}
             >
-              Resolution note (what was sent, and to whom)
+              Resolution note (required to complete or refuse — what was sent, and to whom)
             </label>
             <textarea
               id="resolution-note"
@@ -337,6 +349,7 @@ export default function AdminPrivacyRequests() {
 
             <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
               <button
+                type="button"
                 className="ops-btn ops-btn-secondary"
                 disabled={busy}
                 onClick={() => void applyStatus("in_progress")}
@@ -344,6 +357,7 @@ export default function AdminPrivacyRequests() {
                 <Clock size={14} /> Mark in progress
               </button>
               <button
+                type="button"
                 className="ops-btn ops-btn-primary"
                 disabled={busy}
                 onClick={() => void applyStatus("completed")}
@@ -351,6 +365,7 @@ export default function AdminPrivacyRequests() {
                 <CheckCircle2 size={14} /> Complete
               </button>
               <button
+                type="button"
                 className="ops-btn ops-btn-secondary"
                 disabled={busy}
                 onClick={() => void applyStatus("refused")}

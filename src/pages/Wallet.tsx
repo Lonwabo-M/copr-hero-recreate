@@ -30,6 +30,10 @@ export default function Wallet() {
   const [notice, setNotice] = useState<string | null>(null);
   const [startingTopUp, setStartingTopUp] = useState(false);
   const transactionsRef = useRef<HTMLDivElement>(null);
+  const modalRef = useRef<HTMLFormElement>(null);
+  const topUpTriggerRef = useRef<HTMLButtonElement>(null);
+  const startingTopUpRef = useRef(false);
+  startingTopUpRef.current = startingTopUp;
 
   const wallet = useQuery(api.users.getWallet);
   const transactions = useQuery(api.users.getTransactions, {});
@@ -78,10 +82,10 @@ export default function Wallet() {
           );
         }
       })
-      .catch((e: unknown) => {
+      .catch(() => {
         if (cancelled) return;
         setTopUpError(
-          e instanceof Error ? e.message : "We couldn't verify that top-up.",
+          "We couldn't verify that top-up. If you were charged, contact support before trying again.",
         );
       })
       .finally(() => {
@@ -102,6 +106,44 @@ export default function Wallet() {
     setNotice(null);
     setShowTopUpModal(true);
   };
+
+  // Dialog behaviour: Escape closes, focus stays inside the form, and focus
+  // returns to the control that opened it. Without this the top-up sheet was
+  // mouse-only and Tab could move into the page behind it.
+  useEffect(() => {
+    if (!showTopUpModal) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !startingTopUpRef.current) {
+        setShowTopUpModal(false);
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const focusable = modalRef.current?.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), input:not([disabled]), [href], select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      );
+      if (!focusable || focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = previousOverflow;
+      topUpTriggerRef.current?.focus();
+    };
+  }, [showTopUpModal]);
 
   const handleTopUp = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -132,10 +174,8 @@ export default function Wallet() {
         return;
       }
       setTopUpError("The payment provider did not return a checkout page.");
-    } catch (e) {
-      setTopUpError(
-        e instanceof Error ? e.message : "We couldn't start that top-up.",
-      );
+    } catch {
+      setTopUpError("We couldn't start that top-up. Please try again.");
     } finally {
       setStartingTopUp(false);
     }
@@ -220,6 +260,7 @@ export default function Wallet() {
                 type="button"
                 className="wallet-topup-btn"
                 onClick={openTopUp}
+                ref={topUpTriggerRef}
               >
                 <Plus size={18} />
                 Top Up
@@ -264,6 +305,7 @@ export default function Wallet() {
                       activeFilter === filter ? "active" : ""
                     }`}
                     onClick={() => setActiveFilter(filter)}
+                    aria-pressed={activeFilter === filter}
                   >
                     {filter}
                   </button>
@@ -339,14 +381,19 @@ export default function Wallet() {
           }}
         >
           <form
+            ref={modalRef}
             className="wallet-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="wallet-topup-title"
+            aria-describedby="wallet-topup-desc"
             onSubmit={handleTopUp}
             onClick={(event) => event.stopPropagation()}
           >
             <div className="wallet-modal-head">
               <div>
-                <h3 className="wallet-modal-title">Top Up Wallet</h3>
-                <p className="wallet-modal-desc">
+                <h3 className="wallet-modal-title" id="wallet-topup-title">Top Up Wallet</h3>
+                <p className="wallet-modal-desc" id="wallet-topup-desc">
                   Add funds with a card or supported Paystack checkout.
                 </p>
               </div>
@@ -378,15 +425,17 @@ export default function Wallet() {
                 value={topUpAmount}
                 onChange={(event) => setTopUpAmount(event.target.value)}
                 disabled={startingTopUp}
+                aria-invalid={Boolean(topUpError)}
+                aria-describedby="wallet-topup-hint"
                 autoFocus
               />
             </div>
-            <p className="wallet-modal-hint">
+            <p className="wallet-modal-hint" id="wallet-topup-hint">
               Minimum R10 · Maximum R50,000 per top-up.
             </p>
 
             {topUpError && (
-              <div className="wallet-modal-error">
+              <div className="wallet-modal-error" role="alert">
                 <AlertCircle size={15} />
                 <span>{topUpError}</span>
               </div>

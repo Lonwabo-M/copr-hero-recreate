@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useAction } from "convex/react";
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { api } from "@/convex/_generated/api";
 import CustomerShell from "@/components/shells/CustomerShell";
 import AddressField from "@/components/addresses/AddressField";
@@ -56,6 +56,18 @@ function pasteIntoInput(
   onChange(value.slice(0, start) + normalized + value.slice(end));
 }
 
+function parsePositiveNumber(value: string): number | null {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function todayInputValue(): string {
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${now.getFullYear()}-${month}-${day}`;
+}
+
 export default function RequestDelivery() {
   const navigate = useNavigate();
   const [submitting, setSubmitting] = useState(false);
@@ -75,8 +87,8 @@ export default function RequestDelivery() {
   const [pickupLocation, setPickupLocation] = useState("");
   const [dropoffLocation, setDropoffLocation] = useState("");
   const [scheduleDate, setScheduleDate] = useState("");
-  const [timeFrom, setTimeFrom] = useState("00:00");
-  const [timeTo, setTimeTo] = useState("00:00");
+  const [timeFrom, setTimeFrom] = useState("09:00");
+  const [timeTo, setTimeTo] = useState("17:00");
   const [recipientName, setRecipientName] = useState("");
   const [recipientPhone, setRecipientPhone] = useState("");
 
@@ -84,18 +96,33 @@ export default function RequestDelivery() {
     e.preventDefault();
     setError(null);
 
-    // Basic validation
-    if (!orderName.trim()) {
-      setError("Order name is required");
-      return;
+    // Validate every field marked required before doing any network work.
+    // Previously only the name and two addresses were checked, so the form
+    // submitted with no parcel type, dimensions, weight or schedule and then
+    // failed (or created an unserviceable order) on the backend.
+    if (!orderName.trim()) return setError("Order name is required");
+    if (!parcelType) return setError("Choose a parcel type");
+    if (!expeditionType) return setError("Choose an expedition type");
+    const widthValue = parsePositiveNumber(width);
+    if (widthValue === null) return setError("Enter a width greater than zero");
+    const heightValue = parsePositiveNumber(height);
+    if (heightValue === null) return setError("Enter a height greater than zero");
+    const weightValue = parsePositiveNumber(weight);
+    if (weightValue === null) return setError("Enter a weight greater than zero");
+    if (!pickupLocation.trim()) return setError("Pickup location is required");
+    if (!dropoffLocation.trim()) return setError("Drop-off location is required");
+    if (!scheduleDate) return setError("Choose a collection date");
+
+    const start = new Date(`${scheduleDate}T${timeFrom}`);
+    const end = new Date(`${scheduleDate}T${timeTo}`);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+      return setError("Choose a valid collection window");
     }
-    if (!pickupLocation.trim()) {
-      setError("Pickup location is required");
-      return;
+    if (end.getTime() <= start.getTime()) {
+      return setError("The end of the collection window must be after the start");
     }
-    if (!dropoffLocation.trim()) {
-      setError("Drop-off location is required");
-      return;
+    if (start.getTime() < Date.now() - 60_000) {
+      return setError("The collection window cannot start in the past");
     }
 
     setSubmitting(true);
@@ -126,17 +153,15 @@ export default function RequestDelivery() {
 
       setGeocoding(false);
 
-      const scheduledTime = scheduleDate
-        ? new Date(`${scheduleDate}T${timeFrom}`).getTime()
-        : undefined;
+      const scheduledTime = start.getTime();
 
       const result = await createOrderAndDelivery({
         orderName: orderName.trim(),
-        parcelType: parcelType || undefined,
-        expeditionType: expeditionType || undefined,
-        width: width ? parseFloat(width) : undefined,
-        height: height ? parseFloat(height) : undefined,
-        weight: weight ? parseFloat(weight) : undefined,
+        parcelType,
+        expeditionType,
+        width: widthValue,
+        height: heightValue,
+        weight: weightValue,
         pickupAddress: pickupLocation.trim(),
         dropoffAddress: dropoffLocation.trim(),
         pickupLat: pickupCoords.lat,
@@ -162,8 +187,8 @@ export default function RequestDelivery() {
       setPickupLocation("");
       setDropoffLocation("");
       setScheduleDate("");
-      setTimeFrom("00:00");
-      setTimeTo("00:00");
+      setTimeFrom("09:00");
+      setTimeTo("17:00");
       setRecipientName("");
       setRecipientPhone("");
     } catch {
@@ -190,7 +215,7 @@ export default function RequestDelivery() {
 
             {/* Error message */}
             {error && (
-              <div style={{
+              <div role="alert" aria-live="assertive" style={{
                 padding: "16px 20px",
                 borderRadius: 10,
                 background: "#fef2f2",
@@ -206,7 +231,7 @@ export default function RequestDelivery() {
             )}
 
             {/* Form */}
-            <form className="request-delivery-form" onSubmit={handleSubmit}>
+            <form className="request-delivery-form" onSubmit={handleSubmit} noValidate>
               <div className="form-grid">
                 {/* Left column */}
                 <div className="form-column">
@@ -224,6 +249,8 @@ export default function RequestDelivery() {
                         value={orderName}
                         onChange={(e) => setOrderName(e.target.value)}
                         onPaste={(e) => pasteIntoInput(e, orderName, setOrderName)}
+                        required
+                        maxLength={120}
                       />
                     </div>
                   </div>
@@ -239,6 +266,7 @@ export default function RequestDelivery() {
                         className="form-select"
                         value={parcelType}
                         onChange={(e) => setParcelType(e.target.value)}
+                        required
                       >
                         <option value="" disabled>Select parcel type</option>
                         <option value="document">Document</option>
@@ -261,6 +289,7 @@ export default function RequestDelivery() {
                         className="form-select"
                         value={expeditionType}
                         onChange={(e) => setExpeditionType(e.target.value)}
+                        required
                       >
                         <option value="" disabled>Select expedition</option>
                         <option value="standard">Standard</option>
@@ -285,6 +314,9 @@ export default function RequestDelivery() {
                           value={width}
                           onChange={(e) => setWidth(e.target.value)}
                           onPaste={(e) => pasteIntoInput(e, width, setWidth, true)}
+                          required
+                          min="0.01"
+                          step="0.01"
                         />
                         <span className="form-dimension-unit">cm</span>
                       </div>
@@ -296,6 +328,9 @@ export default function RequestDelivery() {
                           value={height}
                           onChange={(e) => setHeight(e.target.value)}
                           onPaste={(e) => pasteIntoInput(e, height, setHeight, true)}
+                          required
+                          min="0.01"
+                          step="0.01"
                         />
                         <span className="form-dimension-unit">cm</span>
                       </div>
@@ -316,6 +351,9 @@ export default function RequestDelivery() {
                         value={weight}
                         onChange={(e) => setWeight(e.target.value)}
                         onPaste={(e) => pasteIntoInput(e, weight, setWeight, true)}
+                        required
+                        min="0.01"
+                        step="0.01"
                       />
                       <span className="form-input-unit">kg</span>
                     </div>
@@ -397,7 +435,9 @@ export default function RequestDelivery() {
                         className="form-input"
                         placeholder="Select date"
                         value={scheduleDate}
+                        min={todayInputValue()}
                         onChange={(e) => setScheduleDate(e.target.value)}
+                        required
                       />
                     </div>
                   </div>
@@ -414,6 +454,7 @@ export default function RequestDelivery() {
                           className="form-select form-select-time"
                           value={timeFrom}
                           onChange={(e) => setTimeFrom(e.target.value)}
+                          required
                         >
                           {Array.from({ length: 24 }, (_, i) => (
                             <option key={i} value={`${String(i).padStart(2, "0")}:00`}>
@@ -429,6 +470,7 @@ export default function RequestDelivery() {
                           className="form-select form-select-time"
                           value={timeTo}
                           onChange={(e) => setTimeTo(e.target.value)}
+                          required
                         >
                           {Array.from({ length: 24 }, (_, i) => (
                             <option key={i} value={`${String(i).padStart(2, "0")}:00`}>
@@ -439,6 +481,10 @@ export default function RequestDelivery() {
                         <ChevronDown className="form-select-arrow" size={16} />
                       </div>
                     </div>
+                    <p style={{ fontSize: 11.5, color: "var(--lasha-muted)", marginTop: 6 }}>
+                      We schedule the start of this window and confirm the exact
+                      collection slot with you.
+                    </p>
                   </div>
                 </div>
               </div>
@@ -463,7 +509,7 @@ export default function RequestDelivery() {
                 <p style={{ fontSize: 12, color: "var(--lasha-muted)", lineHeight: 1.6, margin: 0 }}>
                   We give the assigned driver the recipient’s name, phone number and
                   addresses so the parcel can be collected and handed over. See our{" "}
-                  <a href="/privacy" style={{ color: "var(--lasha-cyan)", fontWeight: 600 }}>Privacy Notice</a>.
+                  <Link to="/privacy" style={{ color: "var(--lasha-cyan)", fontWeight: 600 }}>Privacy Notice</Link>.
                 </p>
               </div>
             </form>

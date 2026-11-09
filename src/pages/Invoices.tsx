@@ -42,7 +42,15 @@ export default function Invoices() {
           </div>
           <div className="filter-tabs">
             {["All", "Paid", "Pending", "Cancelled"].map((f) => (
-              <button key={f} className={`filter-tab ${filter === f ? "active" : ""}`} onClick={() => setFilter(f)}>{f}</button>
+              <button
+                type="button"
+                key={f}
+                className={`filter-tab ${filter === f ? "active" : ""}`}
+                onClick={() => setFilter(f)}
+                aria-pressed={filter === f}
+              >
+                {f}
+              </button>
             ))}
           </div>
 
@@ -53,34 +61,42 @@ export default function Invoices() {
           ) : !filtered || filtered.length === 0 ? (
             <div className="empty-state" style={{ padding: 60 }}>
               <div className="empty-state-icon"><FileText size={24} /></div>
-              <div className="empty-state-title">No invoices</div>
-              <div className="empty-state-desc">Your invoices will appear here.</div>
+              <div className="empty-state-title">
+                {invoices.length > 0 ? `No ${filter.toLowerCase()} invoices` : "No invoices yet"}
+              </div>
+              <div className="empty-state-desc">
+                {invoices.length > 0
+                  ? "Try another status filter."
+                  : "Invoices issued to your account will appear here."}
+              </div>
             </div>
           ) : (
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Invoice #</th>
-                  <th>Date</th>
-                  <th>Amount</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((inv: any) => (
-                  <tr key={inv._id}>
-                    <td style={{ fontWeight: 600 }}>{inv.invoiceNumber}</td>
-                    <td>{formatDate(inv.createdAt)}</td>
-                    <td style={{ fontWeight: 600 }}>{formatCurrency(inv.amount)}</td>
-                    <td>
-                      <span className={`status-badge ${inv.status}`}>
-                        {inv.status.charAt(0).toUpperCase() + inv.status.slice(1)}
-                      </span>
-                    </td>
+            <div className="table-scroll">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Invoice #</th>
+                    <th scope="col">Date</th>
+                    <th scope="col">Amount</th>
+                    <th scope="col">Status</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {filtered.map((inv: any) => (
+                    <tr key={inv._id}>
+                      <td style={{ fontWeight: 600 }}>{inv.invoiceNumber}</td>
+                      <td>{formatDate(inv.createdAt)}</td>
+                      <td style={{ fontWeight: 600 }}>{formatCurrency(inv.amount)}</td>
+                      <td>
+                        <span className={`status-badge ${inv.status}`}>
+                          {inv.status.charAt(0).toUpperCase() + inv.status.slice(1)}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
       </div>

@@ -84,16 +84,35 @@ export default function AppShell({
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
+  // Escape closes the mobile drawer, matching the overlay click.
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSidebarOpen(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [sidebarOpen]);
+
   const handleNav = (item: NavItem) => {
     // Navigation is area-scoped. There are no cross-area access points: a
     // Customer, Driver, Operations and Admin shell each render only routes
     // belonging to their own realm/area.
+    // Close the mobile drawer before navigating: previously it stayed open on
+    // top of the new page until the user found the overlay.
+    setSidebarOpen(false);
     navigate(item.route);
   };
 
-  // The header profile control previously did nothing. In the Driver App it
-  // is the fastest route to the driver's own account and documents.
-  const profileRoute = area === "driver" ? "/driver/profile" : null;
+  // Profile is a real destination where one exists. Customer settings and the
+  // Driver App profile both work; Operations and Admin have no self-service
+  // profile route, so the control is disabled rather than a dead button.
+  const profileRoute =
+    area === "driver"
+      ? "/driver/profile"
+      : area === "customer"
+        ? "/settings"
+        : null;
 
   const handleLogout = () => {
     // Offline resilience hygiene: queued operational data (buffered GPS,
@@ -118,9 +137,12 @@ export default function AppShell({
       <header className="dash-topnav">
         <div className="dash-topnav-logo">
           <button
+            type="button"
             className="dash-mobile-toggle"
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            aria-label="Toggle sidebar"
+            onClick={() => setSidebarOpen((open) => !open)}
+            aria-label={sidebarOpen ? "Close navigation" : "Open navigation"}
+            aria-expanded={sidebarOpen}
+            aria-controls="app-sidebar"
           >
             <Menu size={22} />
           </button>
@@ -139,10 +161,12 @@ export default function AppShell({
         <div className="dash-topnav-right">
           {headerAccessory}
           <button
-            className="dash-topnav-profile"
-            aria-label={profileRoute ? "Open driver profile" : AREA_LABELS[area]}
-            title={profileRoute ? "Open driver profile" : AREA_LABELS[area]}
+            type="button"
+            className={`dash-topnav-profile ${profileRoute ? "" : "profile-static"}`}
+            aria-label={profileRoute ? "Open profile settings" : `${AREA_LABELS[area]} — profile settings unavailable`}
+            title={profileRoute ? "Open profile settings" : "Profile settings are not available in this portal"}
             onClick={profileRoute ? () => navigate(profileRoute) : undefined}
+            disabled={!profileRoute}
           >
             <svg
               width="20"
@@ -166,6 +190,7 @@ export default function AppShell({
           <div
             className="dash-mobile-overlay visible"
             onClick={() => setSidebarOpen(false)}
+            aria-hidden="true"
           />
         )}
 

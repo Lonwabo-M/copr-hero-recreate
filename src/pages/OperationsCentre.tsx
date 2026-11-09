@@ -221,6 +221,17 @@ function exceptionKindColor(kind: string): string {
   return "#0794B5";
 }
 
+// Never surface raw Convex/provider output (request ids, stack frames) to an
+// operator. Clean domain messages are passed through; framework errors become
+// an actionable fallback.
+function actionErrorMessage(error: unknown, fallback: string): string {
+  const message = error instanceof Error ? error.message : "";
+  if (!message || /\[CONVEX|Request ID|Uncaught|Server Error/i.test(message)) {
+    return fallback;
+  }
+  return message.length > 200 ? fallback : message;
+}
+
 export default function OperationsCentre() {
   return (
     <RoleGate area={APP_AREAS.OPERATIONS}>
@@ -234,43 +245,85 @@ function OperationsCentreInner() {
   const [selectedDeliveryId, setSelectedDeliveryId] = useState<string | null>(null);
   const [dispatchTargetId, setDispatchTargetId] = useState<string | null>(null);
   const [reassigningId, setReassigningId] = useState<string | null>(null);
+  const [completingId, setCompletingId] = useState<string | null>(null);
+  const [handlingId, setHandlingId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionNotice, setActionNotice] = useState<string | null>(null);
 
   // ── Operational action handlers (existing backend mutations only) ──────────
-  // Backend RBAC remains authoritative; UI rejections are logged, not hidden.
+  // Backend RBAC remains authoritative. Every failure is surfaced to the
+  // operator: console-only errors made a rejected action look successful.
 
   async function handleReassign(deliveryId: string) {
+    if (
+      !window.confirm(
+        "Reassign this delivery? The current driver will be removed and the delivery returns to the dispatch queue.",
+      )
+    ) {
+      return;
+    }
+    setActionError(null);
+    setActionNotice(null);
     setReassigningId(deliveryId);
     try {
       await reassignDelivery({ deliveryId: deliveryId as any });
-    } catch (err: any) {
-      console.error("reassignDelivery rejected:", err?.message);
+      setActionNotice("Delivery returned to the dispatch queue for reassignment.");
+    } catch (error) {
+      setActionError(
+        actionErrorMessage(error, "The delivery could not be reassigned. Please try again."),
+      );
     } finally {
       setReassigningId(null);
     }
   }
 
-  function handleFail(deliveryId: string, reason: string) {
-    failDelivery({ deliveryId: deliveryId as any, reason }).then(
-      () => undefined,
-      (err: any) => console.error("failDelivery rejected:", err?.message),
-    );
+  async function handleFail(deliveryId: string, reason: string) {
+    setActionError(null);
+    setActionNotice(null);
+    setHandlingId(deliveryId);
+    try {
+      await failDelivery({ deliveryId: deliveryId as any, reason });
+      setActionNotice("Delivery marked as failed.");
+    } catch (error) {
+      setActionError(
+        actionErrorMessage(error, "The delivery could not be marked as failed."),
+      );
+    } finally {
+      setHandlingId(null);
+    }
   }
 
-  function handleCancel(deliveryId: string, reason: string) {
-    cancelDelivery({ deliveryId: deliveryId as any, reason }).then(
-      () => undefined,
-      (err: any) => console.error("cancelDelivery rejected:", err?.message),
-    );
+  async function handleCancel(deliveryId: string, reason: string) {
+    setActionError(null);
+    setActionNotice(null);
+    setHandlingId(deliveryId);
+    try {
+      await cancelDelivery({ deliveryId: deliveryId as any, reason });
+      setActionNotice("Delivery cancelled.");
+    } catch (error) {
+      setActionError(actionErrorMessage(error, "The delivery could not be cancelled."));
+    } finally {
+      setHandlingId(null);
+    }
   }
 
-  function handleCompleteWithPOD(deliveryId: string) {
-    completeDeliveryWithPOD({
-      deliveryId: deliveryId as any,
-      recipientName: "Delivered by operations",
-    }).then(
-      () => undefined,
-      (err: any) => console.error("completeDeliveryWithPOD rejected:", err?.message),
-    );
+  async function handleCompleteWithPOD(deliveryId: string, recipientName: string) {
+    setActionError(null);
+    setActionNotice(null);
+    setCompletingId(deliveryId);
+    try {
+      await completeDeliveryWithPOD({
+        deliveryId: deliveryId as any,
+        recipientName,
+      });
+      setActionNotice("Delivery marked as delivered and the recipient name recorded.");
+    } catch (error) {
+      setActionError(
+        actionErrorMessage(error, "The delivery could not be completed. Please try again."),
+      );
+    } finally {
+      setCompletingId(null);
+    }
   }
 
   // ── Core reactive queries ──────────────────────────────────────────────────
@@ -440,9 +493,11 @@ function OperationsCentreInner() {
             { id: "history", label: "History", icon: <Clock size={18} /> },
           ] as const).map((tab) => (
             <button
+              type="button"
               key={tab.id}
               className={`ops-tab ${activeTab === tab.id ? "active" : ""}`}
               onClick={() => setActiveTab(tab.id)}
+              aria-pressed={activeTab === tab.id}
             >
               {tab.icon}
               <span>{tab.label}</span>
@@ -498,6 +553,10 @@ function OperationsCentreInner() {
             <ExceptionsTab
               exceptions={exceptions}
               reassigningId={reassigningId}
+              completingId={completingId}
+              handlingId={handlingId}
+              actionError={actionError}
+              actionNotice={actionNotice}
               onReassign={handleReassign}
               onCompleteWithPOD={handleCompleteWithPOD}
               onFail={handleFail}
@@ -1083,7 +1142,7 @@ function DispatchTab({
     try {
       await dispatchDelivery({ deliveryId: id as any });
     } catch (e) {
-      setDispatchError(e instanceof Error ? e.message : "Dispatch failed");
+      setDispatchError(actionErrorMessage(e, "Dispatch failed. Please try again."));
     } finally {
       setDispatchingId(null);
     }
@@ -1097,19 +1156,26 @@ function DispatchTab({
     try {
       await sendDriverOffers({ deliveryId: id as any });
     } catch (e) {
-      setDispatchError(e instanceof Error ? e.message : "Could not send driver offers");
+      setDispatchError(actionErrorMessage(e, "Could not send driver offers. Please try again."));
     } finally {
       setDispatchingId(null);
     }
   };
 
   const handleDispatchReassign = async (id: string) => {
+    if (
+      !window.confirm(
+        "Reassign this delivery? The current driver will be removed and the delivery returns to the dispatch queue.",
+      )
+    ) {
+      return;
+    }
     setDispatchReassigningId(id);
     setDispatchError(null);
     try {
       await reassignDelivery({ deliveryId: id as any });
     } catch (e) {
-      setDispatchError(e instanceof Error ? e.message : "Reassign failed");
+      setDispatchError(actionErrorMessage(e, "Reassign failed. Please try again."));
     } finally {
       setDispatchReassigningId(null);
     }
@@ -1120,14 +1186,26 @@ function DispatchTab({
       <div className="ops-section-header">
         <h2 className="ops-section-title">Dispatch</h2>
         <div className="ops-filter-group">
-          <span className="ops-live-count">{activePending.length} awaiting dispatch</span>
+          <span className="ops-live-count">{activePending.length} in dispatch queue</span>
         </div>
       </div>
+
+      {dispatchError && (
+        <div role="alert" className="ops-dispatch-error" style={{ marginBottom: 14 }}>
+          {dispatchError}
+        </div>
+      )}
 
       {activePending.length > 0 ? (
         <div className="ops-dispatch-list">
           {activePending.map((d) => {
-            const offers = (dispatchOffers ?? []).filter((o: any) => o.deliveryId === d._id);
+            // The offers query is scoped to the currently opened delivery, so
+            // only that card can truthfully display an offer count. Showing
+            // the selected card's offers on every row was misleading.
+            const offers =
+              dispatchTargetId === d._id
+                ? (dispatchOffers ?? []).filter((o: any) => o.deliveryId === d._id)
+                : [];
             const hasOffers = offers.length > 0;
             const assigned = d.courierId !== undefined ? "Assigned" : "Unassigned";
 
@@ -1228,7 +1306,6 @@ function DispatchTab({
                   )}
                 </div>
 
-                {dispatchError && <div className="ops-dispatch-error">{dispatchError}</div>}
               </div>
             );
           })}
@@ -1236,7 +1313,7 @@ function DispatchTab({
       ) : (
         <div className="empty-state">
           <div className="empty-state-icon"><Package size={24} /></div>
-          <div className="empty-state-title">Nothing awaiting dispatch</div>
+          <div className="empty-state-title">Dispatch queue is clear</div>
           <div className="empty-state-desc">
             No deliveries are waiting to be released, offered to drivers,
             reassigned, or currently assigned. New customer requests appear here
@@ -1757,6 +1834,10 @@ function DriversTab({
 function ExceptionsTab({
   exceptions,
   reassigningId,
+  completingId,
+  handlingId,
+  actionError,
+  actionNotice,
   onReassign,
   onCompleteWithPOD,
   onFail,
@@ -1764,8 +1845,12 @@ function ExceptionsTab({
 }: {
   exceptions: Array<{ kind: string; delivery: OpsDeliveryRow; driverLoc?: DriverLocationEntry; message: string }>;
   reassigningId: string | null;
+  completingId: string | null;
+  handlingId: string | null;
+  actionError: string | null;
+  actionNotice: string | null;
   onReassign: (id: string) => void;
-  onCompleteWithPOD: (id: string) => void;
+  onCompleteWithPOD: (id: string, recipientName: string) => void;
   onFail: (id: string, reason: string) => void;
   onCancel: (id: string, reason: string) => void;
 }) {
@@ -1775,6 +1860,29 @@ function ExceptionsTab({
         <h2 className="ops-section-title">Exceptions</h2>
         <span className="ops-live-count">{exceptions.length}</span>
       </div>
+
+      {actionError && (
+        <div role="alert" className="ops-dispatch-error" style={{ marginBottom: 12 }}>
+          {actionError}
+        </div>
+      )}
+      {actionNotice && (
+        <div
+          role="status"
+          style={{
+            marginBottom: 12,
+            padding: "10px 14px",
+            borderRadius: 8,
+            fontSize: 13,
+            fontWeight: 600,
+            color: "#0A7C42",
+            background: "rgba(10,124,66,0.08)",
+            border: "1px solid rgba(10,124,66,0.22)",
+          }}
+        >
+          {actionNotice}
+        </div>
+      )}
 
       {exceptions.length > 0 ? (
         <div className="ops-exceptions-list">
@@ -1816,6 +1924,7 @@ function ExceptionsTab({
               <div className="ops-exception-actions">
                 {e.kind === "reassignment_required" && (
                   <button
+                    type="button"
                     className="ops-btn ops-btn-sm"
                     disabled={reassigningId === e.delivery._id}
                     onClick={() => onReassign(e.delivery._id)}
@@ -1829,11 +1938,33 @@ function ExceptionsTab({
                 )}
                 {e.delivery.status === DELIVERY_STATUS.AT_DROPOFF && (
                   <button
+                    type="button"
                     className="ops-btn ops-btn-sm"
-                    disabled={reassigningId === e.delivery._id}
-                    onClick={() => onCompleteWithPOD(e.delivery._id)}
+                    disabled={
+                      completingId === e.delivery._id ||
+                      reassigningId === e.delivery._id ||
+                      handlingId === e.delivery._id
+                    }
+                    onClick={() => {
+                      if (
+                        !window.confirm(
+                          "Mark this delivery as delivered? Only do this after the parcel is with the recipient. The completion is recorded against your account.",
+                        )
+                      ) {
+                        return;
+                      }
+                      const recipientName = window.prompt(
+                        "Recipient's full name (recorded on the proof of delivery):",
+                      );
+                      if (!recipientName?.trim()) return;
+                      onCompleteWithPOD(e.delivery._id, recipientName.trim().slice(0, 200));
+                    }}
                   >
-                    <CheckSquare size={14} />Complete via POD
+                    {completingId === e.delivery._id ? (
+                      <><RefreshCw size={14} className="animate-spin" />Completing…</>
+                    ) : (
+                      <><CheckSquare size={14} />Mark delivered…</>
+                    )}
                   </button>
                 )}
                 {(() => {
@@ -1845,28 +1976,53 @@ function ExceptionsTab({
                   ];
                   return failable.includes(e.delivery.status as any) ? (
                     <button
+                      type="button"
                       className="ops-btn ops-btn-sm"
-                      onClick={() =>
-                        onFail(
-                          e.delivery._id,
-                          "Reported by operations: delivery compromised",
-                        )
+                      disabled={
+                        handlingId === e.delivery._id ||
+                        completingId === e.delivery._id ||
+                        reassigningId === e.delivery._id
                       }
+                      onClick={() => {
+                        const reason = window.prompt(
+                          "Why is this delivery failing? The reason is recorded and shared with the customer.",
+                        );
+                        if (!reason?.trim()) return;
+                        onFail(e.delivery._id, reason.trim().slice(0, 500));
+                      }}
                     >
-                      <Ban size={14} />Fail delivery
+                      {handlingId === e.delivery._id ? (
+                        <><RefreshCw size={14} className="animate-spin" />Saving…</>
+                      ) : (
+                        <><Ban size={14} />Fail delivery…</>
+                      )}
                     </button>
                   ) : null;
                 })()}
                 {e.delivery.status === DELIVERY_STATUS.ASSIGNED && (
                   <button
+                    type="button"
                     className="ops-btn ops-btn-sm"
-                    onClick={() => onCancel(e.delivery._id, "Cancelled by operations")}
+                    disabled={
+                      handlingId === e.delivery._id ||
+                      completingId === e.delivery._id ||
+                      reassigningId === e.delivery._id
+                    }
+                    onClick={() => {
+                      const reason = window.prompt(
+                        "Why is this delivery being cancelled? The reason is recorded and shared with the customer.",
+                        "Cancelled by operations",
+                      );
+                      if (!reason?.trim()) return;
+                      onCancel(e.delivery._id, reason.trim().slice(0, 500));
+                    }}
                   >
-                    <XCircle size={14} />Cancel
+                    {handlingId === e.delivery._id ? (
+                      <><RefreshCw size={14} className="animate-spin" />Saving…</>
+                    ) : (
+                      <><XCircle size={14} />Cancel…</>
+                    )}
                   </button>
-                )}
-                {e.kind === "stale_gps" && (
-                  <button className="ops-btn ops-btn-sm" disabled>Investigate</button>
                 )}
               </div>
             </div>
@@ -1926,35 +2082,37 @@ function HistoryTab({
       </div>
 
       {historyList.length > 0 ? (
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Tracking #</th>
-              <th>Delivery</th>
-              <th>Status</th>
-              <th>Started</th>
-              <th>Completed</th>
-              <th>Driver</th>
-              <th>Waybill</th>
-            </tr>
-          </thead>
-          <tbody>
-            {historyList.map((d) => {
-              const driverName = drivers.find((dr) => dr.driverId === d.courierId)?.name ?? "—";
-              return (
-                <tr key={d._id}>
-                  <td style={{ fontWeight: 600 }}>{d.trackingNumber}</td>
-                  <td>{d._id.slice(-6).toUpperCase()}</td>
-                  <td><span className="status-badge" style={statusBadgeStyle(d.status)}>{statusLabel(d.status)}</span></td>
-                  <td>{d.startedAt ? formatDateTime(d.startedAt) : "—"}</td>
-                  <td>{d.completedAt ? formatDateTime(d.completedAt) : "—"}</td>
-                  <td>{driverName}</td>
-                  <td><WaybillButton deliveryId={d._id as string} /></td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+        <div className="ops-table-wrap">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th scope="col">Tracking #</th>
+                <th scope="col">Delivery</th>
+                <th scope="col">Status</th>
+                <th scope="col">Started</th>
+                <th scope="col">Completed</th>
+                <th scope="col">Driver</th>
+                <th scope="col">Waybill</th>
+              </tr>
+            </thead>
+            <tbody>
+              {historyList.map((d) => {
+                const driverName = drivers.find((dr) => dr.driverId === d.courierId)?.name ?? "—";
+                return (
+                  <tr key={d._id}>
+                    <td style={{ fontWeight: 600 }}>{d.trackingNumber}</td>
+                    <td>{d._id.slice(-6).toUpperCase()}</td>
+                    <td><span className="status-badge" style={statusBadgeStyle(d.status)}>{statusLabel(d.status)}</span></td>
+                    <td>{d.startedAt ? formatDateTime(d.startedAt) : "—"}</td>
+                    <td>{d.completedAt ? formatDateTime(d.completedAt) : "—"}</td>
+                    <td>{driverName}</td>
+                    <td><WaybillButton deliveryId={d._id as string} /></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       ) : (
         <div className="empty-state">
           <div className="empty-state-icon"><Clock size={24} /></div>

@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { Link } from "react-router";
 import { useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useCurrentUser, useNotificationPreferences, useUpdateNotificationPreferences, useUpdateMyProfile, useMyBusiness, useUpdateMyBusiness } from "@/hooks/use-lasha";
@@ -10,7 +11,6 @@ import {
   Shield,
   CreditCard,
   ChevronRight,
-  Camera,
   Mail,
   Phone,
   MapPin,
@@ -50,11 +50,9 @@ export default function Settings() {
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
-  const [address, setAddress] = useState("");
 
   // Business state
   const [companyName, setCompanyName] = useState("");
-  const [companyEmail, setCompanyEmail] = useState("");
   const [companyPhone, setCompanyPhone] = useState("");
   const [companyAddress, setCompanyAddress] = useState("");
   const [companyReg, setCompanyReg] = useState("");
@@ -73,7 +71,6 @@ export default function Settings() {
   const [passwordSaving, setPasswordSaving] = useState(false);
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [passwordNotice, setPasswordNotice] = useState("");
-  const [twoFactor, setTwoFactor] = useState(false);
 
   // Initialize form from Convex user data
   useEffect(() => {
@@ -101,7 +98,6 @@ export default function Settings() {
   useEffect(() => {
     if (myBusiness) {
       setCompanyName(myBusiness.name ?? "");
-      setCompanyEmail(""); // businesses table has no email field
       setCompanyPhone(myBusiness.phone ?? "");
       setCompanyAddress(myBusiness.address ?? "");
       setCompanyReg(myBusiness.registrationNumber ?? "");
@@ -114,6 +110,10 @@ export default function Settings() {
     try {
       if (activeTab === "profile") {
         const name = [firstName, lastName].filter(Boolean).join(" ").trim();
+        if (!name) {
+          setError("Enter your first or last name before saving.");
+          return;
+        }
         await updateMyProfile({
           ...(name !== (currentUser?.name ?? "") && { name }),
           ...(phone !== (currentUser?.phone ?? "") && { phone }),
@@ -219,8 +219,10 @@ export default function Settings() {
                     return (
                       <button
                         key={tab.id}
+                        type="button"
                         className={`settings-tab ${activeTab === tab.id ? "active" : ""}`}
                         onClick={() => setActiveTab(tab.id)}
+                        aria-current={activeTab === tab.id ? "page" : undefined}
                       >
                         <Icon size={18} />
                         <span>{tab.label}</span>
@@ -258,9 +260,6 @@ export default function Settings() {
                               {(firstName || "U")[0].toUpperCase()}
                             </div>
                           )}
-                          <button className="settings-avatar-edit">
-                            <Camera size={14} />
-                          </button>
                         </div>
                         <div>
                           <p className="settings-avatar-name">{firstName} {lastName}</p>
@@ -271,58 +270,75 @@ export default function Settings() {
                       {/* Form fields */}
                       <div className="settings-form-grid">
                         <div className="settings-field">
-                          <label className="settings-label">First Name</label>
+                          <label className="settings-label" htmlFor="settings-first-name">First Name</label>
                           <input
+                            id="settings-first-name"
                             type="text"
                             className="settings-input"
                             value={firstName}
+                            autoComplete="given-name"
                             onChange={(e) => setFirstName(e.target.value)}
                           />
                         </div>
                         <div className="settings-field">
-                          <label className="settings-label">Last Name</label>
+                          <label className="settings-label" htmlFor="settings-last-name">Last Name</label>
                           <input
+                            id="settings-last-name"
                             type="text"
                             className="settings-input"
                             value={lastName}
+                            autoComplete="family-name"
                             onChange={(e) => setLastName(e.target.value)}
                           />
                         </div>
                         <div className="settings-field">
-                          <label className="settings-label">
+                          <label className="settings-label" htmlFor="settings-email">
                             <Mail size={14} />
-                            Email
+                            Sign-in email
                           </label>
                           <input
+                            id="settings-email"
                             type="email"
                             className="settings-input"
                             value={email}
-                            onChange={(e) => setEmail(e.target.value)}
+                            readOnly
+                            aria-describedby="settings-email-hint"
                           />
+                          <p
+                            id="settings-email-hint"
+                            style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 6 }}
+                          >
+                            Contact support if you need to change the email you sign in with.
+                          </p>
                         </div>
                         <div className="settings-field">
-                          <label className="settings-label">
+                          <label className="settings-label" htmlFor="settings-phone">
                             <Phone size={14} />
                             Phone
                           </label>
                           <input
+                            id="settings-phone"
                             type="tel"
                             className="settings-input"
                             value={phone}
+                            autoComplete="tel"
                             onChange={(e) => setPhone(e.target.value)}
                           />
                         </div>
                         <div className="settings-field full-width">
                           <label className="settings-label">
                             <MapPin size={14} />
-                            Address
+                            Delivery addresses
                           </label>
-                          <input
-                            type="text"
-                            className="settings-input"
-                            value={address}
-                            onChange={(e) => setAddress(e.target.value)}
-                          />
+                          <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "2px 0 8px" }}>
+                            Pickup and drop-off addresses are managed in your address book.
+                          </p>
+                          <Link
+                            to="/address-book"
+                            style={{ color: "var(--lasha-cyan, #0794b5)", fontWeight: 600, fontSize: 13 }}
+                          >
+                            Manage addresses
+                          </Link>
                         </div>
                       </div>
                     </div>
@@ -337,53 +353,48 @@ export default function Settings() {
 
                       <div className="settings-form-grid">
                         <div className="settings-field full-width">
-                          <label className="settings-label">Company Name</label>
+                          <label className="settings-label" htmlFor="settings-company-name">Company Name</label>
                           <input
+                            id="settings-company-name"
                             type="text"
                             className="settings-input"
                             value={companyName}
+                            autoComplete="organization"
                             onChange={(e) => setCompanyName(e.target.value)}
                           />
                         </div>
                         <div className="settings-field">
-                          <label className="settings-label">
-                            <Mail size={14} />
-                            Business Email
-                          </label>
-                          <input
-                            type="email"
-                            className="settings-input"
-                            value={companyEmail}
-                            onChange={(e) => setCompanyEmail(e.target.value)}
-                          />
-                        </div>
-                        <div className="settings-field">
-                          <label className="settings-label">
+                          <label className="settings-label" htmlFor="settings-company-phone">
                             <Phone size={14} />
                             Business Phone
                           </label>
                           <input
+                            id="settings-company-phone"
                             type="tel"
                             className="settings-input"
                             value={companyPhone}
+                            autoComplete="tel"
                             onChange={(e) => setCompanyPhone(e.target.value)}
                           />
                         </div>
                         <div className="settings-field full-width">
-                          <label className="settings-label">
+                          <label className="settings-label" htmlFor="settings-company-address">
                             <MapPin size={14} />
                             Business Address
                           </label>
                           <input
+                            id="settings-company-address"
                             type="text"
                             className="settings-input"
                             value={companyAddress}
+                            autoComplete="street-address"
                             onChange={(e) => setCompanyAddress(e.target.value)}
                           />
                         </div>
                         <div className="settings-field">
-                          <label className="settings-label">Registration Number</label>
+                          <label className="settings-label" htmlFor="settings-company-reg">Registration Number</label>
                           <input
+                            id="settings-company-reg"
                             type="text"
                             className="settings-input"
                             value={companyReg}
@@ -614,7 +625,7 @@ export default function Settings() {
                         </div>
                       </form>
 
-                      {/* Two-factor auth */}
+                      {/* Two-factor auth — shown honestly until the feature exists */}
                       <div className="settings-security-card">
                         <div className="settings-toggle-row">
                           <div className="settings-toggle-info">
@@ -623,20 +634,26 @@ export default function Settings() {
                               Add an extra layer of security to your account
                             </p>
                           </div>
-                          <label className="settings-switch">
-                            <input
-                              type="checkbox"
-                              checked={twoFactor}
-                              onChange={(e) => setTwoFactor(e.target.checked)}
-                            />
-                            <span className="settings-switch-slider" />
-                          </label>
+                          <span
+                            style={{
+                              fontSize: 12,
+                              fontWeight: 600,
+                              color: "var(--text-muted)",
+                              background: "var(--surface-muted, #f4f6f7)",
+                              border: "1px solid var(--border-light, #e8e8e8)",
+                              borderRadius: 999,
+                              padding: "5px 10px",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            Not available yet
+                          </span>
                         </div>
                       </div>
 
                       {/* Session info */}
                       <div className="settings-security-card">
-                        <h3 className="settings-security-title">Active Sessions</h3>
+                        <h3 className="settings-security-title">Current Session</h3>
                         <div className="settings-session">
                           <div className="settings-session-info">
                             <p className="settings-session-device">Current Browser</p>
@@ -671,9 +688,10 @@ export default function Settings() {
                       )}
                       <div className="settings-actions">
                         <button
+                          type="button"
                           className="settings-save-btn"
                           onClick={handleSave}
-                          disabled={saving}
+                          disabled={saving || saved}
                           style={{ opacity: saving ? 0.7 : 1 }}
                         >
                           {saving ? (

@@ -222,7 +222,7 @@ export default function BookDemo() {
             </div>
           ) : (
             <form onSubmit={handleSubmit} noValidate>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 220px), 1fr))", gap: 18 }}>
                 <div>
                   <label style={labelStyle} htmlFor="bd-business">Business name *</label>
                   <input id="bd-business" className="bd-input" style={inputStyle} value={form.businessName} onChange={set("businessName")} placeholder="e.g. Naidoo Wholesalers (Pty) Ltd" required />

@@ -394,12 +394,13 @@ export default function AdminAccounts() {
 
   return (
     <AdminShell activeItem="Accounts">
-      <main className="ops-main">
+      <main className="ops-main ops-admin-main">
         <div className="ops-admin-head">
           <h1 className="ops-admin-portal">Admin Portal</h1>
           <span className="ops-admin-section">Accounts</span>
           {inventory?.canManageStaff ? (
             <button
+              type="button"
               className="ops-btn ops-btn-primary"
               onClick={openAdd}
               disabled={(inventory.assignableRoles ?? []).length === 0}
@@ -477,6 +478,7 @@ export default function AdminAccounts() {
               unique staff emails.
             </div>
             <button
+              type="button"
               className="ops-btn ops-btn-secondary"
               onClick={handlePrepareSso}
               disabled={preparingSso}
@@ -508,6 +510,7 @@ export default function AdminAccounts() {
               test-access marker. Restore them before the staff login migration.
             </div>
             <button
+              type="button"
               className="ops-btn ops-btn-secondary"
               onClick={handleRestore}
               disabled={busy}
@@ -544,15 +547,18 @@ export default function AdminAccounts() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search name, email, role or business…"
+              aria-label="Search accounts"
               style={{ width: "100%", padding: "9px 12px 9px 34px" }}
             />
           </div>
           <div className="ops-tabs">
             {(["all", "staff", "driver", "customer"] as const).map((tab) => (
               <button
+                type="button"
                 key={tab}
                 className={`ops-tab ${realm === tab ? "active" : ""}`}
                 onClick={() => setRealm(tab)}
+                aria-pressed={realm === tab}
               >
                 <span>{tab === "all" ? "All" : REALM_LABELS[tab]}</span>
               </button>
@@ -582,14 +588,14 @@ export default function AdminAccounts() {
             <table className="ops-table">
               <thead>
                 <tr>
-                  <th>Account</th>
-                  <th>Realm</th>
-                  <th>Role</th>
-                  <th>Business</th>
-                  <th>Sign-in</th>
-                  <th>Status</th>
-                  <th>Created</th>
-                  <th>Actions</th>
+                  <th scope="col">Account</th>
+                  <th scope="col">Realm</th>
+                  <th scope="col">Role</th>
+                  <th scope="col">Business</th>
+                  <th scope="col">Sign-in</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Created</th>
+                  <th scope="col">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -636,6 +642,7 @@ export default function AdminAccounts() {
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                           {account.canChangeRole ? (
                             <button
+                              type="button"
                               className="ops-btn ops-btn-sm"
                               onClick={() => openRoleChange(account)}
                               title="Change this staff member's role"
@@ -645,6 +652,7 @@ export default function AdminAccounts() {
                           ) : null}
                           {account.canSuspend ? (
                             <button
+                              type="button"
                               className="ops-btn ops-btn-sm"
                               onClick={() => openSuspend(account)}
                               title="Suspend this staff member's access"
@@ -656,6 +664,7 @@ export default function AdminAccounts() {
                           ) : null}
                           {account.canReactivate ? (
                             <button
+                              type="button"
                               className="ops-btn ops-btn-sm"
                               onClick={() => handleReactivate(account)}
                               disabled={rowBusy === account.userId}

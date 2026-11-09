@@ -56,10 +56,18 @@ export default function AdminDriverRoster() {
   });
 
   const availableCount = (roster ?? []).filter((d) => d.isAvailable).length;
+  const ratedDrivers = (roster ?? []).filter((d) => d.rating != null);
+  const averageRating =
+    ratedDrivers.length === 0
+      ? "—"
+      : (
+          ratedDrivers.reduce((sum, d) => sum + (d.rating ?? 0), 0) /
+          ratedDrivers.length
+        ).toFixed(1);
 
   return (
     <AdminShell activeItem="Driver Roster">
-      <main className="ops-main">
+      <main className="ops-main ops-admin-main">
         <div className="ops-admin-head">
           <h1 className="ops-admin-portal">Admin Portal</h1>
           <span className="ops-admin-section">Driver Roster</span>
@@ -72,7 +80,7 @@ export default function AdminDriverRoster() {
             </div>
             <div>
               <div className="ops-stat-value">{roster?.length ?? "…"}</div>
-              <div className="ops-stat-label">Approved drivers</div>
+              <div className="ops-stat-label">Driver accounts</div>
             </div>
           </div>
           <div className="ops-stat-card">
@@ -90,10 +98,7 @@ export default function AdminDriverRoster() {
             </div>
             <div>
               <div className="ops-stat-value">
-                {roster === undefined || roster.length === 0
-                  ? "—"
-                  : (roster.reduce((sum, d) => sum + (d.rating ?? 0), 0) /
-                     roster.filter((d) => d.rating != null).length || 0).toFixed(1)}
+                {roster === undefined ? "…" : averageRating}
               </div>
               <div className="ops-stat-label">Average rating</div>
             </div>
@@ -108,14 +113,17 @@ export default function AdminDriverRoster() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search name, phone, email or vehicle…"
+              aria-label="Search drivers"
               style={{ width: "100%", padding: "9px 12px 9px 34px" }}
             />
           </div>
           {(["all", "available", "off"] as const).map((tab) => (
             <button
+              type="button"
               key={tab}
               className={`ops-tab ${availabilityTab === tab ? "active" : ""}`}
               onClick={() => setAvailabilityTab(tab)}
+              aria-pressed={availabilityTab === tab}
             >
               <span style={{ textTransform: "capitalize" }}>{tab === "off" ? "Unavailable" : tab}</span>
             </button>
@@ -131,7 +139,7 @@ export default function AdminDriverRoster() {
             <div className="empty-state-icon"><Users size={24} /></div>
             <div className="empty-state-title">No drivers found</div>
             <div className="empty-state-desc">
-              Drivers appear here once they register and are approved through Driver Approvals.
+              Drivers appear here once they hold a driver account. Approval happens in Driver Approvals.
             </div>
           </div>
         ) : (
@@ -139,13 +147,13 @@ export default function AdminDriverRoster() {
             <table className="ops-table">
               <thead>
                 <tr>
-                  <th>Driver</th>
-                  <th>Contact</th>
-                  <th>Vehicle</th>
-                  <th>License</th>
-                  <th>Availability</th>
-                  <th>Rating</th>
-                  <th>Trips</th>
+                  <th scope="col">Driver</th>
+                  <th scope="col">Contact</th>
+                  <th scope="col">Vehicle</th>
+                  <th scope="col">License</th>
+                  <th scope="col">Availability</th>
+                  <th scope="col">Rating</th>
+                  <th scope="col">Trips</th>
                 </tr>
               </thead>
               <tbody>

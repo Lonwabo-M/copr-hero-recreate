@@ -292,7 +292,7 @@ export default function PrivacyRights() {
             ))}
           </select>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 220px), 1fr))", gap: 12 }}>
             <div>
               <label style={labelStyle} htmlFor="privacy-name">
                 Your name

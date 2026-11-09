@@ -77,16 +77,22 @@ export default function Sidebar({
   unreadCount = 0,
 }: SidebarProps) {
   return (
-    <aside className={`dash-sidebar ${isOpen ? "open" : ""}`}>
+    <nav
+      id="app-sidebar"
+      className={`dash-sidebar ${isOpen ? "open" : ""}`}
+      aria-label="Primary navigation"
+    >
       <div className="dash-sidebar-items">
         {items.map((item) => {
           const Icon = ICONS[item.label] ?? Package;
           const isActive = activeItem === item.label;
           return (
             <button
+              type="button"
               key={item.label}
               className={`dash-sidebar-item ${isActive ? "active" : ""}`}
               onClick={() => onItemChange(item.label)}
+              aria-current={isActive ? "page" : undefined}
             >
               <Icon size={20} strokeWidth={1.5} />
               <span>{item.label}</span>
@@ -105,6 +111,7 @@ export default function Sidebar({
 
       <div className="dash-sidebar-bottom">
         <button
+          type="button"
           className="dash-sidebar-item"
           onClick={() => onItemChange("Log out")}
         >
@@ -112,6 +119,6 @@ export default function Sidebar({
           <span>Log out</span>
         </button>
       </div>
-    </aside>
+    </nav>
   );
 }

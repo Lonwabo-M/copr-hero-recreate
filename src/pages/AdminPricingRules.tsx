@@ -39,7 +39,7 @@ function money(cents: number): string {
 function RuleCard({ rule, retiring, onDeactivate }: {
   rule: PricingRuleRow;
   retiring: boolean;
-  onDeactivate: (id: string) => void;
+  onDeactivate: (id: string, name: string) => void;
 }) {
   return (
     <div className="ops-stat-card" style={{ padding: 18, cursor: "default" }}>
@@ -56,14 +56,15 @@ function RuleCard({ rule, retiring, onDeactivate }: {
           </div>
         </div>
         <button
+          type="button"
           className="ops-tab"
           style={{ color: "#C62828", borderColor: "rgba(198,40,40,0.35)" }}
           disabled={retiring}
-          onClick={() => onDeactivate(rule._id)}
+          onClick={() => onDeactivate(rule._id, rule.name)}
           title="Retire this rule — new quotes stop using it"
         >
-          <PowerOff size={13} />
-          <span>Retire</span>
+          {retiring ? <Loader2 size={13} className="animate-spin" /> : <PowerOff size={13} />}
+          <span>{retiring ? "Retiring…" : "Retire"}</span>
         </button>
       </div>
 
@@ -97,7 +98,14 @@ export default function AdminPricingRules() {
   const rules = useQuery(api.pricing.service.getActivePricingRules, {});
   const deactivateRule = useMutation(api.pricing.service.deactivatePricingRule);
 
-  const handleDeactivate = async (id: string) => {
+  const handleDeactivate = async (id: string, name: string) => {
+    if (
+      !window.confirm(
+        `Retire “${name}”? New quotes will stop using this rule immediately. This cannot be undone from the portal.`,
+      )
+    ) {
+      return;
+    }
     setBusyId(id);
     setError(null);
     try {
@@ -111,7 +119,7 @@ export default function AdminPricingRules() {
 
   return (
     <AdminShell activeItem="Pricing Rules">
-      <main className="ops-main">
+      <main className="ops-main ops-admin-main">
         <div className="ops-admin-head">
           <h1 className="ops-admin-portal">Admin Portal</h1>
           <span className="ops-admin-section">Pricing Rules</span>
@@ -123,7 +131,7 @@ export default function AdminPricingRules() {
         </p>
 
         {error && (
-          <div style={{ marginBottom: 14, fontSize: 13, fontWeight: 600, color: "#C62828" }}>
+          <div role="alert" style={{ marginBottom: 14, fontSize: 13, fontWeight: 600, color: "#C62828" }}>
             {error}
           </div>
         )}
@@ -139,7 +147,7 @@ export default function AdminPricingRules() {
             <div className="empty-state-desc">Quotes cannot be calculated until a rule is active.</div>
           </div>
         ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 14 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 320px), 1fr))", gap: 14 }}>
             {rules.map((rule) => (
               <RuleCard
                 key={rule._id}

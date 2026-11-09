@@ -1,6 +1,7 @@
 import { Link } from "react-router";
 import CustomerShell from "@/components/shells/CustomerShell";
-import { FileText, Table, File, Download, ArrowUpRight } from "lucide-react";
+import { CONTACT_EMAIL } from "@/lib/legal";
+import { FileText, ArrowUpRight } from "lucide-react";
 import "@/styles/dashboard.css";
 import "@/styles/pages.css";
 
@@ -20,15 +21,6 @@ const legalDocuments = [
   { path: "/cookies", name: "Cookie Notice", meta: "Cookies and storage · always current" },
 ];
 
-const downloads = [
-  { icon: FileText, name: "Insurance Coverage Guide", meta: "PDF · 3.1 MB · Updated 01 Aug 2025" },
-  { icon: Table, name: "Rate Card — Standard Delivery", meta: "PDF · 890 KB · Updated 01 Jul 2025" },
-  { icon: Table, name: "Rate Card — Express Delivery", meta: "PDF · 920 KB · Updated 01 Jul 2025" },
-  { icon: File, name: "API Documentation", meta: "PDF · 5.2 MB · Updated 20 Aug 2025" },
-  { icon: FileText, name: "Business Registration Form", meta: "PDF · 420 KB · Updated 01 Jun 2025" },
-  { icon: Table, name: "Tax Invoice Template", meta: "XLSX · 180 KB · Updated 01 Jun 2025" },
-];
-
 export default function Downloads() {
   return (
     <CustomerShell activeItem="Downloads">
@@ -36,7 +28,7 @@ export default function Downloads() {
         <div className="page-container">
           <div className="page-header">
             <h1 className="page-title">Downloads</h1>
-            <p className="page-subtitle">Access documents, guides, and resources</p>
+            <p className="page-subtitle">Read the current legal and privacy documents</p>
           </div>
 
           <p
@@ -71,34 +63,17 @@ export default function Downloads() {
             ))}
           </div>
 
-          <p
-            style={{
-              fontSize: 11,
-              fontWeight: 700,
-              letterSpacing: "0.12em",
-              textTransform: "uppercase",
-              color: "#8a8a8a",
-              margin: "4px 0 10px",
-            }}
-          >
-            Operational documents
-          </p>
-          <div className="download-list">
-            {downloads.map((d) => {
-              const Icon = d.icon;
-              return (
-                <div key={d.name} className="download-item">
-                  <div className="download-info">
-                    <div className="download-icon"><Icon size={22} /></div>
-                    <div>
-                      <div className="download-name">{d.name}</div>
-                      <div className="download-meta">{d.meta}</div>
-                    </div>
-                  </div>
-                  <button className="download-btn"><Download size={14} style={{ marginRight: 6 }} />Download</button>
-                </div>
-              );
-            })}
+          <div style={{ marginTop: 24, padding: 20, background: "#f8f8f8", borderRadius: 10, border: "1px solid #e8e8e8" }}>
+            <div style={{ fontSize: 14.5, fontWeight: 600, color: "#202020", marginBottom: 5 }}>
+              Need an insurance certificate, rate card or invoice template?
+            </div>
+            <div style={{ fontSize: 13.5, color: "#666", lineHeight: 1.6 }}>
+              Email{" "}
+              <a href={`mailto:${CONTACT_EMAIL}?subject=Document%20request`} style={{ color: "#087f9c", fontWeight: 600 }}>
+                {CONTACT_EMAIL}
+              </a>{" "}
+              and we will send you the current version for your account.
+            </div>
           </div>
         </div>
       </div>
