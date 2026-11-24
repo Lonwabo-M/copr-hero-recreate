@@ -13,7 +13,7 @@ import { query, internalQuery, type QueryCtx } from "../_generated/server";
 import { v } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import { getCurrentAuthUser } from "../auth/authorization";
-import { ROLES } from "../schema";
+import { ROLES, effectiveRoleForUser } from "../schema";
 import {
   findActiveCardAttempts,
   findCompletedPayment,
@@ -259,7 +259,9 @@ export const getUserRoleForPayment = internalQuery({
     if (!user) return null;
     return {
       userId: user._id,
-      role: user.role as string,
+      // Authorization must use the effective role so a retired test-elevated
+      // record cannot act as super_admin in a payment verification path.
+      role: (effectiveRoleForUser(user) ?? ROLES.CUSTOMER) as string,
       businessId: user.businessId,
     };
   },

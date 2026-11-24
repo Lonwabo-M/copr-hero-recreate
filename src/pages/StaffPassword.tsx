@@ -6,6 +6,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { homeRouteForRole } from "@/components/shells/roleAccess";
 import { isStaffRole, type Role } from "@/convex/schema";
 import { safeAuthError } from "@/lib/authError";
+import { safeInternalPath } from "@/lib/safeReturnTo";
 
 // ─── Staff password bootstrap ────────────────────────────────────────────────
 // ZITADEL cannot create the first staff record: it only links to an existing
@@ -45,13 +46,9 @@ export default function StaffPassword() {
   const [signingOut, setSigningOut] = useState(false);
   const [error, setError] = useState("");
 
-  const requested = searchParams.get("returnTo");
+  const requested = safeInternalPath(searchParams.get("returnTo"), null);
   const returnTo =
-    requested?.startsWith("/") &&
-    !requested.startsWith("//") &&
-    requested !== "/staff-password"
-      ? requested
-      : "/post-auth";
+    requested && requested !== "/staff-password" ? requested : "/post-auth";
 
   const role = user?.role as Role | undefined;
   const staffSession = isAuthenticated && isStaffRole(role);

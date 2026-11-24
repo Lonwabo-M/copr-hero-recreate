@@ -6,6 +6,7 @@ import { api } from "@/convex/_generated/api";
 import { useAuth } from "@/hooks/use-auth";
 import { homeRouteForRole } from "@/components/shells/roleAccess";
 import { isStaffRole, ROLES, type Role } from "@/convex/schema";
+import { safeInternalPath } from "@/lib/safeReturnTo";
 
 // ─── PostAuthRedirect ────────────────────────────────────────────────────────
 // Role-aware post-auth entry point. Each realm lands in its own application:
@@ -128,11 +129,9 @@ export default function PostAuthRedirect() {
   const [searchParams] = useSearchParams();
   const { isLoading, isAuthenticated, user } = useAuth();
   const startedFromCustomerAuth = searchParams.get("source") === "customer-auth";
-  const requestedReturnTo = searchParams.get("returnTo");
+  const requestedReturnTo = safeInternalPath(searchParams.get("returnTo"), null);
   const returnTo =
-    requestedReturnTo?.startsWith("/") &&
-    !requestedReturnTo.startsWith("//") &&
-    requestedReturnTo !== "/post-auth"
+    requestedReturnTo && requestedReturnTo !== "/post-auth"
       ? requestedReturnTo
       : null;
 

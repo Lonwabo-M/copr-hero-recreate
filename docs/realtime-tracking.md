@@ -519,8 +519,11 @@ Test real-time updates with:
 |----------|-------------|
 | `updateDriverLocation` | Update driver's current location (not delivery-specific) |
 | `updateDeliveryLocation` | Update location during active delivery (with downsampling) |
-| `updateDeliveryStatusWithLocation` | Update delivery status with optional location |
 | `cleanupTrackingData` | Remove old/downsample tracking data |
+
+Delivery status changes are intentionally **not** exposed here. They must go
+through `deliveries/state_machine.ts` (or the POD completion path), which
+validates transition permissions, proof-of-delivery and settlement creation.
 
 ### Queries
 

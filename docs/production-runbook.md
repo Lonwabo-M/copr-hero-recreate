@@ -24,7 +24,7 @@ Expected response when healthy:
   "status": "healthy",
   "checks": {
     "convex": { "status": "healthy" },
-    "routing": { "status": "healthy", "latencyMs": 245 },
+    "routing": { "status": "healthy", "message": "Google Places configured (server-side key present)" },
     "notifications": { "status": "healthy" }
   }
 }
@@ -98,11 +98,11 @@ curl -s https://{deployment-url}/health/ready | jq .
 
 **Symptoms:**
 - `routing.failed` metric increasing
-- Health check shows routing degraded
+- Routing/geocoding actions returning provider errors
 - Delivery quotes fail or use fallback
 
 **Investigation:**
-1. Check health endpoint for routing status
+1. Check routing action logs and `routing.failed` (the public health endpoint reports configuration only, not upstream availability)
 2. Verify API key validity (Google Maps)
 3. Check external service status pages
 

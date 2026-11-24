@@ -91,12 +91,12 @@ test("first administrator setup is one-time and server-gated", () => {
     "setup page reads status and claims through the backend",
   );
   assert.ok(
-    setupTs.includes("hasActiveAdmin") &&
+    setupTs.includes("hasAdminAccount") &&
       setupTs.includes("ROLES.SUPER_ADMIN") &&
       setupTs.includes("getAuthUserId"),
     "claim requires auth and promotes only to super admin",
   );
-  const guard = setupTs.indexOf("if (await hasActiveAdmin(ctx))");
+  const guard = setupTs.indexOf("if (await hasAdminAccount(ctx))");
   const patch = setupTs.indexOf("await ctx.db.patch(userId");
   assert.ok(
     guard > 0 && guard < patch,

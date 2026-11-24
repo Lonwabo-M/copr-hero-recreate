@@ -35,48 +35,19 @@ http.route({
   handler: httpAction(async () => {
     const checks: Record<string, { status: string; latencyMs?: number; message?: string }> = {};
 
-    // Routing provider check
-    const routingStart = Date.now();
-    try {
-      const apiKey = process.env.GOOGLE_MAPS_API_KEY;
-      if (apiKey) {
-        // Places API (New) — the new-generation geocoding endpoint (billing-
-        // free access; the legacy Geocoding endpoint requires billing).
-        const response = await fetch(
-          "https://places.googleapis.com/v1/places:searchText",
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-Goog-Api-Key": apiKey,
-              "X-Goog-FieldMask": "places.id",
-            },
-            body: JSON.stringify({ textQuery: "Johannesburg, South Africa" }),
-          }
-        );
-        checks.routing = {
-          status: response.ok ? "healthy" : "degraded",
-          latencyMs: Date.now() - routingStart,
-          message: response.ok ? "Google Places available" : `HTTP ${response.status}`,
-        };
-      } else {
-        // OSRM fallback
-        const response = await fetch(
-          "https://router.project-osrm.org/route/v1/driving/28.0473,-26.2041;28.0597,-26.1845?overview=false"
-        );
-        checks.routing = {
-          status: response.ok ? "healthy" : "degraded",
-          latencyMs: Date.now() - routingStart,
-          message: response.ok ? "OSRM available (fallback)" : `HTTP ${response.status}`,
-        };
-      }
-    } catch (err) {
-      checks.routing = {
-        status: "degraded",
-        latencyMs: Date.now() - routingStart,
-        message: `Routing degraded: ${err instanceof Error ? err.message : "unknown"}`,
-      };
-    }
+    // Routing provider configuration check.
+    //
+    // This endpoint is public and hit by uptime probes: it must never call a
+    // billed provider, or anyone could drain the Google Places quota simply by
+    // polling /health. Provider availability is observed through routing logs
+    // and the authenticated actions' error paths instead.
+    const googleConfigured = Boolean(process.env.GOOGLE_MAPS_API_KEY);
+    checks.routing = {
+      status: "healthy",
+      message: googleConfigured
+        ? "Google Places configured (server-side key present)"
+        : "OSRM fallback configured (no Google key)",
+    };
 
     // If we got this far, the Convex runtime is operational
     checks.convex = { status: "healthy", message: "Convex runtime operational" };

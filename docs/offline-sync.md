@@ -164,8 +164,13 @@ Each operation is executed against the appropriate Convex mutation:
 | `arriveAtDropoff` | `deliveries.state_machine.arriveAtDropoff` |
 | `completeDelivery` | `deliveries.state_machine.completeDelivery` |
 | `cancelDelivery` | `deliveries.state_machine.cancelDelivery` |
-| `updateDeliveryStatus` | `tracking.mutations.updateDeliveryStatusWithLocation` |
 | `updateLocation` | `tracking.mutations.updateDeliveryLocation` |
+
+Status transitions are deliberately **not queued offline**: the removed
+generic `updateDeliveryStatus` mutation bypassed transition validation,
+proof-of-delivery and settlement creation. Offline sync now handles location
+write-behind only; status changes require a live, authorised state-machine
+mutation.
 
 ---
 

@@ -17,10 +17,21 @@ export interface ParsedCsv {
   rows: Array<Record<string, string>>;
 }
 
-/** Escape + join a cell. Numbers/booleans are stringified; null/undefined → "". */
+/**
+ * Escape + join a cell. Numbers/booleans are stringified; null/undefined → "".
+ *
+ * Spreadsheet formula injection: a customer-controlled cell beginning with
+ * =, +, -, @, tab or carriage return can be interpreted as a formula when an
+ * operator opens the export in Excel/Sheets. Prefix it with an apostrophe so
+ * it is always treated as text. Numeric values are left untouched (negative
+ * numbers are data, not formulas).
+ */
 function encodeCell(value: unknown): string {
   if (value === null || value === undefined) return "";
-  const text = String(value);
+  let text = String(value);
+  if (typeof value === "string" && /^[\t\r ]*[=+\-@]/.test(text)) {
+    text = `'${text}`;
+  }
   return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 

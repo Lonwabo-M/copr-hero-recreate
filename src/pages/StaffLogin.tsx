@@ -5,6 +5,7 @@ import { ArrowLeft, ArrowRight, Loader2, ShieldCheck } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { homeRouteForRole } from "@/components/shells/roleAccess";
 import { isStaffRole, type Role } from "@/convex/schema";
+import { safeInternalPath } from "@/lib/safeReturnTo";
 
 // ─── Staff sign-in (ZITADEL) ──────────────────────────────────────────────────
 // Separate entry point for internal Lasha staff. Customer and driver sign-in
@@ -57,11 +58,9 @@ export default function StaffLogin() {
   const nonStaffSession = isAuthenticated && !staffSession;
   const showSessionNotice = legacyStaffPasswordSession || nonStaffSession;
 
-  const requested = searchParams.get("returnTo");
+  const requested = safeInternalPath(searchParams.get("returnTo"), null);
   const returnTo =
-    requested?.startsWith("/") && requested !== "/staff-login"
-      ? requested
-      : "/post-auth";
+    requested && requested !== "/staff-login" ? requested : "/post-auth";
   const staffPasswordHref = `/staff-password?returnTo=${encodeURIComponent(returnTo)}`;
 
   // Wait for both the session and its user document before deciding which

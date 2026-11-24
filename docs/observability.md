@@ -222,7 +222,7 @@ const trend = await useQuery(api.metrics.service.getMetrics, {
   "uptime": 3600000,
   "checks": {
     "convex": { "status": "healthy", "message": "Convex runtime operational" },
-    "routing": { "status": "healthy", "latencyMs": 245, "message": "OSRM available (fallback)" },
+    "routing": { "status": "healthy", "message": "OSRM fallback configured (no Google key)" },
     "notifications": { "status": "healthy", "message": "In-app notifications operational" }
   }
 }
@@ -259,7 +259,7 @@ Unhealthy threshold: 3
 - `routing.request` counter tracks total requests
 - `routing.failed` counter tracks failures
 - `routing.fallback` counter tracks fallback usage
-- Health check verifies routing provider availability
+- Health check reports routing provider *configuration* only. It is a public endpoint and deliberately makes no billed provider call; use `routing.failed`/action logs for upstream availability
 
 ### Notification System
 

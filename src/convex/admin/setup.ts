@@ -16,14 +16,15 @@ import { hasPermission } from "../auth/authorization";
 // breaks the loop:
 //
 //   1. An authenticated account claims the first administrator.
-//   2. The claim is allowed only while no active administrator exists.
+//   2. The claim is allowed only while no administrator account exists at all
+//      (suspended administrators still count — they are not a public reset).
 //   3. The new administrator can then add the real staff emails under
 //      Admin → Accounts and use ZITADEL for subsequent sign-ins.
 //
 // The check is server-side and is re-read inside the mutation, so a second
 // caller cannot also claim the account after the first one succeeds.
 
-async function hasActiveAdmin(ctx: QueryCtx | MutationCtx): Promise<boolean> {
+async function hasAdminAccount(ctx: QueryCtx | MutationCtx): Promise<boolean> {
   for (const role of [ROLES.SUPER_ADMIN, ROLES.COMPANY_ADMIN] as const) {
     const candidates = await ctx.db
       .query("users")
@@ -32,7 +33,10 @@ async function hasActiveAdmin(ctx: QueryCtx | MutationCtx): Promise<boolean> {
 
     if (
       candidates.some((candidate) => {
-        if (isUserSuspended(candidate)) return false;
+        // A suspended administrator is still an administrator record. Allowing
+        // the public claim again would let any signed-in customer take over by
+        // waiting for (or causing) every admin to be suspended. Suspended-admin
+        // recovery is an operator action, never a public bootstrap.
         const effectiveRole = effectiveRoleForUser(candidate);
         return (
           effectiveRole === role &&
@@ -51,7 +55,7 @@ async function hasActiveAdmin(ctx: QueryCtx | MutationCtx): Promise<boolean> {
 export const getSetupStatus = query({
   args: {},
   handler: async (ctx) => {
-    return { needsSetup: !(await hasActiveAdmin(ctx)) };
+    return { needsSetup: !(await hasAdminAccount(ctx)) };
   },
 });
 
@@ -82,9 +86,9 @@ export const claimFirstAdmin = mutation({
     if (isUserSuspended(user)) {
       throw new Error("This account is suspended and cannot claim administrator.");
     }
-    if (await hasActiveAdmin(ctx)) {
+    if (await hasAdminAccount(ctx)) {
       throw new Error(
-        "An administrator already exists. Sign in through the staff portal.",
+        "An administrator account already exists. Sign in through the staff portal, or ask an operator to restore a suspended administrator.",
       );
     }
 

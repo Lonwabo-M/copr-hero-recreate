@@ -22,6 +22,7 @@ import {
   VALID_TRANSITIONS,
   TRANSITION_PERMISSIONS,
   deliveryStatusValidator,
+  effectiveRoleForUser,
 } from "../schema";
 import {
   requireAuth,
@@ -724,7 +725,7 @@ export const acceptAssignment = mutation({
     const currentUser = await ctx.db.get(user);
     if (!currentUser) throw new Error("User not found");
 
-    const userRole = (currentUser as Doc<"users">).role;
+    const userRole = effectiveRoleForUser(currentUser as Doc<"users">);
     if (userRole !== ROLES.DRIVER) {
       throw new Error("Access denied: only drivers can accept assignments");
     }
@@ -801,7 +802,7 @@ export const rejectAssignment = mutation({
     const currentUser = await ctx.db.get(user);
     if (!currentUser) throw new Error("User not found");
 
-    const userRole = (currentUser as Doc<"users">).role;
+    const userRole = effectiveRoleForUser(currentUser as Doc<"users">);
     if (userRole !== ROLES.DRIVER) {
       throw new Error("Access denied: only drivers can reject assignments");
     }
@@ -882,7 +883,7 @@ export const startEnRouteToPickup = mutation({
     const currentUser = await ctx.db.get(user);
     if (!currentUser) throw new Error("User not found");
 
-    const userRole = (currentUser as Doc<"users">).role;
+    const userRole = effectiveRoleForUser(currentUser as Doc<"users">);
     if (userRole !== ROLES.DRIVER) {
       throw new Error("Access denied: only drivers can start en route");
     }
@@ -956,7 +957,7 @@ export const arriveAtPickup = mutation({
     const currentUser = await ctx.db.get(user);
     if (!currentUser) throw new Error("User not found");
 
-    const userRole = (currentUser as Doc<"users">).role;
+    const userRole = effectiveRoleForUser(currentUser as Doc<"users">);
     if (userRole !== ROLES.DRIVER) {
       throw new Error("Access denied: only drivers can arrive at pickup");
     }
@@ -1030,7 +1031,7 @@ export const pickupPackage = mutation({
     const currentUser = await ctx.db.get(user);
     if (!currentUser) throw new Error("User not found");
 
-    const userRole = (currentUser as Doc<"users">).role;
+    const userRole = effectiveRoleForUser(currentUser as Doc<"users">);
     if (userRole !== ROLES.DRIVER) {
       throw new Error("Access denied: only drivers can pickup packages");
     }
@@ -1106,7 +1107,7 @@ export const startTrip = mutation({
     const currentUser = await ctx.db.get(user);
     if (!currentUser) throw new Error("User not found");
 
-    const userRole = (currentUser as Doc<"users">).role;
+    const userRole = effectiveRoleForUser(currentUser as Doc<"users">);
     if (userRole !== ROLES.DRIVER) {
       throw new Error("Access denied: only drivers can start trips");
     }
@@ -1180,7 +1181,7 @@ export const arriveAtDropoff = mutation({
     const currentUser = await ctx.db.get(user);
     if (!currentUser) throw new Error("User not found");
 
-    const userRole = (currentUser as Doc<"users">).role;
+    const userRole = effectiveRoleForUser(currentUser as Doc<"users">);
     if (userRole !== ROLES.DRIVER) {
       throw new Error("Access denied: only drivers can arrive at dropoff");
     }
@@ -1254,7 +1255,7 @@ export const completeDelivery = mutation({
     const currentUser = await ctx.db.get(user);
     if (!currentUser) throw new Error("User not found");
 
-    const userRole = (currentUser as Doc<"users">).role;
+    const userRole = effectiveRoleForUser(currentUser as Doc<"users">);
     if (userRole !== ROLES.DRIVER) {
       throw new Error("Access denied: only drivers can complete deliveries");
     }
@@ -1516,7 +1517,7 @@ export const failDelivery = mutation({
     const currentUser = await ctx.db.get(user);
     if (!currentUser) throw new Error("User not found");
 
-    const userRole = (currentUser as Doc<"users">).role ?? "unknown";
+    const userRole = effectiveRoleForUser(currentUser as Doc<"users">) ?? "unknown";
     const allowedRoles = [
       ROLES.DRIVER,
       ROLES.OPERATIONS,
@@ -1628,7 +1629,7 @@ export const requestReassignment = mutation({
     const currentUser = await ctx.db.get(user);
     if (!currentUser) throw new Error("User not found");
 
-    const userRole = (currentUser as Doc<"users">).role ?? "unknown";
+    const userRole = effectiveRoleForUser(currentUser as Doc<"users">) ?? "unknown";
     const allowedRoles = [
       ROLES.DRIVER,
       ROLES.OPERATIONS,

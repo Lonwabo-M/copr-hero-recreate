@@ -8,9 +8,28 @@
  * - Routing with authenticated provider access
  */
 
-import { action } from "../_generated/server";
+import {
+  action,
+  internalAction,
+  internalMutation,
+  internalQuery,
+  type ActionCtx,
+} from "../_generated/server";
 import { v } from "convex/values";
-import { createLogger, LOG_CATEGORIES, generateCorrelationId } from "../logging/service";
+import { getAuthUserId } from "@convex-dev/auth/server";
+import { internal } from "../_generated/api";
+import { createLogger, LOG_CATEGORIES } from "../logging/service";
+import { effectiveRoleForUser, isUserSuspended, ROLES } from "../schema";
+
+// Routing and geocoding are billed third-party calls. Public actions therefore
+// require a real (non-anonymous, non-suspended) session, validate bounded input,
+// and consume a per-user quota before any provider request is made. Internal
+// callers (CSV import) use the dedicated internal action and are already
+// role-checked at their own boundary.
+const MAX_WAYPOINTS = 10;
+const MAX_ADDRESS_LENGTH = 300;
+const ROUTING_WINDOW_MS = 60_000;
+const MAX_ROUTING_REQUESTS_PER_WINDOW = 20;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -45,6 +64,139 @@ interface RouteResult {
     type: string;
     message: string;
   }>;
+}
+
+// ─── Authorization and quota ────────────────────────────────────────────────
+
+/**
+ * Resolve the session user for an action. Actions cannot read the database
+ * directly, so the role/suspension/guest state comes from an internal query.
+ */
+export const getRoutingActor = internalQuery({
+  args: { userId: v.id("users") },
+  handler: async (ctx, args) => {
+    const user = await ctx.db.get(args.userId);
+    if (!user) return null;
+    return {
+      role: effectiveRoleForUser(user) ?? ROLES.CUSTOMER,
+      isAnonymous: user.isAnonymous === true,
+      suspended: isUserSuspended(user),
+    };
+  },
+});
+
+/**
+ * Fixed-window, per-user quota. One row per user in steady state; consumed
+ * before any provider call. Convex indexes are not unique, so two first-time
+ * requests can both insert a row. Read defensively, merge duplicates, and
+ * delete expired rows rather than assuming exactly one row — otherwise a
+ * user would be permanently broken by a harmless race.
+ */
+export const consumeRoutingQuota = internalMutation({
+  args: { userId: v.id("users") },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const rows = await ctx.db
+      .query("routing_rate_limits")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .collect();
+
+    const active = rows.filter(
+      (row) => now - row.windowStart < ROUTING_WINDOW_MS,
+    );
+
+    // Drop expired rows (including duplicates left by an earlier race).
+    for (const row of rows) {
+      if (!active.includes(row)) await ctx.db.delete(row._id);
+    }
+
+    if (active.length === 0) {
+      await ctx.db.insert("routing_rate_limits", {
+        userId: args.userId,
+        windowStart: now,
+        count: 1,
+      });
+      return { allowed: true as const };
+    }
+
+    // Keep the oldest row so the window expires on its original schedule;
+    // fold every duplicate's count into it and remove the extras.
+    const keeper = active.reduce((oldest, row) =>
+      row.windowStart < oldest.windowStart ? row : oldest,
+    );
+    const total = active.reduce((sum, row) => sum + row.count, 0);
+    for (const row of active) {
+      if (row._id !== keeper._id) await ctx.db.delete(row._id);
+    }
+
+    if (total >= MAX_ROUTING_REQUESTS_PER_WINDOW) {
+      if (keeper.count !== total) {
+        await ctx.db.patch(keeper._id, { count: total });
+      }
+      const retryAfterSeconds = Math.max(
+        1,
+        Math.ceil((ROUTING_WINDOW_MS - (now - keeper.windowStart)) / 1000),
+      );
+      throw new Error(
+        `Too many routing requests. Try again in ${retryAfterSeconds} seconds.`,
+      );
+    }
+
+    await ctx.db.patch(keeper._id, { count: total + 1 });
+    return { allowed: true as const };
+  },
+});
+
+async function requireRoutingAccess(ctx: ActionCtx): Promise<void> {
+  const userId = await getAuthUserId(ctx);
+  if (!userId) throw new Error("Authentication required");
+
+  const actor = await ctx.runQuery(internal.routing.actions.getRoutingActor, {
+    userId,
+  });
+  if (!actor) throw new Error("Authentication required");
+  if (actor.suspended) throw new Error("This account is suspended");
+  if (actor.isAnonymous) {
+    throw new Error("Create a full account before using address lookup or routing");
+  }
+
+  await ctx.runMutation(internal.routing.actions.consumeRoutingQuota, {
+    userId,
+  });
+}
+
+function assertWaypoint(waypoint: Waypoint, label: string): void {
+  if (!Number.isFinite(waypoint.lat) || waypoint.lat < -90 || waypoint.lat > 90) {
+    throw new Error(`${label} latitude is invalid`);
+  }
+  if (!Number.isFinite(waypoint.lng) || waypoint.lng < -180 || waypoint.lng > 180) {
+    throw new Error(`${label} longitude is invalid`);
+  }
+  if (waypoint.address && waypoint.address.length > MAX_ADDRESS_LENGTH) {
+    throw new Error(`${label} address is too long`);
+  }
+}
+
+function assertRouteInput(request: RouteRequest): void {
+  assertWaypoint(request.origin, "Origin");
+  assertWaypoint(request.destination, "Destination");
+  if ((request.waypoints?.length ?? 0) > MAX_WAYPOINTS) {
+    throw new Error(`A route can have at most ${MAX_WAYPOINTS} waypoints`);
+  }
+  for (const waypoint of request.waypoints ?? []) {
+    assertWaypoint(waypoint, "Waypoint");
+  }
+}
+
+function validateAddressInput(address: string): string {
+  const trimmed = address.trim();
+  if (trimmed.length < 3) {
+    throw new Error("Enter an address to look up");
+  }
+  if (trimmed.length > MAX_ADDRESS_LENGTH) {
+    throw new Error(`Address must be ${MAX_ADDRESS_LENGTH} characters or fewer`);
+  }
+  return trimmed;
 }
 
 // ─── Actions ──────────────────────────────────────────────────────────────────
@@ -83,6 +235,9 @@ export const getRoute = action({
     ),
   },
   handler: async (ctx, args) => {
+    assertRouteInput(args);
+    await requireRoutingAccess(ctx);
+
     const log = createLogger(LOG_CATEGORIES.ROUTING);
     const apiKey = process.env.GOOGLE_MAPS_API_KEY;
 
@@ -134,6 +289,9 @@ export const getETA = action({
     ),
   },
   handler: async (ctx, args) => {
+    assertRouteInput(args);
+    await requireRoutingAccess(ctx);
+
     const route = await getRouteHandler({
       origin: args.origin,
       destination: args.destination,
@@ -172,6 +330,9 @@ export const calculateDistance = action({
     ),
   },
   handler: async (ctx, args) => {
+    assertRouteInput(args);
+    await requireRoutingAccess(ctx);
+
     const log = createLogger(LOG_CATEGORIES.ROUTING);
     // Calculate straight-line distance
     const straightLineDistance = haversineDistance(
@@ -249,46 +410,75 @@ export const geocodeAddress = action({
     formattedAddress: v.string(),
   }),
   handler: async (ctx, args) => {
-    const log = createLogger(LOG_CATEGORIES.ROUTING);
-    const apiKey = process.env.GOOGLE_MAPS_API_KEY;
-    const variants = geocodeQueryVariants(args.address);
-
-    const primary = apiKey
-      ? (q: string) => geocodeGoogle(q, apiKey, log)
-      : (q: string) => geocodeNominatim(q, log);
-    const fallback = apiKey
-      ? (q: string) => geocodeNominatim(q, log)
-      : undefined;
-
-    for (const provider of fallback ? [primary, fallback] : [primary]) {
-      const label = apiKey && provider === primary ? "google-maps" : "nominatim";
-      for (const variant of variants) {
-        try {
-          const result = await provider(variant);
-          if (result) {
-            log.info("Geocoding resolved", {
-              operation: "geocodeAddress",
-              metadata: { provider: label },
-            });
-            return result;
-          }
-        } catch (err) {
-          // Provider HTTP/config failures are not "no results" — skip the
-          // remaining variants and try the next provider immediately.
-          if (err instanceof Error && /API error|error: \d/.test(err.message)) break;
-        }
-      }
-    }
-
-    log.error("Geocoding exhausted all providers/variants", {
-      operation: "geocodeAddress",
-      metadata: { attempts: variants.length },
-    });
-    // Single clean, user-safe failure — raw provider/Convex output never
-    // reaches the client through this path.
-    throw new Error(ADDRESS_UNRESOLVED);
+    const address = validateAddressInput(args.address);
+    await requireRoutingAccess(ctx);
+    return await geocodeAddressCore(address);
   },
 });
+
+/**
+ * Internal geocoder for already-authorized server workflows (CSV import).
+ * It intentionally has no session check of its own: it is not callable from a
+ * client, and the calling action resolves and role-checks the operator first.
+ */
+export const geocodeAddressInternal = internalAction({
+  args: {
+    address: v.string(),
+  },
+  returns: v.object({
+    lat: v.number(),
+    lng: v.number(),
+    formattedAddress: v.string(),
+  }),
+  handler: async (_ctx, args) => {
+    return await geocodeAddressCore(validateAddressInput(args.address));
+  },
+});
+
+async function geocodeAddressCore(address: string): Promise<{
+  lat: number;
+  lng: number;
+  formattedAddress: string;
+}> {
+  const log = createLogger(LOG_CATEGORIES.ROUTING);
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+  const variants = geocodeQueryVariants(address);
+
+  const primary = apiKey
+    ? (q: string) => geocodeGoogle(q, apiKey, log)
+    : (q: string) => geocodeNominatim(q, log);
+  const fallback = apiKey
+    ? (q: string) => geocodeNominatim(q, log)
+    : undefined;
+
+  for (const provider of fallback ? [primary, fallback] : [primary]) {
+    const label = apiKey && provider === primary ? "google-maps" : "nominatim";
+    for (const variant of variants) {
+      try {
+        const result = await provider(variant);
+        if (result) {
+          log.info("Geocoding resolved", {
+            operation: "geocodeAddress",
+            metadata: { provider: label },
+          });
+          return result;
+        }
+      } catch (err) {
+        // Provider HTTP/config failures are not "no results" — skip the
+        // remaining variants and try the next provider immediately.
+        if (err instanceof Error && /API error|error: \d/.test(err.message)) break;
+      }
+    }
+  }
+
+  log.error("Geocoding exhausted all providers/variants", {
+    operation: "geocodeAddress",
+    metadata: { attempts: variants.length },
+  });
+  // Single clean, user-safe failure — raw provider/Convex output never
+  // reaches the client through this path.
+  throw new Error(ADDRESS_UNRESOLVED);
+}
 
 /** Country context applied to free-form addresses. Lasha is a South African
  *  delivery platform; most user-entered addresses omit the country, and both

@@ -1,9 +1,14 @@
 import { action, internalMutation, internalQuery } from "../_generated/server";
 import { v } from "convex/values";
 import { getAuthUserId } from "@convex-dev/auth/server";
-import { api, internal } from "../_generated/api";
+import { internal } from "../_generated/api";
 import { Id } from "../_generated/dataModel";
-import { DELIVERY_STATUS, ROLES } from "../schema";
+import {
+  DELIVERY_STATUS,
+  ROLES,
+  effectiveRoleForUser,
+  isUserSuspended,
+} from "../schema";
 import { waybillNumberFor } from "./waybills";
 import { AUDIT_ACTIONS } from "../audit/service";
 
@@ -62,10 +67,12 @@ export const getImportActorContext = internalQuery({
     if (!user) return null;
     return {
       userId: user._id,
-      role: (user.role as string) ?? ROLES.CUSTOMER,
+      // Legacy test elevations are inert: use the effective role, never the
+      // raw stored role, or an old test account could import orders as staff.
+      role: effectiveRoleForUser(user) ?? ROLES.CUSTOMER,
       businessId: user.businessId ?? null,
       name: user.name ?? null,
-      suspended: user.staffSuspendedAt !== undefined,
+      suspended: isUserSuspended(user),
     };
   },
 });
@@ -313,13 +320,13 @@ export const importOrdersFromCsv = action({
         const pickupCoords =
           row.pickupLat !== undefined && row.pickupLng !== undefined
             ? { lat: row.pickupLat, lng: row.pickupLng }
-            : await ctx.runAction(api.routing.actions.geocodeAddress, {
+            : await ctx.runAction(internal.routing.actions.geocodeAddressInternal, {
                 address: pickupAddress,
               });
         const dropoffCoords =
           row.dropoffLat !== undefined && row.dropoffLng !== undefined
             ? { lat: row.dropoffLat, lng: row.dropoffLng }
-            : await ctx.runAction(api.routing.actions.geocodeAddress, {
+            : await ctx.runAction(internal.routing.actions.geocodeAddressInternal, {
                 address: dropoffAddress,
               });
 

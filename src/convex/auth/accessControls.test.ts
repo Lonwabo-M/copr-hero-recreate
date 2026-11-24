@@ -172,7 +172,62 @@ test("getTableCounts is staff-only and bounded", () => {
   assert(!src.includes(".collect()"), "must not collect whole tables");
 });
 
-// ─── 6. Payment webhook ────────────────────────────────────────────────────
+// ─── 6. Routing and delivery-status boundaries ─────────────────────────────
+
+console.log("\nRouting and delivery-status boundaries");
+
+test("every public routing/geocoding action requires a session and quota", () => {
+  const src = read("src/convex/routing/actions.ts");
+  assert(src.includes("getRoutingActor"), "must resolve the session actor server-side");
+  assert(
+    src.includes("consumeRoutingQuota"),
+    "must consume the per-user quota before provider calls",
+  );
+  assert(
+    src.includes(".collect()") && !src.includes(".unique()"),
+    "quota must tolerate duplicate rows from concurrent first requests",
+  );
+  assert(
+    (src.match(/await requireRoutingAccess\(ctx\);/g) ?? []).length >= 4,
+    "all four public actions must be gated",
+  );
+  assert(
+    src.includes("geocodeAddressInternal"),
+    "CSV import must use an internal, already-authorized geocoder",
+  );
+});
+
+test("public health check never calls a billed routing provider", () => {
+  const src = read("src/convex/http.ts");
+  const start = src.indexOf('path: "/health"');
+  const end = src.indexOf('path: "/health/live"');
+  const block = src.slice(start, end);
+  assert(start > 0 && end > start, "health route not found");
+  assert(!block.includes("fetch("), "health must not make external requests");
+  assert(!block.includes("places.googleapis.com"), "health must not call Google Places");
+});
+
+test("the unguarded delivery-status write mutation is gone", () => {
+  const src = read("src/convex/tracking/mutations.ts");
+  assert(
+    !src.includes("export const updateDeliveryStatusWithLocation"),
+    "no direct client-selected delivery status writer may exist",
+  );
+});
+
+test("first-admin bootstrap is closed while any admin record exists", () => {
+  const src = read("src/convex/admin/setup.ts");
+  assert(src.includes("hasAdminAccount"), "setup must check admin records");
+  assert(
+    !src.includes("if (isUserSuspended(candidate)) return false;"),
+    "suspended admins must still block public re-bootstrap",
+  );
+  const claim = src.indexOf("export const claimFirstAdmin");
+  const check = src.indexOf("if (await hasAdminAccount(ctx))", claim);
+  assert(check > claim, "claim must re-check the admin record server-side");
+});
+
+// ─── 7. Payment webhook ────────────────────────────────────────────────────
 
 console.log("\nPayment webhook");
 

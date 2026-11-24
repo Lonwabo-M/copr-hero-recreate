@@ -1280,6 +1280,16 @@ const schema = defineSchema(
       version: v.number(),
     }),
 
+    // ─── Routing: per-user request throttle ────────────────────────────────
+    // One row per user for a fixed one-minute window. Routing/geocoding actions
+    // call billed third-party providers, so the quota is consumed before any
+    // request leaves Convex. No personal data beyond the user id is stored.
+    routing_rate_limits: defineTable({
+      userId: v.id("users"),
+      windowStart: v.number(),
+      count: v.number(),
+    }).index("by_user", ["userId"]),
+
     // ─── Auth: Password-reset send throttle ────────────────────────────────
     // Security record, not marketing data. Convex Auth limits failed password
     // guesses but not reset-code requests, so this table backs a per-account

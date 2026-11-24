@@ -11,6 +11,7 @@ import {
   isUnknownAccountError,
   safeAuthError,
 } from "@/lib/authError";
+import { safeInternalPath } from "@/lib/safeReturnTo";
 import { ArrowRight, ArrowLeft, Eye, EyeOff } from "lucide-react";
 
 type Mode = "login" | "signup" | "forgot" | "reset";
@@ -47,10 +48,7 @@ function validateNewPassword(password: string, confirm: string): string | null {
 // the staff-login notice instead of their staff home. The notice keeps the
 // agreed legacy fallback explicit and offers the ZITADEL path.
 function customerPostAuthPath(returnTo: string | null, fallback: string): string {
-  const requested =
-    returnTo && returnTo.startsWith("/") && !returnTo.startsWith("//")
-      ? returnTo
-      : fallback;
+  const requested = safeInternalPath(returnTo, fallback) ?? fallback;
   const params = new URLSearchParams({ source: "customer-auth" });
   if (requested.startsWith("/") && requested !== "/post-auth") {
     params.set("returnTo", requested);
@@ -65,11 +63,10 @@ export default function AuthPage({ redirectAfterAuth = "/post-auth" }: AuthProps
   // Preserve the exact deep-link the user was trying to reach (set by
   // RequireAuth/RoleGate as ?returnTo=...).
   const returnTo = searchParams.get("returnTo");
+  const staffReturnTo = safeInternalPath(returnTo, null);
   const staffLoginHref =
-    returnTo?.startsWith("/") &&
-    !returnTo.startsWith("//") &&
-    returnTo !== "/post-auth"
-      ? `/staff-login?returnTo=${encodeURIComponent(returnTo)}`
+    staffReturnTo && staffReturnTo !== "/post-auth"
+      ? `/staff-login?returnTo=${encodeURIComponent(staffReturnTo)}`
       : "/staff-login";
   const initialMode = searchParams.get("mode") === "signup" ? "signup" : "login";
 
@@ -1034,8 +1031,11 @@ function DevQuickSignIn({ onError, setLoading }: { onError: (m: string) => void;
     setLoading(true);
     try {
       await signIn("password", { email: acct.email, password: DEV_PASSWORD, flow: "signIn" });
-      const returnTo = searchParams.get("returnTo");
-      navigate(returnTo ?? acct.dest, { replace: true });
+      const requested = searchParams.get("returnTo");
+      // Same-origin path only: protocol-relative and backslash forms must never
+      // be treated as an authenticated deep link.
+      const returnTo = safeInternalPath(requested, acct.dest) ?? acct.dest;
+      navigate(returnTo, { replace: true });
     } catch (err: unknown) {
       onError(
         safeAuthError(
